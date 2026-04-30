@@ -8,35 +8,42 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Tactile Cotton Ledger — calm, paper-like */
+    --background: 42 27% 95%;          /* #F7F5F0 paper */
+    --foreground: 30 5% 16%;           /* #2A2927 ink */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 42 27% 95%;
+    --card-foreground: 30 5% 16%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 42 27% 95%;
+    --popover-foreground: 30 5% 16%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 30 5% 16%;              /* ink */
+    --primary-foreground: 42 27% 95%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 38 19% 90%;           /* #EBE7DF surface */
+    --secondary-foreground: 30 5% 16%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 38 19% 90%;
+    --muted-foreground: 40 4% 49%;     /* #82807A ink-muted */
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 95 14% 82%;              /* #D1D8CA wash sage */
+    --accent-foreground: 30 5% 16%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 60% 45%;
+    --destructive-foreground: 42 27% 95%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 30 8% 88%;
+    --input: 30 8% 88%;
+    --ring: 30 5% 16%;
 
-    --radius: 0.5rem;
+    /* Tactile washes */
+    --wash-sage: 95 14% 82%;
+    --wash-clay: 25 36% 83%;           /* #E3D3C2 */
+    --surface: 38 19% 90%;
+    --ink-muted: 40 4% 49%;
+
+    --radius: 1.5rem;
 
     --sidebar-background: 0 0% 98%;
 
