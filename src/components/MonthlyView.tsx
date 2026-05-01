@@ -15,6 +15,8 @@ export function MonthlyView({ expenses }: Props) {
   );
 
   const total = monthExpenses.reduce((a, b) => a + b.amount, 0);
+  const count = monthExpenses.length;
+  const avg = count > 0 ? total / count : 0;
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
@@ -44,13 +46,27 @@ export function MonthlyView({ expenses }: Props) {
           No expenses logged this month yet.
         </p>
       ) : (
+        <>
+        <div className="grid grid-cols-2 gap-3 mb-8">
+          <div className="bg-surface/60 rounded-2xl p-4 border border-border/40">
+            <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Entries</p>
+            <p className="font-serif text-2xl text-foreground mt-1 tabular-nums">{count}</p>
+          </div>
+          <div className="bg-surface/60 rounded-2xl p-4 border border-border/40">
+            <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Avg / entry</p>
+            <p className="font-serif text-2xl text-foreground mt-1 tabular-nums">₹{formatINR(avg)}</p>
+          </div>
+        </div>
         <div className="space-y-4">
           {byCategory.map((c) => {
             const pct = total > 0 ? (c.amount / total) * 100 : 0;
             return (
               <div key={c.category}>
                 <div className="flex justify-between items-baseline mb-1.5">
-                  <span className="text-foreground text-sm">{c.category}</span>
+                  <span className="text-foreground text-sm">
+                    {c.category}
+                    <span className="text-ink-muted ml-2 text-xs tabular-nums">{pct.toFixed(0)}%</span>
+                  </span>
                   <span className="font-serif text-base text-foreground tabular-nums">
                     ₹{formatINR(c.amount)}
                   </span>
@@ -65,6 +81,7 @@ export function MonthlyView({ expenses }: Props) {
             );
           })}
         </div>
+        </>
       )}
 
       {top && (
