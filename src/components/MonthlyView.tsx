@@ -1,11 +1,17 @@
 import { Expense, formatINR, startOfMonthISO } from "@/lib/expenses";
+import { Budgets } from "@/hooks/useExpenses";
 import { useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { Wallet } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Props {
   expenses: Expense[];
+  budgets: Budgets;
+  onOpenBudgets: () => void;
 }
 
-export function MonthlyView({ expenses }: Props) {
+export function MonthlyView({ expenses, budgets, onOpenBudgets }: Props) {
   const monthStart = startOfMonthISO();
   const monthName = new Date().toLocaleDateString("en-US", { month: "long" });
 
@@ -29,6 +35,16 @@ export function MonthlyView({ expenses }: Props) {
   }, [monthExpenses]);
 
   const top = byCategory[0];
+
+  const budgetEntries = useMemo(() => {
+    return Object.entries(budgets).map(([category, limit]) => {
+      const spent =
+        byCategory.find((b) => b.category === category)?.amount || 0;
+      const remaining = limit - spent;
+      const pct = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
+      return { category, limit, spent, remaining, pct };
+    });
+  }, [budgets, byCategory]);
 
   return (
     <section className="mt-20">
@@ -96,6 +112,74 @@ export function MonthlyView({ expenses }: Props) {
           </p>
         </div>
       )}
+
+      {/* Budgets */}
+      <div className="mt-12">
+        <div className="flex items-baseline justify-between mb-5">
+          <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted">
+            Budgets
+          </h3>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onOpenBudgets}
+            className="text-xs text-ink-muted hover:text-foreground h-7"
+          >
+            <Wallet className="h-3.5 w-3.5 mr-1" />
+            {budgetEntries.length === 0 ? "Set budgets" : "Manage"}
+          </Button>
+        </div>
+
+        {budgetEntries.length === 0 ? (
+          <p className="text-ink-muted text-sm font-light text-center py-4">
+            No budgets yet. Set monthly limits per category to track what's left.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {budgetEntries.map((b) => {
+              const over = b.remaining < 0;
+              return (
+                <div
+                  key={b.category}
+                  className="bg-surface/60 border border-border/40 rounded-2xl p-4"
+                >
+                  <div className="flex justify-between items-baseline mb-2">
+                    <span className="text-foreground text-sm">{b.category}</span>
+                    <span
+                      className={cn(
+                        "text-xs tabular-nums",
+                        over ? "text-destructive" : "text-ink-muted"
+                      )}
+                    >
+                      ₹{formatINR(b.spent)} / ₹{formatINR(b.limit)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-background rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        over ? "bg-destructive" : "bg-wash-sage"
+                      )}
+                      style={{ width: `${b.pct}%` }}
+                    />
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-2 text-[11px] tabular-nums",
+                      over ? "text-destructive" : "text-ink-muted"
+                    )}
+                  >
+                    {over
+                      ? `Over by ₹${formatINR(Math.abs(b.remaining))}`
+                      : `₹${formatINR(b.remaining)} remaining`}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
