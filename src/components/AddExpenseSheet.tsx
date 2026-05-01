@@ -30,6 +30,8 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
   const [payment, setPayment] = useState<PaymentMethod>("upi");
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
+  const [errors, setErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
+  const [submitted, setSubmitted] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
 
   const subs = useMemo(
@@ -46,16 +48,42 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
       setPayment("upi");
       setShowAddCat(false);
       setNewCat("");
+      setErrors({});
+      setSubmitted(false);
       // focus amount on open
       setTimeout(() => amountRef.current?.focus(), 80);
     }
   }, [open]);
 
+  const validate = (): typeof errors => {
+    const errs: typeof errors = {};
+    const num = parseFloat(amount);
+    if (!amount.trim()) errs.amount = "Amount is required.";
+    else if (Number.isNaN(num)) errs.amount = "Enter a valid number.";
+    else if (num <= 0) errs.amount = "Amount must be greater than zero.";
+    else if (num > 10_000_000) errs.amount = "Amount looks too large.";
+    if (!category.trim()) errs.category = "Pick a category.";
+    if (!date) errs.date = "Date is required.";
+    else if (date > todayISO()) errs.date = "Date can't be in the future.";
+    return errs;
+  };
+
+  // Live revalidation after first submit attempt
+  useEffect(() => {
+    if (submitted) setErrors(validate());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, category, date, submitted]);
+
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
+    setSubmitted(true);
+    const errs = validate();
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      if (errs.amount) amountRef.current?.focus();
+      return;
+    }
     const num = parseFloat(amount);
-    if (!num || num <= 0) return;
-    if (!category) return;
     onAdd({
       amount: num,
       category,
@@ -81,7 +109,12 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
 
         <form onSubmit={submit} className="mt-6 space-y-8 pb-8">
           {/* Amount */}
-          <div className="bg-surface/60 rounded-3xl p-6 border border-border/40">
+          <div
+            className={cn(
+              "bg-surface/60 rounded-3xl p-6 border",
+              errors.amount ? "border-destructive/60" : "border-border/40"
+            )}
+          >
             <div className="flex items-center gap-3">
               <span className="font-serif text-4xl text-ink-muted/60">₹</span>
               <Input
@@ -93,9 +126,16 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                aria-invalid={!!errors.amount}
+                aria-describedby={errors.amount ? "amount-error" : undefined}
                 className="font-serif text-5xl h-16 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 placeholder:text-ink-muted/30 text-foreground"
               />
             </div>
+            {errors.amount && (
+              <p id="amount-error" className="text-xs text-destructive mt-2" role="alert">
+                {errors.amount}
+              </p>
+            )}
             <Input
               type="text"
               maxLength={120}
@@ -166,6 +206,9 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
                 </div>
               )}
             </div>
+            {errors.category && (
+              <p className="text-xs text-destructive" role="alert">{errors.category}</p>
+            )}
           </div>
 
           {/* Subcategory */}
@@ -228,8 +271,12 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
                 value={date}
                 max={todayISO()}
                 onChange={(e) => setDate(e.target.value)}
+                aria-invalid={!!errors.date}
                 className="rounded-full bg-transparent border-border text-foreground"
               />
+              {errors.date && (
+                <p className="text-xs text-destructive" role="alert">{errors.date}</p>
+              )}
             </div>
           </div>
 
