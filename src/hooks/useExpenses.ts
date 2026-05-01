@@ -7,6 +7,7 @@ import {
 
 const EXP_KEY = "ledger.expenses.v1";
 const CAT_KEY = "ledger.categories.v1";
+const BUD_KEY = "ledger.budgets.v1";
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -26,6 +27,8 @@ function writeJSON(key: string, value: unknown) {
   }
 }
 
+export type Budgets = Record<string, number>; // category name -> monthly limit
+
 export function useExpenses() {
   const [expenses, setExpenses] = useState<Expense[]>(() =>
     readJSON<Expense[]>(EXP_KEY, [])
@@ -33,9 +36,13 @@ export function useExpenses() {
   const [categories, setCategories] = useState<CategoryDef[]>(() =>
     readJSON<CategoryDef[]>(CAT_KEY, DEFAULT_CATEGORIES)
   );
+  const [budgets, setBudgets] = useState<Budgets>(() =>
+    readJSON<Budgets>(BUD_KEY, {})
+  );
 
   useEffect(() => writeJSON(EXP_KEY, expenses), [expenses]);
   useEffect(() => writeJSON(CAT_KEY, categories), [categories]);
+  useEffect(() => writeJSON(BUD_KEY, budgets), [budgets]);
 
   const addExpense = useCallback((e: Omit<Expense, "id" | "created_at">) => {
     const newE: Expense = {
@@ -46,6 +53,15 @@ export function useExpenses() {
     setExpenses((prev) => [newE, ...prev]);
     return newE;
   }, []);
+
+  const updateExpense = useCallback(
+    (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => {
+      setExpenses((prev) =>
+        prev.map((x) => (x.id === id ? { ...x, ...patch } : x))
+      );
+    },
+    []
+  );
 
   const deleteExpense = useCallback((id: string) => {
     setExpenses((prev) => prev.filter((x) => x.id !== id));
@@ -61,11 +77,23 @@ export function useExpenses() {
     );
   }, []);
 
+  const setBudget = useCallback((category: string, amount: number | null) => {
+    setBudgets((prev) => {
+      const next = { ...prev };
+      if (amount === null || !amount || amount <= 0) delete next[category];
+      else next[category] = amount;
+      return next;
+    });
+  }, []);
+
   return {
     expenses,
     categories,
+    budgets,
     addExpense,
+    updateExpense,
     deleteExpense,
     addCategory,
+    setBudget,
   };
 }
