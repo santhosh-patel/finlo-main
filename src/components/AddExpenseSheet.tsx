@@ -19,9 +19,13 @@ interface Props {
   categories: CategoryDef[];
   onAdd: (e: Omit<Expense, "id" | "created_at">) => void;
   onAddCategory: (name: string) => void;
+  /** When provided, the sheet is in edit mode and saves changes to this expense. */
+  editing?: Expense | null;
+  onUpdate?: (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => void;
 }
 
-export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCategory }: Props) {
+export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCategory, editing, onUpdate }: Props) {
+  const isEdit = !!editing;
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>(categories[0]?.name ?? "Food");
   const [subcategory, setSubcategory] = useState<string>("");
@@ -41,11 +45,21 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
 
   useEffect(() => {
     if (open) {
-      setAmount("");
-      setSubcategory("");
-      setNote("");
-      setDate(todayISO());
-      setPayment("upi");
+      if (editing) {
+        setAmount(String(editing.amount));
+        setCategory(editing.category);
+        setSubcategory(editing.subcategory ?? "");
+        setNote(editing.note ?? "");
+        setDate(editing.date);
+        setPayment(editing.payment_method);
+      } else {
+        setAmount("");
+        setCategory(categories[0]?.name ?? "Food");
+        setSubcategory("");
+        setNote("");
+        setDate(todayISO());
+        setPayment("upi");
+      }
       setShowAddCat(false);
       setNewCat("");
       setErrors({});
@@ -53,7 +67,8 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
       // focus amount on open
       setTimeout(() => amountRef.current?.focus(), 80);
     }
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing]);
 
   const validate = (): typeof errors => {
     const errs: typeof errors = {};
@@ -84,14 +99,19 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
       return;
     }
     const num = parseFloat(amount);
-    onAdd({
+    const payload = {
       amount: num,
       category,
       subcategory: subcategory || undefined,
       note: note.trim() || undefined,
       date,
       payment_method: payment,
-    });
+    };
+    if (isEdit && editing && onUpdate) {
+      onUpdate(editing.id, payload);
+    } else {
+      onAdd(payload);
+    }
     onOpenChange(false);
   };
 
@@ -103,7 +123,7 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
       >
         <SheetHeader className="text-left">
           <SheetTitle className="font-serif text-3xl font-normal text-foreground">
-            New entry
+            {isEdit ? "Edit entry" : "New entry"}
           </SheetTitle>
         </SheetHeader>
 
@@ -285,7 +305,7 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
             size="lg"
             className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-12 text-base font-medium"
           >
-            Save entry
+            {isEdit ? "Save changes" : "Save entry"}
           </Button>
         </form>
       </SheetContent>
