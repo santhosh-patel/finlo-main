@@ -97,12 +97,6 @@ const Index = () => {
 
   if (!isAuthed) return <Login onLogin={login} />;
 
-  const handleEdit = (e: Expense) => {
-    setDetails(null);
-    setEditing(e);
-    setOpen(true);
-  };
-
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
 
   return (
@@ -230,8 +224,9 @@ const Index = () => {
 
       <ExpenseDetailsDrawer
         expense={details}
+        categories={categories}
         onOpenChange={(v) => { if (!v) setDetails(null); }}
-        onEdit={handleEdit}
+        onUpdate={updateExpense}
         onDelete={deleteExpense}
       />
 

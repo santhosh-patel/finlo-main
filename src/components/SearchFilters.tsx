@@ -1,8 +1,8 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { CategoryDef } from "@/lib/expenses";
-import { Search, X } from "lucide-react";
+import { CategoryDef, startOfMonthISO, startOfWeekISO, todayISO } from "@/lib/expenses";
+import { Download, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface FilterState {
@@ -17,11 +17,47 @@ interface Props {
   onChange: (v: FilterState) => void;
   categories: CategoryDef[];
   resultsCount: number;
+  onExport?: () => void;
 }
 
-export function SearchFilters({ value, onChange, categories, resultsCount }: Props) {
+export function SearchFilters({ value, onChange, categories, resultsCount, onExport }: Props) {
   const set = (patch: Partial<FilterState>) => onChange({ ...value, ...patch });
   const hasFilters = value.query || value.category || value.from || value.to;
+
+  const today = todayISO();
+  const weekStart = startOfWeekISO();
+  const monthStart = startOfMonthISO();
+
+  const isRange = (from: string, to: string) =>
+    value.from === from && value.to === to;
+
+  const quickChips: { label: string; active: boolean; apply: () => void }[] = [
+    {
+      label: "Today",
+      active: isRange(today, today) && !value.category,
+      apply: () => set({ from: today, to: today, category: "" }),
+    },
+    {
+      label: "This week",
+      active: isRange(weekStart, today) && !value.category,
+      apply: () => set({ from: weekStart, to: today, category: "" }),
+    },
+    {
+      label: "This month",
+      active: isRange(monthStart, today) && !value.category,
+      apply: () => set({ from: monthStart, to: today, category: "" }),
+    },
+    {
+      label: "Food",
+      active: value.category === "Food",
+      apply: () => set({ category: value.category === "Food" ? "" : "Food" }),
+    },
+    {
+      label: "Bills",
+      active: value.category === "Bills",
+      apply: () => set({ category: value.category === "Bills" ? "" : "Bills" }),
+    },
+  ];
 
   return (
     <section className="space-y-4 mb-8">
@@ -43,6 +79,25 @@ export function SearchFilters({ value, onChange, categories, resultsCount }: Pro
             <X className="h-3.5 w-3.5" />
           </button>
         )}
+      </div>
+
+      {/* Quick chips */}
+      <div className="flex flex-wrap gap-2">
+        {quickChips.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            onClick={c.apply}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-xs border transition-colors",
+              c.active
+                ? "bg-foreground text-background border-foreground"
+                : "bg-wash-clay/30 border-border/60 text-ink-muted hover:bg-surface"
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
 
       <div>
@@ -104,17 +159,30 @@ export function SearchFilters({ value, onChange, categories, resultsCount }: Pro
         <span className="text-[11px] text-ink-muted tracking-wider uppercase">
           {resultsCount} {resultsCount === 1 ? "result" : "results"}
         </span>
-        {hasFilters && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange({ query: "", category: "", from: "", to: "" })}
-            className="text-xs text-ink-muted hover:text-foreground h-7"
-          >
-            Clear filters
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {onExport && resultsCount > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onExport}
+              className="text-xs text-ink-muted hover:text-foreground h-7"
+            >
+              <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
+            </Button>
+          )}
+          {hasFilters && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange({ query: "", category: "", from: "", to: "" })}
+              className="text-xs text-ink-muted hover:text-foreground h-7"
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
       </div>
     </section>
   );

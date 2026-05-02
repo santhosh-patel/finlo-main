@@ -1,7 +1,7 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SearchFilters, FilterState } from "@/components/SearchFilters";
 import { ExpenseRow } from "@/components/ExpenseRow";
-import { CategoryDef, Expense, formatINR } from "@/lib/expenses";
+import { CategoryDef, Expense, downloadCSV, expensesToCSV, formatINR, todayISO } from "@/lib/expenses";
 import { useMemo } from "react";
 
 interface Props {
@@ -42,6 +42,18 @@ export function SearchOverlay({
 
   const total = filtered.reduce((a, b) => a + b.amount, 0);
 
+  const handleExport = () => {
+    const sorted = [...filtered].sort((a, b) =>
+      a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
+    );
+    const csv = expensesToCSV(sorted);
+    const range =
+      filters.from || filters.to
+        ? `_${filters.from || "start"}_to_${filters.to || todayISO()}`
+        : "";
+    downloadCSV(`ledger_expenses${range}.csv`, csv);
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -62,6 +74,7 @@ export function SearchOverlay({
           onChange={onFiltersChange}
           categories={categories}
           resultsCount={filtered.length}
+          onExport={handleExport}
         />
 
         {filtered.length > 0 && (

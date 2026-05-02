@@ -83,3 +83,48 @@ export function fullDateLabel(iso: string): string {
     day: "numeric",
   });
 }
+
+export function startOfWeekISO(): string {
+  const d = new Date();
+  const day = d.getDay(); // 0 = Sun
+  const diff = (day + 6) % 7; // make Monday start
+  d.setDate(d.getDate() - diff);
+  return isoDate(d);
+}
+
+function csvEscape(v: string): string {
+  if (v == null) return "";
+  const needs = /[",\n\r]/.test(v);
+  const s = v.replace(/"/g, '""');
+  return needs ? `"${s}"` : s;
+}
+
+export function expensesToCSV(rows: Expense[]): string {
+  const header = ["Date", "Amount", "Category", "Subcategory", "Note", "Payment"];
+  const lines = [header.join(",")];
+  for (const e of rows) {
+    lines.push(
+      [
+        e.date,
+        e.amount.toFixed(2),
+        csvEscape(e.category),
+        csvEscape(e.subcategory ?? ""),
+        csvEscape(e.note ?? ""),
+        e.payment_method,
+      ].join(",")
+    );
+  }
+  return lines.join("\n");
+}
+
+export function downloadCSV(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
