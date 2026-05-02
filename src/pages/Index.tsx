@@ -97,12 +97,6 @@ const Index = () => {
 
   if (!isAuthed) return <Login onLogin={login} />;
 
-  const handleEdit = (e: Expense) => {
-    setDetails(null);
-    setEditing(e);
-    setOpen(true);
-  };
-
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
 
   return (
