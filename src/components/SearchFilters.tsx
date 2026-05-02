@@ -1,7 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { CategoryDef, isoDate, startOfMonthISO, startOfWeekISO, todayISO } from "@/lib/expenses";
+import { CategoryDef, startOfMonthISO, startOfWeekISO, todayISO } from "@/lib/expenses";
 import { Download, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
