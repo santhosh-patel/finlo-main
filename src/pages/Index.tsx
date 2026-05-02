@@ -230,8 +230,9 @@ const Index = () => {
 
       <ExpenseDetailsDrawer
         expense={details}
+        categories={categories}
         onOpenChange={(v) => { if (!v) setDetails(null); }}
-        onEdit={handleEdit}
+        onUpdate={updateExpense}
         onDelete={deleteExpense}
       />
 
