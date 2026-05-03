@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Settings as SettingsIcon, ChevronDown } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, ShieldCheck, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
 import { ExpenseRow } from "@/components/ExpenseRow";
@@ -13,41 +14,25 @@ import { ImportSheet } from "@/components/ImportSheet";
 import { PeriodNav } from "@/components/PeriodNav";
 import Settings from "@/pages/Settings";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import Login from "@/pages/Login";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import {
-  Expense,
-  addDays,
-  formatINR,
-  fullDateLabel,
-  monthRangeOf,
-  shiftMonth,
-  shiftWeek,
-  startOfMonthISO,
-  todayISO,
-  weekRangeOf,
+  Expense, addDays, formatINR, fullDateLabel,
+  monthRangeOf, shiftMonth, shiftWeek, startOfMonthISO, todayISO, weekRangeOf,
 } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
 
 type View = "today" | "week" | "month";
 
-const FILTERS_KEY = "ledger.filters.v1";
+const FILTERS_KEY = "finlo.filters.v1";
 const EMPTY_FILTERS: FilterState = { query: "", category: "", from: "", to: "" };
 
 function readFilters(): FilterState {
@@ -55,30 +40,23 @@ function readFilters(): FilterState {
     const raw = localStorage.getItem(FILTERS_KEY);
     if (!raw) return EMPTY_FILTERS;
     return { ...EMPTY_FILTERS, ...JSON.parse(raw) };
-  } catch {
-    return EMPTY_FILTERS;
-  }
+  } catch { return EMPTY_FILTERS; }
 }
 
 const Index = () => {
-  const { isAuthed, login, logout, profile, updateProfile } = useAuth();
+  const { isAuthed, loading, login, logout, profile, updateProfile, isAdmin, user } = useAuth();
   const { theme, update: updateTheme } = useTheme();
+  const exp = useExpenses(user?.id ?? null);
   const {
-    expenses,
-    categories,
-    budgets,
-    addExpense,
-    updateExpense,
-    deleteExpense,
-    addCategory,
-    renameCategory,
-    deleteCategory,
-    setCategoryStyle,
-    addSubcategory,
-    deleteSubcategory,
-    importExpenses,
-    setBudget,
-  } = useExpenses();
+    expenses, categories, budgets,
+    syncing, lastSync, sync,
+    addExpense, updateExpense, deleteExpense,
+    addCategory, renameCategory, deleteCategory, setCategoryStyle,
+    addSubcategory, deleteSubcategory,
+    importExpenses, setBudget,
+    exportData, restoreData,
+  } = exp;
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [view, setView] = useState<View>("today");
@@ -89,6 +67,7 @@ const Index = () => {
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
+
   const today = todayISO();
   const yesterday = addDays(today, -1);
   const dayBefore = addDays(today, -2);
@@ -121,17 +100,22 @@ const Index = () => {
   const spentByCategory = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e) => {
-      if (e.date >= monthStart)
-        map[e.category] = (map[e.category] || 0) + e.amount;
+      if (e.date >= monthStart) map[e.category] = (map[e.category] || 0) + e.amount;
     });
     return map;
   }, [expenses, monthStart]);
 
+  if (loading) {
+    return (
+      <main className="min-h-dvh flex items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-ink-muted" />
+      </main>
+    );
+  }
   if (!isAuthed) return <Login onLogin={login} />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
 
-  // Hero label & total per view
   let heroLabel = "Today's outgoings";
   let heroTotal = dayTotal;
   if (view === "today") {
@@ -184,41 +168,39 @@ const Index = () => {
 
   return (
     <main className="min-h-dvh bg-background text-foreground font-sans">
-      <div className="w-full max-w-[520px] mx-auto px-6 pt-16 pb-32">
-        <header className="flex items-center justify-between mb-12">
-          <div>
-            <h1 className="font-serif text-2xl text-foreground">Ledger</h1>
-            <p className="text-xs text-ink-muted mt-0.5">{fullDateLabel(today)}</p>
+      <div className="w-full max-w-[520px] mx-auto px-6 pt-12 pb-32">
+        <header className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-xl bg-foreground text-background flex items-center justify-center font-serif text-lg">F</div>
+            <div>
+              <h1 className="font-serif text-xl text-foreground leading-none">Finlo</h1>
+              <p className="text-[10px] text-ink-muted mt-1 tracking-wider uppercase">{profile.name}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <nav className="flex gap-1 bg-surface rounded-full p-1 text-xs">
+          <div className="flex items-center gap-1">
+            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-xs mr-1">
               {(["today", "week", "month"] as View[]).map((v) => (
                 <button
-                  key={v}
-                  onClick={() => setView(v)}
+                  key={v} onClick={() => setView(v)}
                   className={cn(
                     "px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors",
                     view === v ? "bg-background text-foreground shadow-sm" : "text-ink-muted hover:text-foreground"
                   )}
-                >
-                  {v}
-                </button>
+                >{v}</button>
               ))}
             </nav>
-            <button
-              onClick={() => setSearchOpen(true)}
-              aria-label="Search expenses"
-              title="Search"
-              className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface transition-colors"
-            >
+            {isAdmin && (
+              <Link to="/admin" title="Admin" aria-label="Admin"
+                className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
+                <ShieldCheck className="h-4 w-4" />
+              </Link>
+            )}
+            <button onClick={() => setSearchOpen(true)} aria-label="Search" title="Search"
+              className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
               <Search className="h-4 w-4" />
             </button>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Settings"
-              title="Settings"
-              className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface transition-colors"
-            >
+            <button onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings"
+              className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
               <SettingsIcon className="h-4 w-4" />
             </button>
           </div>
@@ -239,7 +221,7 @@ const Index = () => {
         <div className="flex justify-center mb-12">
           <Button
             onClick={() => { setEditing(null); setOpen(true); }}
-            className="rounded-full bg-foreground text-background hover:bg-foreground/90 px-7 h-12 text-sm font-medium"
+            className="rounded-full bg-foreground text-background hover:bg-foreground/90 px-7 h-12 text-sm font-medium shadow-md"
           >
             <Plus className="h-4 w-4 mr-1" /> Add expense
           </Button>
@@ -258,9 +240,7 @@ const Index = () => {
               <div className="flex flex-col divide-y divide-border/50">
                 {dayExpenses.map((e) => (
                   <ExpenseRow
-                    key={e.id}
-                    expense={e}
-                    onSelect={setDetails}
+                    key={e.id} expense={e} onSelect={setDetails}
                     onDelete={() => handleAskDelete(e)}
                   />
                 ))}
@@ -307,89 +287,66 @@ const Index = () => {
         )}
 
         {view === "week" && (
-          <WeeklyView expenses={expenses} anchor={weekAnchor} onSelect={setDetails} />
+          <WeeklyView expenses={expenses} categories={categories} anchor={weekAnchor} onSelect={setDetails} />
         )}
 
         {view === "month" && (
           <MonthlyView
-            expenses={expenses}
-            budgets={budgets}
+            expenses={expenses} budgets={budgets}
             onOpenBudgets={() => setBudgetsOpen(true)}
-            anchor={monthAnchor}
-            onSelect={setDetails}
+            anchor={monthAnchor} onSelect={setDetails}
           />
         )}
       </div>
 
       <AddExpenseSheet
-        open={open}
-        onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}
-        categories={categories}
-        onAdd={addExpense}
-        onAddCategory={addCategory}
-        onAddSubcategory={addSubcategory}
-        editing={editing}
-        onUpdate={updateExpense}
+        open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}
+        categories={categories} onAdd={addExpense}
+        onAddCategory={addCategory} onAddSubcategory={addSubcategory}
+        editing={editing} onUpdate={updateExpense}
       />
 
       <SearchOverlay
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        expenses={expenses}
-        categories={categories}
-        filters={filters}
-        onFiltersChange={setFilters}
+        open={searchOpen} onOpenChange={setSearchOpen}
+        expenses={expenses} categories={categories}
+        filters={filters} onFiltersChange={setFilters}
         onSelect={(e) => { setSearchOpen(false); setDetails(e); }}
+        username={profile.name || profile.email.split("@")[0]}
       />
 
       <ExpenseDetailsDrawer
-        expense={details}
-        categories={categories}
+        expense={details} categories={categories}
         onOpenChange={(v) => { if (!v) setDetails(null); }}
-        onUpdate={updateExpense}
-        onDelete={deleteExpense}
+        onUpdate={updateExpense} onDelete={deleteExpense}
         onAddSubcategory={addSubcategory}
       />
 
       <BudgetsSheet
-        open={budgetsOpen}
-        onOpenChange={setBudgetsOpen}
-        categories={categories}
-        budgets={budgets}
-        spentByCategory={spentByCategory}
-        onSetBudget={setBudget}
+        open={budgetsOpen} onOpenChange={setBudgetsOpen}
+        categories={categories} budgets={budgets}
+        spentByCategory={spentByCategory} onSetBudget={setBudget}
       />
 
-      <ImportSheet
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        onImport={importExpenses}
-      />
+      <ImportSheet open={importOpen} onOpenChange={setImportOpen} onImport={importExpenses} />
 
       <Settings
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        open={settingsOpen} onOpenChange={setSettingsOpen}
         categories={categories}
-        onAddCategory={addCategory}
-        onRenameCategory={renameCategory}
-        onDeleteCategory={deleteCategory}
-        onSetCategoryStyle={setCategoryStyle}
-        onAddSubcategory={addSubcategory}
-        onDeleteSubcategory={deleteSubcategory}
+        onAddCategory={addCategory} onRenameCategory={renameCategory}
+        onDeleteCategory={deleteCategory} onSetCategoryStyle={setCategoryStyle}
+        onAddSubcategory={addSubcategory} onDeleteSubcategory={deleteSubcategory}
         onOpenBudgets={() => setBudgetsOpen(true)}
         onOpenImport={() => setImportOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
-        profile={profile}
-        onUpdateProfile={updateProfile}
-        theme={theme}
-        onUpdateTheme={updateTheme}
+        profile={profile} onUpdateProfile={updateProfile}
+        theme={theme} onUpdateTheme={updateTheme}
         onLogout={logout}
+        onSync={sync} syncing={syncing} lastSync={lastSync}
+        onExportData={exportData} onRestoreData={restoreData}
+        isAdmin={isAdmin}
       />
 
-      <AlertDialog
-        open={!!confirmDelete}
-        onOpenChange={(v) => { if (!v) setConfirmDelete(null); }}
-      >
+      <AlertDialog open={!!confirmDelete} onOpenChange={(v) => { if (!v) setConfirmDelete(null); }}>
         <AlertDialogContent className="bg-background border-border">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-serif text-2xl font-normal">
@@ -409,9 +366,7 @@ const Index = () => {
                 if (confirmDelete) deleteExpense(confirmDelete.id);
                 setConfirmDelete(null);
               }}
-            >
-              Delete
-            </AlertDialogAction>
+            >Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

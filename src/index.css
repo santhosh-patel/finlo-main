@@ -2,102 +2,114 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+/*
+  Finlo design system — minimal, aesthetic, refined.
+  All colors HSL.
 */
 
 @layer base {
   :root {
-    /* Tactile Cotton Ledger — calm, paper-like */
-    --background: 42 27% 95%;          /* #F7F5F0 paper */
-    --foreground: 30 5% 16%;           /* #2A2927 ink */
+    /* Light theme — warm paper */
+    --background: 42 27% 96%;
+    --foreground: 220 18% 12%;
 
-    --card: 42 27% 95%;
-    --card-foreground: 30 5% 16%;
+    --card: 42 27% 96%;
+    --card-foreground: 220 18% 12%;
+    --popover: 42 27% 96%;
+    --popover-foreground: 220 18% 12%;
 
-    --popover: 42 27% 95%;
-    --popover-foreground: 30 5% 16%;
+    --primary: 220 18% 12%;
+    --primary-foreground: 42 27% 96%;
 
-    --primary: 30 5% 16%;              /* ink */
-    --primary-foreground: 42 27% 95%;
+    --secondary: 38 19% 91%;
+    --secondary-foreground: 220 18% 12%;
+    --muted: 38 19% 91%;
+    --muted-foreground: 220 8% 42%;
 
-    --secondary: 38 19% 90%;           /* #EBE7DF surface */
-    --secondary-foreground: 30 5% 16%;
+    --accent: 199 89% 74%;
+    --accent-foreground: 220 18% 8%;
 
-    --muted: 38 19% 90%;
-    --muted-foreground: 40 4% 49%;     /* #82807A ink-muted */
+    --destructive: 0 65% 48%;
+    --destructive-foreground: 0 0% 100%;
 
-    --accent: 95 14% 82%;              /* #D1D8CA wash sage */
-    --accent-foreground: 30 5% 16%;
+    --border: 30 12% 88%;
+    --input: 30 12% 88%;
+    --ring: 220 18% 12%;
 
-    --destructive: 0 60% 45%;
-    --destructive-foreground: 42 27% 95%;
-
-    --border: 30 8% 88%;
-    --input: 30 8% 88%;
-    --ring: 30 5% 16%;
-
-    /* Tactile washes */
+    --surface: 38 19% 92%;
+    --surface-elevated: 0 0% 100%;
+    --ink-muted: 220 8% 42%;
     --wash-sage: 95 14% 82%;
-    --wash-clay: 25 36% 83%;           /* #E3D3C2 */
-    --surface: 38 19% 90%;
-    --ink-muted: 40 4% 49%;
+    --wash-clay: 25 36% 83%;
 
-    --radius: 1.5rem;
+    --radius: 1rem;
+    --radius-sm: 0.625rem;
+
+    --shadow-sm: 0 1px 2px 0 hsl(220 30% 10% / 0.04);
+    --shadow-md: 0 4px 12px -2px hsl(220 30% 10% / 0.08);
+    --shadow-lg: 0 16px 48px -12px hsl(220 30% 10% / 0.18);
+
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
+    --duration-slow: 320ms;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    /* Dark theme — refined near-black with cool tint */
+    --background: 220 16% 6%;
+    --foreground: 40 8% 95%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 220 14% 8%;
+    --card-foreground: 40 8% 95%;
+    --popover: 220 14% 9%;
+    --popover-foreground: 40 8% 95%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --primary: 40 8% 95%;
+    --primary-foreground: 220 18% 8%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 220 12% 12%;
+    --secondary-foreground: 40 8% 95%;
+    --muted: 220 12% 12%;
+    --muted-foreground: 220 6% 62%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --accent: 199 89% 74%;
+    --accent-foreground: 220 18% 8%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 0 0% 100%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --border: 220 10% 16%;
+    --input: 220 10% 16%;
+    --ring: 220 6% 70%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --surface: 220 12% 10%;
+    --surface-elevated: 220 12% 13%;
+    --ink-muted: 220 6% 62%;
+    --wash-sage: 158 24% 26%;
+    --wash-clay: 25 28% 28%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --shadow-sm: 0 1px 0 hsl(220 30% 2% / 0.6);
+    --shadow-md: 0 4px 16px -2px hsl(220 30% 2% / 0.6);
+    --shadow-lg: 0 16px 48px -12px hsl(220 30% 2% / 0.8);
+
+    --sidebar-background: 220 16% 6%;
+    --sidebar-foreground: 40 8% 95%;
+    --sidebar-primary: 199 89% 74%;
+    --sidebar-primary-foreground: 220 18% 8%;
+    --sidebar-accent: 220 12% 12%;
+    --sidebar-accent-foreground: 40 8% 95%;
+    --sidebar-border: 220 10% 16%;
+    --sidebar-ring: 199 89% 74%;
   }
 }
 
@@ -106,7 +118,41 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    color-scheme: light dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+    transition: background-color var(--duration-base) var(--ease-out),
+                color var(--duration-base) var(--ease-out);
+  }
+
+  button, a, input, [role="button"] {
+    transition: background-color var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out),
+                opacity var(--duration-fast) var(--ease-out),
+                transform var(--duration-fast) var(--ease-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--ink-muted));
   }
 }

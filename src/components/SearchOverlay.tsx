@@ -12,6 +12,7 @@ interface Props {
   filters: FilterState;
   onFiltersChange: (f: FilterState) => void;
   onSelect: (e: Expense) => void;
+  username?: string;
 }
 
 export function SearchOverlay({
@@ -22,6 +23,7 @@ export function SearchOverlay({
   filters,
   onFiltersChange,
   onSelect,
+  username = "finlo",
 }: Props) {
   const filtered = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
@@ -49,12 +51,21 @@ export function SearchOverlay({
     const csv = expensesToCSV(sorted);
     const slug = (s: string) =>
       s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const cat = filters.category ? slug(filters.category) : "all";
     const earliest = sorted[0]?.date ?? todayISO();
     const latest = sorted[sorted.length - 1]?.date ?? todayISO();
     const from = filters.from || earliest;
     const to = filters.to || latest;
-    downloadCSV(`ledger_${cat}_${from}_to_${to}.csv`, csv);
+    const user = slug(username);
+    let name: string;
+    if (from === to) {
+      name = `${user}-${from}`;
+    } else if (from.slice(0, 7) === to.slice(0, 7) && from.endsWith("-01")) {
+      name = `${user}-${from.slice(0, 7)}`;
+    } else {
+      name = `${user}-${from}_to_${to}`;
+    }
+    if (filters.category) name += `-${slug(filters.category)}`;
+    downloadCSV(`${name}.csv`, csv);
   };
 
   return (
