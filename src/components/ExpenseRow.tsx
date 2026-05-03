@@ -1,5 +1,7 @@
 import { Expense, formatINR } from "@/lib/expenses";
 import { Trash2 } from "lucide-react";
+import { useExpenses } from "@/hooks/useExpenses";
+import { getCategoryIcon } from "@/lib/categoryIcons";
 
 interface Props {
   expense: Expense;
@@ -9,6 +11,9 @@ interface Props {
 }
 
 export function ExpenseRow({ expense, onDelete, onSelect, showDate }: Props) {
+  const { categories } = useExpenses();
+  const def = categories.find((c) => c.name === expense.category);
+  const Icon = getCategoryIcon(def?.icon);
   const time = new Date(expense.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -36,7 +41,14 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate }: Props) {
       }
     >
       <div className="flex gap-5 items-baseline min-w-0">
-        <span className="text-ink-muted/60 text-xs w-10 text-right tabular-nums tracking-wider shrink-0">
+        <span
+          className="h-7 w-7 rounded-full flex items-center justify-center shrink-0"
+          style={{ backgroundColor: def?.color || "hsl(var(--wash-sage))" }}
+          aria-hidden
+        >
+          <Icon className="h-3.5 w-3.5 text-foreground" />
+        </span>
+        <span className="text-ink-muted/60 text-[11px] w-10 text-right tabular-nums tracking-wider shrink-0 self-center">
           {showDate
             ? new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", {
                 month: "short",
