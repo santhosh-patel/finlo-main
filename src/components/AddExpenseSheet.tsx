@@ -19,12 +19,13 @@ interface Props {
   categories: CategoryDef[];
   onAdd: (e: Omit<Expense, "id" | "created_at">) => void;
   onAddCategory: (name: string) => void;
+  onAddSubcategory?: (category: string, sub: string) => void;
   /** When provided, the sheet is in edit mode and saves changes to this expense. */
   editing?: Expense | null;
   onUpdate?: (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => void;
 }
 
-export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCategory, editing, onUpdate }: Props) {
+export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCategory, onAddSubcategory, editing, onUpdate }: Props) {
   const isEdit = !!editing;
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>(categories[0]?.name ?? "Food");
@@ -34,6 +35,8 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
   const [payment, setPayment] = useState<PaymentMethod>("upi");
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
+  const [newSub, setNewSub] = useState("");
+  const [showAddSub, setShowAddSub] = useState(false);
   const [errors, setErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
   const [submitted, setSubmitted] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -232,7 +235,7 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
           </div>
 
           {/* Subcategory */}
-          {subs.length > 0 && (
+          {(subs.length > 0 || onAddSubcategory) && (
             <div className="space-y-3">
               <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">
                 Subcategory <span className="opacity-60 normal-case tracking-normal">(optional)</span>
@@ -253,6 +256,42 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
                     {s}
                   </button>
                 ))}
+                {onAddSubcategory && !showAddSub && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSub(true)}
+                    className="px-3 py-1.5 rounded-full text-xs border border-dashed border-border text-ink-muted hover:bg-surface inline-flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> New
+                  </button>
+                )}
+                {onAddSubcategory && showAddSub && (
+                  <div className="inline-flex items-center gap-2">
+                    <Input
+                      autoFocus
+                      value={newSub}
+                      onChange={(e) => setNewSub(e.target.value)}
+                      placeholder="Subcategory"
+                      maxLength={20}
+                      className="h-8 rounded-full bg-transparent border-border text-xs w-32"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const v = newSub.trim();
+                        if (!v) return;
+                        onAddSubcategory(category, v);
+                        setSubcategory(v.toLowerCase());
+                        setNewSub("");
+                        setShowAddSub(false);
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}
