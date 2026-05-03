@@ -15,16 +15,18 @@ export interface CategoryDef {
   name: string;
   subcategories: string[];
   custom?: boolean;
+  color?: string; // hex like #D1D8CA
+  icon?: string;  // key from CATEGORY_ICONS
 }
 
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
-  { name: "Food", subcategories: ["dining", "delivery", "snacks"] },
-  { name: "Groceries", subcategories: ["fruits", "staples", "household"] },
-  { name: "Travel", subcategories: ["fuel", "metro", "cab", "flights"] },
-  { name: "Bills", subcategories: ["electricity", "water", "wifi", "phone"] },
-  { name: "Shopping", subcategories: ["clothing", "electronics", "gifts"] },
-  { name: "Rent", subcategories: [] },
-  { name: "Misc", subcategories: [] },
+  { name: "Food", subcategories: ["dining", "delivery", "snacks"], icon: "Utensils", color: "#E3D3C2" },
+  { name: "Groceries", subcategories: ["fruits", "staples", "household"], icon: "ShoppingBasket", color: "#D1D8CA" },
+  { name: "Travel", subcategories: ["fuel", "metro", "cab", "flights"], icon: "Car", color: "#C8D6E5" },
+  { name: "Bills", subcategories: ["electricity", "water", "wifi", "phone"], icon: "Plug", color: "#F1D6B7" },
+  { name: "Shopping", subcategories: ["clothing", "electronics", "gifts"], icon: "ShoppingBag", color: "#E8C9D6" },
+  { name: "Rent", subcategories: [], icon: "Home", color: "#D6CFE8" },
+  { name: "Misc", subcategories: [], icon: "Wallet", color: "#E0DDD5" },
 ];
 
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
@@ -90,6 +92,60 @@ export function startOfWeekISO(): string {
   const diff = (day + 6) % 7; // make Monday start
   d.setDate(d.getDate() - diff);
   return isoDate(d);
+}
+
+export function addDays(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return isoDate(d);
+}
+
+export function weekRangeOf(iso: string): { from: string; to: string; label: string } {
+  const d = new Date(iso + "T00:00:00");
+  const day = d.getDay();
+  const diff = (day + 6) % 7;
+  const from = new Date(d); from.setDate(d.getDate() - diff);
+  const to = new Date(from); to.setDate(from.getDate() + 6);
+  const sameMonth = from.getMonth() === to.getMonth();
+  const label = sameMonth
+    ? `${from.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${to.getDate()}, ${to.getFullYear()}`
+    : `${from.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${to.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${to.getFullYear()}`;
+  return { from: isoDate(from), to: isoDate(to), label };
+}
+
+export function monthRangeOf(iso: string): { from: string; to: string; label: string } {
+  const d = new Date(iso + "T00:00:00");
+  const from = new Date(d.getFullYear(), d.getMonth(), 1);
+  const to = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return {
+    from: isoDate(from),
+    to: isoDate(to),
+    label: from.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+  };
+}
+
+export function shiftWeek(iso: string, n: number): string {
+  return addDays(iso, n * 7);
+}
+export function shiftMonth(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setMonth(d.getMonth() + n);
+  return isoDate(d);
+}
+
+export function dayLabelRich(iso: string): string {
+  const today = todayISO();
+  if (iso === today) return "Today";
+  if (iso === addDays(today, -1)) return "Yesterday";
+  if (iso === addDays(today, -2)) return "Day before yesterday";
+  return fullDateLabel(iso);
+}
+
+export function rangeDays(from: string, to: string): string[] {
+  const out: string[] = [];
+  let cur = from;
+  while (cur <= to) { out.push(cur); cur = addDays(cur, 1); }
+  return out;
 }
 
 function csvEscape(v: string): string {

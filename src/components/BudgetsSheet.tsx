@@ -57,9 +57,24 @@ export function BudgetsSheet({
         className="bg-background border-border rounded-t-[32px] max-h-[88vh] overflow-y-auto"
       >
         <SheetHeader className="text-left">
-          <SheetTitle className="font-serif text-3xl font-normal text-foreground">
-            Monthly budgets
-          </SheetTitle>
+          <div className="flex items-center justify-between">
+            <SheetTitle className="font-serif text-3xl font-normal text-foreground">
+              Monthly budgets
+            </SheetTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const cleared: Record<string, string> = {};
+                categories.forEach((c) => { cleared[c.name] = ""; });
+                setDraft(cleared);
+              }}
+              className="text-xs text-ink-muted hover:text-foreground h-7"
+            >
+              Clear all
+            </Button>
+          </div>
           <p className="text-xs text-ink-muted">
             Set a monthly limit per category. Leave blank to remove.
           </p>
