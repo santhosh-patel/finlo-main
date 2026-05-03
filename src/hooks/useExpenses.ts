@@ -77,6 +77,91 @@ export function useExpenses() {
     );
   }, []);
 
+  const renameCategory = useCallback((oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    setCategories((prev) =>
+      prev.map((c) => (c.name === oldName ? { ...c, name: trimmed } : c))
+    );
+    setExpenses((prev) =>
+      prev.map((e) => (e.category === oldName ? { ...e, category: trimmed } : e))
+    );
+    setBudgets((prev) => {
+      if (!(oldName in prev)) return prev;
+      const next = { ...prev };
+      next[trimmed] = next[oldName];
+      delete next[oldName];
+      return next;
+    });
+  }, []);
+
+  const deleteCategory = useCallback((name: string) => {
+    setCategories((prev) => prev.filter((c) => c.name !== name));
+    setBudgets((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  }, []);
+
+  const setCategoryStyle = useCallback(
+    (name: string, patch: { color?: string; icon?: string }) => {
+      setCategories((prev) =>
+        prev.map((c) => (c.name === name ? { ...c, ...patch } : c))
+      );
+    },
+    []
+  );
+
+  const addSubcategory = useCallback((category: string, sub: string) => {
+    const s = sub.trim().toLowerCase();
+    if (!s) return;
+    setCategories((prev) =>
+      prev.map((c) => {
+        if (c.name !== category) return c;
+        if (c.subcategories.some((x) => x.toLowerCase() === s)) return c;
+        return { ...c, subcategories: [...c.subcategories, s] };
+      })
+    );
+  }, []);
+
+  const deleteSubcategory = useCallback((category: string, sub: string) => {
+    setCategories((prev) =>
+      prev.map((c) =>
+        c.name === category
+          ? { ...c, subcategories: c.subcategories.filter((x) => x !== sub) }
+          : c
+      )
+    );
+  }, []);
+
+  const importExpenses = useCallback(
+    (rows: Omit<Expense, "id" | "created_at">[]) => {
+      const now = Date.now();
+      const newOnes: Expense[] = rows.map((r, i) => ({
+        ...r,
+        id: crypto.randomUUID(),
+        created_at: new Date(now - i).toISOString(),
+      }));
+      setExpenses((prev) => [...newOnes, ...prev]);
+      // auto-create missing categories
+      setCategories((prev) => {
+        const existing = new Set(prev.map((c) => c.name.toLowerCase()));
+        const adds: CategoryDef[] = [];
+        rows.forEach((r) => {
+          const k = r.category.trim();
+          if (k && !existing.has(k.toLowerCase())) {
+            existing.add(k.toLowerCase());
+            adds.push({ name: k, subcategories: [], custom: true });
+          }
+        });
+        return adds.length ? [...prev, ...adds] : prev;
+      });
+      return newOnes.length;
+    },
+    []
+  );
+
   const setBudget = useCallback((category: string, amount: number | null) => {
     setBudgets((prev) => {
       const next = { ...prev };
@@ -94,6 +179,12 @@ export function useExpenses() {
     updateExpense,
     deleteExpense,
     addCategory,
+    renameCategory,
+    deleteCategory,
+    setCategoryStyle,
+    addSubcategory,
+    deleteSubcategory,
+    importExpenses,
     setBudget,
   };
 }
