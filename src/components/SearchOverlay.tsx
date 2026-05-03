@@ -47,11 +47,14 @@ export function SearchOverlay({
       a.date === b.date ? a.created_at.localeCompare(b.created_at) : a.date.localeCompare(b.date)
     );
     const csv = expensesToCSV(sorted);
-    const range =
-      filters.from || filters.to
-        ? `_${filters.from || "start"}_to_${filters.to || todayISO()}`
-        : "";
-    downloadCSV(`ledger_expenses${range}.csv`, csv);
+    const slug = (s: string) =>
+      s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const cat = filters.category ? slug(filters.category) : "all";
+    const earliest = sorted[0]?.date ?? todayISO();
+    const latest = sorted[sorted.length - 1]?.date ?? todayISO();
+    const from = filters.from || earliest;
+    const to = filters.to || latest;
+    downloadCSV(`ledger_${cat}_${from}_to_${to}.csv`, csv);
   };
 
   return (

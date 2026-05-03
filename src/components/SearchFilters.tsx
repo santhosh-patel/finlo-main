@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { CategoryDef, startOfMonthISO, startOfWeekISO, todayISO } from "@/lib/expenses";
-import { Download, Search, X } from "lucide-react";
+import { Download, RotateCcw, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface FilterState {
@@ -82,7 +82,7 @@ export function SearchFilters({ value, onChange, categories, resultsCount, onExp
       </div>
 
       {/* Quick chips */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 items-center">
         {quickChips.map((c) => (
           <button
             key={c.label}
@@ -98,6 +98,16 @@ export function SearchFilters({ value, onChange, categories, resultsCount, onExp
             {c.label}
           </button>
         ))}
+        {(value.category || value.from || value.to) && (
+          <button
+            type="button"
+            onClick={() => set({ category: "", from: "", to: "" })}
+            className="px-3 py-1.5 rounded-full text-xs border border-dashed border-border text-ink-muted hover:bg-surface inline-flex items-center gap-1"
+            aria-label="Reset chips and date range"
+          >
+            <RotateCcw className="h-3 w-3" /> Reset
+          </button>
+        )}
       </div>
 
       <div>
