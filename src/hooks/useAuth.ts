@@ -1,68 +1,99 @@
 import { useCallback, useEffect, useState } from "react";
+import type { Session, User } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 
-const AUTH_KEY = "ledger.auth.v1";
-const PROFILE_KEY = "ledger.profile.v1";
-const DEFAULT_EMAIL = "santhoshpatel002@gmail.com";
-const DEFAULT_PASSWORD = "Chinni@2003";
-const DEFAULT_NAME = "Santhosh";
-
-interface Profile { email: string; password: string; name: string; }
-
-function readProfile(): Profile {
-  try {
-    const raw = localStorage.getItem(PROFILE_KEY);
-    if (raw) return { email: DEFAULT_EMAIL, password: DEFAULT_PASSWORD, name: DEFAULT_NAME, ...JSON.parse(raw) };
-  } catch { /* ignore */ }
-  return { email: DEFAULT_EMAIL, password: DEFAULT_PASSWORD, name: DEFAULT_NAME };
+export interface Profile {
+  user_id: string;
+  email: string;
+  name: string;
 }
 
 export function useAuth() {
-  const [isAuthed, setIsAuthed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(AUTH_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const [profile, setProfile] = useState<Profile>(readProfile);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile>({ user_id: "", email: "", name: "" });
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      if (isAuthed) localStorage.setItem(AUTH_KEY, "1");
-      else localStorage.removeItem(AUTH_KEY);
-    } catch {
-      // ignore
-    }
-  }, [isAuthed]);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      if (!sess) {
+        setProfile({ user_id: "", email: "", name: "" });
+        setIsAdmin(false);
+      } else {
+        // defer DB calls
+        setTimeout(() => loadProfileAndRole(sess.user.id, sess.user.email ?? ""), 0);
+      }
+    });
 
-  const login = useCallback((email: string, password: string): string | null => {
-    const p = readProfile();
-    if (email.trim().toLowerCase() !== p.email.toLowerCase()) return "Invalid email or password.";
-    if (password !== p.password) return "Invalid email or password.";
-    setProfile(p);
-    setIsAuthed(true);
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setUser(data.session?.user ?? null);
+      if (data.session) {
+        loadProfileAndRole(data.session.user.id, data.session.user.email ?? "");
+      }
+      setLoading(false);
+    });
+
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const loadProfileAndRole = async (uid: string, email: string) => {
+    const [{ data: prof }, { data: roleData }] = await Promise.all([
+      supabase.from("profiles").select("display_name,email,user_id").eq("user_id", uid).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", uid),
+    ]);
+    setProfile({
+      user_id: uid,
+      email: prof?.email ?? email,
+      name: prof?.display_name ?? email.split("@")[0],
+    });
+    setIsAdmin((roleData ?? []).some((r) => r.role === "admin"));
+  };
+
+  const login = useCallback(async (email: string, password: string): Promise<string | null> => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+    if (error) return error.message;
     return null;
   }, []);
 
-  const logout = useCallback(() => setIsAuthed(false), []);
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+  }, []);
 
   const updateProfile = useCallback(
-    (patch: Partial<Profile> & { currentPassword?: string }): string | null => {
-      const cur = readProfile();
-      if (patch.password && patch.currentPassword !== cur.password) {
-        return "Current password is incorrect.";
+    async (patch: { name?: string; password?: string }): Promise<string | null> => {
+      if (!user) return "Not signed in";
+      if (patch.name && patch.name.trim()) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ display_name: patch.name.trim() })
+          .eq("user_id", user.id);
+        if (error) return error.message;
+        setProfile((p) => ({ ...p, name: patch.name!.trim() }));
       }
-      const next: Profile = {
-        email: patch.email?.trim() || cur.email,
-        password: patch.password || cur.password,
-        name: patch.name?.trim() || cur.name,
-      };
-      try { localStorage.setItem(PROFILE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      setProfile(next);
+      if (patch.password) {
+        const { error } = await supabase.auth.updateUser({ password: patch.password });
+        if (error) return error.message;
+      }
       return null;
     },
-    []
+    [user]
   );
 
-  return { isAuthed, login, logout, profile, updateProfile };
+  return {
+    isAuthed: !!session,
+    loading,
+    user,
+    profile,
+    isAdmin,
+    login,
+    logout,
+    updateProfile,
+  };
 }
