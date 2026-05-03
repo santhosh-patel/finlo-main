@@ -29,6 +29,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   onUpdate: (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => void;
   onDelete: (id: string) => void;
+  onAddSubcategory?: (category: string, sub: string) => void;
 }
 
 export function ExpenseDetailsDrawer({
@@ -37,23 +38,32 @@ export function ExpenseDetailsDrawer({
   onOpenChange,
   onUpdate,
   onDelete,
+  onAddSubcategory,
 }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
+  const [subcategory, setSubcategory] = useState("");
+  const [newSub, setNewSub] = useState("");
+  const [showAddSub, setShowAddSub] = useState(false);
   const [date, setDate] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const open = !!expense;
 
+  const subs = categories.find((c) => c.name === category)?.subcategories ?? [];
+
   useEffect(() => {
     if (expense) {
       setAmount(String(expense.amount));
       setCategory(expense.category);
+      setSubcategory(expense.subcategory ?? "");
       setDate(expense.date);
       setNote(expense.note ?? "");
       setError(null);
+      setShowAddSub(false);
+      setNewSub("");
     } else {
       setEditing(false);
     }
@@ -70,6 +80,7 @@ export function ExpenseDetailsDrawer({
     onUpdate(expense.id, {
       amount: num,
       category,
+      subcategory: subcategory || undefined,
       date,
       note: note.trim() || undefined,
     });
@@ -81,6 +92,7 @@ export function ExpenseDetailsDrawer({
     if (expense) {
       setAmount(String(expense.amount));
       setCategory(expense.category);
+      setSubcategory(expense.subcategory ?? "");
       setDate(expense.date);
       setNote(expense.note ?? "");
     }
@@ -178,7 +190,7 @@ export function ExpenseDetailsDrawer({
                           <button
                             key={c.name}
                             type="button"
-                            onClick={() => { setCategory(c.name); setError(null); }}
+                            onClick={() => { setCategory(c.name); setSubcategory(""); setError(null); }}
                             className={cn(
                               "px-4 py-2 rounded-full text-sm transition-colors border",
                               category === c.name
@@ -191,6 +203,68 @@ export function ExpenseDetailsDrawer({
                         ))}
                       </div>
                     </div>
+
+                    {/* Subcategory */}
+                    {(subs.length > 0 || onAddSubcategory) && (
+                      <div className="space-y-3">
+                        <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">
+                          Subcategory <span className="opacity-60 normal-case tracking-normal">(optional)</span>
+                        </Label>
+                        <div className="flex flex-wrap gap-2">
+                          {subs.map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setSubcategory(subcategory === s ? "" : s)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-full text-xs transition-colors border capitalize",
+                                subcategory === s
+                                  ? "bg-foreground text-background border-foreground"
+                                  : "border-border text-ink-muted hover:bg-surface"
+                              )}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                          {onAddSubcategory && !showAddSub && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAddSub(true)}
+                              className="px-3 py-1.5 rounded-full text-xs border border-dashed border-border text-ink-muted hover:bg-surface"
+                            >
+                              + New
+                            </button>
+                          )}
+                          {onAddSubcategory && showAddSub && (
+                            <div className="inline-flex items-center gap-2">
+                              <Input
+                                autoFocus
+                                value={newSub}
+                                onChange={(e) => setNewSub(e.target.value)}
+                                placeholder="Subcategory"
+                                maxLength={20}
+                                className="h-8 rounded-full bg-transparent border-border text-xs w-32"
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  const v = newSub.trim();
+                                  if (!v) return;
+                                  onAddSubcategory(category, v);
+                                  setSubcategory(v.toLowerCase());
+                                  setNewSub("");
+                                  setShowAddSub(false);
+                                }}
+                              >
+                                Add
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <Label
