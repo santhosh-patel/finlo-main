@@ -1,7 +1,7 @@
 // One-shot seed for the initial admin account.
 // Idempotent: safe to call multiple times.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.45.0/cors";
+const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
 const ADMIN_EMAIL = "santhoshpatel002@gmail.com";
 const ADMIN_PASSWORD = "Chinni@2003";
