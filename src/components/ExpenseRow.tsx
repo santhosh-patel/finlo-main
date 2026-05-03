@@ -1,6 +1,5 @@
-import { Expense, formatINR } from "@/lib/expenses";
+import { CategoryDef, Expense, formatINR } from "@/lib/expenses";
 import { Trash2 } from "lucide-react";
-import { useExpenses } from "@/hooks/useExpenses";
 import { getCategoryIcon } from "@/lib/categoryIcons";
 
 interface Props {
@@ -8,11 +7,11 @@ interface Props {
   onDelete?: (id: string) => void;
   onSelect?: (e: Expense) => void;
   showDate?: boolean;
+  categories?: CategoryDef[];
 }
 
-export function ExpenseRow({ expense, onDelete, onSelect, showDate }: Props) {
-  const { categories } = useExpenses();
-  const def = categories.find((c) => c.name === expense.category);
+export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }: Props) {
+  const def = categories?.find((c) => c.name === expense.category);
   const Icon = getCategoryIcon(def?.icon);
   const time = new Date(expense.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
