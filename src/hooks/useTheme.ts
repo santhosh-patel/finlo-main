@@ -1,13 +1,24 @@
 import { useEffect, useState, useCallback } from "react";
 
-const THEME_KEY = "ledger.theme.v1";
+const THEME_KEY = "finlo.theme.v1";
 
 export interface ThemeSettings {
-  mode: "light" | "dark";
+  mode: "light" | "dark" | "system";
   accent: string; // hex
 }
 
-const DEFAULT: ThemeSettings = { mode: "light", accent: "#D1D8CA" };
+const DEFAULT: ThemeSettings = { mode: "dark", accent: "#7DD3FC" };
+
+export const ACCENT_PALETTE = [
+  "#7DD3FC", // sky
+  "#A78BFA", // violet
+  "#F472B6", // pink
+  "#FB7185", // rose
+  "#FBBF24", // amber
+  "#4ADE80", // green
+  "#2DD4BF", // teal
+  "#FB923C", // orange
+];
 
 function read(): ThemeSettings {
   try {
@@ -17,7 +28,7 @@ function read(): ThemeSettings {
   return DEFAULT;
 }
 
-function hexToHslVar(hex: string): string {
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16) / 255;
   const g = parseInt(h.slice(2, 4), 16) / 255;
@@ -34,15 +45,20 @@ function hexToHslVar(hex: string): string {
     }
     hh /= 6;
   }
-  return `${Math.round(hh * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+  return { h: Math.round(hh * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
 function apply(t: ThemeSettings) {
   const root = document.documentElement;
-  if (t.mode === "dark") root.classList.add("dark");
-  else root.classList.remove("dark");
-  root.style.setProperty("--accent", hexToHslVar(t.accent));
-  root.style.setProperty("--wash-sage", hexToHslVar(t.accent));
+  const isDark =
+    t.mode === "dark" ||
+    (t.mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  root.classList.toggle("dark", isDark);
+
+  const { h, s, l } = hexToHsl(t.accent);
+  root.style.setProperty("--accent", `${h} ${s}% ${l}%`);
+  // foreground for accent: dark text on light accent, light on dark accent
+  root.style.setProperty("--accent-foreground", l > 55 ? "220 18% 8%" : "0 0% 100%");
 }
 
 export function useTheme() {
@@ -51,6 +67,12 @@ export function useTheme() {
   useEffect(() => {
     apply(theme);
     try { localStorage.setItem(THEME_KEY, JSON.stringify(theme)); } catch { /* ignore */ }
+    if (theme.mode === "system") {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const handler = () => apply(theme);
+      mq.addEventListener("change", handler);
+      return () => mq.removeEventListener("change", handler);
+    }
   }, [theme]);
 
   const update = useCallback((patch: Partial<ThemeSettings>) => {
