@@ -4,8 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
 const ADMINS = [
-  { email: "santhoshpatel002@gmail.com", password: "Chinni@2003", name: "Santhosh", role: "admin" as const },
   { email: "admin@finlo.ai", password: "Chinni@2003", name: "Finlo Admin", role: "admin" as const },
+  { email: "santhosh@finlo.ai", password: "Chinni@2003", name: "Santhosh", role: "user" as const },
   { email: "amaan@finlo.ai", password: "Amaan@2002", name: "Amaan", role: "user" as const },
 ];
 
@@ -25,6 +25,8 @@ Deno.serve(async (req) => {
     const existing = list?.users.find((u) => u.email?.toLowerCase() === a.email.toLowerCase());
     if (existing) {
       userId = existing.id;
+      // Ensure password is up to date
+      await supabase.auth.admin.updateUserById(userId, { password: a.password, email_confirm: true });
     } else {
       const { data: created, error } = await supabase.auth.admin.createUser({
         email: a.email, password: a.password, email_confirm: true,
@@ -37,10 +39,9 @@ Deno.serve(async (req) => {
       { user_id: userId, email: a.email, display_name: a.name },
       { onConflict: "user_id" },
     );
-    await supabase.from("user_roles").upsert(
-      { user_id: userId, role: a.role },
-      { onConflict: "user_id,role" },
-    );
+    // Replace roles to match desired role exactly
+    await supabase.from("user_roles").delete().eq("user_id", userId);
+    await supabase.from("user_roles").insert({ user_id: userId, role: a.role });
     results.push({ email: a.email, user_id: userId });
   }
 

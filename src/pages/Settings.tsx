@@ -10,7 +10,6 @@ import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Trash2, X } fro
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import type { Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
-import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 
 interface Props {
@@ -69,13 +68,6 @@ export default function Settings(props: Props) {
         {section === "categories" && <CategoriesSection {...props} />}
         {section === "appearance" && <AppearanceSection {...props} />}
         {section === "data" && <DataSection {...props} />}
-
-        {props.isAdmin && (
-          <Link to="/admin" onClick={() => onOpenChange(false)}
-            className="mt-6 block w-full text-center rounded-full bg-accent text-accent-foreground hover:bg-accent/90 h-10 leading-10 text-sm font-medium">
-            Open Admin
-          </Link>
-        )}
 
         <Button
           type="button" variant="ghost"

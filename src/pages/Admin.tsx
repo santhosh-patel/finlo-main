@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, RefreshCcw, Search, ShieldCheck, Trash2, Pencil, KeyRound, ShieldOff } from "lucide-react";
-import { Link, Navigate } from "react-router-dom";
+import { Loader2, Plus, RefreshCcw, Search, ShieldCheck, Trash2, Pencil, KeyRound, ShieldOff, LogOut } from "lucide-react";
+import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,7 +34,7 @@ async function callFn(name: string, body?: unknown) {
 }
 
 export default function Admin() {
-  const { isAdmin, loading, user } = useAuth();
+  const { isAdmin, loading, user, logout } = useAuth();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -153,9 +153,13 @@ export default function Admin() {
             <h1 className="font-serif text-4xl font-light tracking-tight">Admin</h1>
             <p className="text-sm text-ink-muted mt-2">Manage every Finlo user from one place.</p>
           </div>
-          <Link to="/" className="text-xs text-ink-muted hover:text-foreground transition-colors">
-            ← Back to app
-          </Link>
+          <Button
+            variant="ghost" size="sm"
+            onClick={() => logout()}
+            className="rounded-full text-ink-muted hover:text-foreground"
+          >
+            <LogOut className="h-3.5 w-3.5 mr-1.5" /> Sign out
+          </Button>
         </header>
 
         {/* Stats */}

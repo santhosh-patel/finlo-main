@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, ShieldCheck, Loader2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Loader2, RefreshCw } from "lucide-react";
+import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
 import { ExpenseRow } from "@/components/ExpenseRow";
@@ -113,6 +113,7 @@ const Index = () => {
     );
   }
   if (!isAuthed) return <Login onLogin={login} />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
 
@@ -189,12 +190,15 @@ const Index = () => {
                 >{v}</button>
               ))}
             </nav>
-            {isAdmin && (
-              <Link to="/admin" title="Admin" aria-label="Admin"
-                className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
-                <ShieldCheck className="h-4 w-4" />
-              </Link>
-            )}
+            <button
+              onClick={() => sync()}
+              disabled={syncing}
+              title={lastSync ? `Last sync: ${new Date(lastSync).toLocaleTimeString()}` : "Sync"}
+              aria-label="Sync"
+              className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+            </button>
             <button onClick={() => setSearchOpen(true)} aria-label="Search" title="Search"
               className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
               <Search className="h-4 w-4" />
