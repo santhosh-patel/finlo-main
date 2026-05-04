@@ -70,13 +70,6 @@ export default function Settings(props: Props) {
         {section === "appearance" && <AppearanceSection {...props} />}
         {section === "data" && <DataSection {...props} />}
 
-        {props.isAdmin && (
-          <Link to="/admin" onClick={() => onOpenChange(false)}
-            className="mt-6 block w-full text-center rounded-full bg-accent text-accent-foreground hover:bg-accent/90 h-10 leading-10 text-sm font-medium">
-            Open Admin
-          </Link>
-        )}
-
         <Button
           type="button" variant="ghost"
           onClick={() => { props.onLogout(); onOpenChange(false); }}
