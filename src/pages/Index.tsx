@@ -173,7 +173,7 @@ const Index = () => {
       <div className="w-full max-w-[520px] mx-auto px-6 pt-12 pb-32">
         <header className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-foreground text-background flex items-center justify-center font-serif text-lg">F</div>
+            <img src="/finlo-logo.png" alt="Finlo" className="h-9 w-9 rounded-xl object-contain" />
             <div>
               <h1 className="font-serif text-xl text-foreground leading-none">Finlo</h1>
               <p className="text-[10px] text-ink-muted mt-1 tracking-wider uppercase">{profile.name}</p>
