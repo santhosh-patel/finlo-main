@@ -31,8 +31,22 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   if (!body.user_id) return json({ error: "user_id required" }, 400);
 
+  const logAudit = async (action: string, details: Record<string, unknown> = {}) => {
+    const { data: tProf } = await admin
+      .from("profiles").select("email").eq("user_id", body.user_id).maybeSingle();
+    await admin.from("admin_audit_log").insert({
+      actor_id: userResp.user.id,
+      actor_email: userResp.user.email,
+      action,
+      target_user_id: body.user_id,
+      target_email: tProf?.email ?? null,
+      details,
+    });
+  };
+
   if (body.action === "delete") {
     if (body.user_id === userResp.user.id) return json({ error: "Cannot delete yourself" }, 400);
+    await logAudit("delete_user");
     const { error } = await admin.auth.admin.deleteUser(body.user_id);
     if (error) return json({ error: error.message }, 400);
     return json({ ok: true });
@@ -54,6 +68,10 @@ Deno.serve(async (req) => {
     if (body.display_name !== undefined) {
       await admin.from("profiles").update({ display_name: body.display_name }).eq("user_id", body.user_id);
     }
+    await logAudit("update_user", {
+      changed_password: !!body.password,
+      display_name: body.display_name,
+    });
     return json({ ok: true });
   }
 
@@ -69,6 +87,7 @@ Deno.serve(async (req) => {
       }
       await admin.from("user_roles").delete().eq("user_id", body.user_id).eq("role", role);
     }
+    await logAudit(body.enabled ? "grant_role" : "revoke_role", { role });
     return json({ ok: true });
   }
 
