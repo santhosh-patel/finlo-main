@@ -10,7 +10,6 @@ import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Trash2, X } fro
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import type { Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
-import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 
 interface Props {
