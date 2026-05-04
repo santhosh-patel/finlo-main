@@ -4,8 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
 const ADMINS = [
-  { email: "santhoshpatel002@gmail.com", password: "Chinni@2003", name: "Santhosh", role: "admin" as const },
   { email: "admin@finlo.ai", password: "Chinni@2003", name: "Finlo Admin", role: "admin" as const },
+  { email: "santhosh@finlo.ai", password: "Chinni@2003", name: "Santhosh", role: "user" as const },
   { email: "amaan@finlo.ai", password: "Amaan@2002", name: "Amaan", role: "user" as const },
 ];
 
