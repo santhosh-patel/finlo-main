@@ -57,6 +57,15 @@ Deno.serve(async (req) => {
     );
   }
 
+  await admin.from("admin_audit_log").insert({
+    actor_id: userResp.user.id,
+    actor_email: userResp.user.email,
+    action: "create_user",
+    target_user_id: newId,
+    target_email: email,
+    details: { display_name, role },
+  });
+
   return json({ ok: true, user_id: newId });
 });
 
