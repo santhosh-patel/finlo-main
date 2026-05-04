@@ -157,20 +157,30 @@ export function useExpenses(userId: string | null) {
   // Initial sync + realtime
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
+    let pullTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedPull = () => {
+      if (pullTimer) clearTimeout(pullTimer);
+      pullTimer = setTimeout(() => { if (!cancelled) pullFromServer(); }, 400);
+    };
     sync();
     const ch = supabase
       .channel(`expenses-${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "expenses", filter: `user_id=eq.${userId}` }, () => {
-        pullFromServer();
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "expenses", filter: `user_id=eq.${userId}` },
+        () => debouncedPull(),
+      )
       .subscribe();
-    const onOnline = () => sync();
+    const onOnline = () => { if (!cancelled) sync(); };
     window.addEventListener("online", onOnline);
     return () => {
+      cancelled = true;
+      if (pullTimer) clearTimeout(pullTimer);
       supabase.removeChannel(ch);
       window.removeEventListener("online", onOnline);
     };
-  }, [userId, sync, pullFromServer]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ------- mutators (optimistic local + queue/server) -------
   const addExpense = useCallback((e: Omit<Expense, "id" | "created_at">) => {
