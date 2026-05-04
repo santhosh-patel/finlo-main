@@ -102,6 +102,16 @@ export default function Admin() {
 
   useEffect(() => { if (isAdmin) { refresh(); loadAudit(); } }, [isAdmin]);
 
+  useEffect(() => {
+    if (!loading && !isAdmin) {
+      toast({
+        title: "Access denied",
+        description: "Only administrators can access that page.",
+        variant: "destructive",
+      });
+    }
+  }, [loading, isAdmin]);
+
   const runSeed = async () => {
     setSeeding(true); setSeedResult(null);
     try {
@@ -165,15 +175,7 @@ export default function Admin() {
       </div>
     );
   }
-  if (!isAdmin) {
-    // Non-admins shouldn't be on /admin — bounce them home with a toast.
-    toast({
-      title: "Access denied",
-      description: "Only administrators can access that page.",
-      variant: "destructive",
-    });
-    return <Navigate to="/" replace />;
-  }
+  if (!isAdmin) return <Navigate to="/" replace />;
 
   const onSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
