@@ -46,11 +46,8 @@ function readFilters(): FilterState {
 const Index = () => {
   const { isAuthed, loading, login, logout, profile, updateProfile, isAdmin, user } = useAuth();
   const { theme, update: updateTheme } = useTheme();
-
-  // Admins never load the consumer app: redirect to /admin before any expense fetching.
-  if (!loading && isAuthed && isAdmin) return <Navigate to="/admin" replace />;
-
-  const exp = useExpenses(user?.id ?? null);
+  // Admins never use the consumer app — skip data subscriptions for them.
+  const exp = useExpenses(isAdmin ? null : user?.id ?? null);
   const {
     expenses, categories, budgets,
     syncing, lastSync, sync,
@@ -117,6 +114,7 @@ const Index = () => {
     );
   }
   if (!isAuthed) return <Login onLogin={login} />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
 
