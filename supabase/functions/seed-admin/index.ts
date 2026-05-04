@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" },
     );
     await supabase.from("user_roles").upsert(
-      { user_id: userId, role: "admin" },
+      { user_id: userId, role: a.role },
       { onConflict: "user_id,role" },
     );
     results.push({ email: a.email, user_id: userId });
