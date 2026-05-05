@@ -6,7 +6,7 @@ import { CategoryDef, Expense } from "@/lib/expenses";
 import { useRef, useState } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import type { Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
@@ -25,6 +25,7 @@ interface Props {
   onOpenBudgets: () => void;
   onOpenImport: () => void;
   onOpenSearch: () => void;
+  onOpenRecurring: () => void;
   profile: Profile;
   onUpdateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
   theme: ThemeSettings;
