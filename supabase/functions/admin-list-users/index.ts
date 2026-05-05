@@ -32,12 +32,13 @@ Deno.serve(async (req) => {
   const out = (authUsers?.users ?? []).map((u) => {
     const p = profileMap.get(u.id);
     return {
-    user_id: u.id,
-    email: p?.email ?? u.email ?? "",
-    display_name: p?.display_name ?? u.user_metadata?.display_name ?? u.email?.split("@")[0] ?? "",
-    created_at: p?.created_at ?? u.created_at,
-    roles: roleMap.get(p.user_id) ?? [],
-  }}).filter((u) => u.email);
+      user_id: u.id,
+      email: p?.email ?? u.email ?? "",
+      display_name: p?.display_name ?? u.user_metadata?.display_name ?? u.email?.split("@")[0] ?? "",
+      created_at: p?.created_at ?? u.created_at,
+      roles: roleMap.get(u.id) ?? [],
+    };
+  }).filter((u) => u.email);
 
   return json({ users: out });
 });
