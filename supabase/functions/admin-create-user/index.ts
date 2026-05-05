@@ -47,15 +47,12 @@ Deno.serve(async (req) => {
   if (createErr) return json({ error: createErr.message }, 400);
 
   const newId = created.user!.id;
-  // Trigger creates profile + user role; ensure name + role
+  // Ensure profile + exactly one app role even if account triggers are unavailable.
   await admin.from("profiles").upsert(
     { user_id: newId, email, display_name }, { onConflict: "user_id" },
   );
-  if (role === "admin") {
-    await admin.from("user_roles").upsert(
-      { user_id: newId, role: "admin" }, { onConflict: "user_id,role" },
-    );
-  }
+  await admin.from("user_roles").delete().eq("user_id", newId);
+  await admin.from("user_roles").insert({ user_id: newId, role });
 
   await admin.from("admin_audit_log").insert({
     actor_id: userResp.user.id,

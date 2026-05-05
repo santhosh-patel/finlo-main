@@ -17,22 +17,33 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const { data: list } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
-  const results: Array<{ email: string; user_id?: string; error?: string }> = [];
+  const users = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const { data: list, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return json({ ok: false, error: error.message }, 500);
+    users.push(...(list.users ?? []));
+    if ((list.users ?? []).length < 1000) break;
+  }
+  const results: Array<{ email: string; role: string; user_id?: string; status?: string; error?: string }> = [];
 
   for (const a of ADMINS) {
     let userId: string | null = null;
-    const existing = list?.users.find((u) => u.email?.toLowerCase() === a.email.toLowerCase());
+    const existing = users.find((u) => u.email?.toLowerCase() === a.email.toLowerCase());
     if (existing) {
       userId = existing.id;
       // Ensure password is up to date
-      await supabase.auth.admin.updateUserById(userId, { password: a.password, email_confirm: true });
+      const { error } = await supabase.auth.admin.updateUserById(userId, {
+        password: a.password,
+        email_confirm: true,
+        user_metadata: { display_name: a.name },
+      });
+      if (error) { results.push({ email: a.email, role: a.role, user_id: userId, error: error.message }); continue; }
     } else {
       const { data: created, error } = await supabase.auth.admin.createUser({
         email: a.email, password: a.password, email_confirm: true,
         user_metadata: { display_name: a.name },
       });
-      if (error) { results.push({ email: a.email, error: error.message }); continue; }
+      if (error) { results.push({ email: a.email, role: a.role, error: error.message }); continue; }
       userId = created.user!.id;
     }
     await supabase.from("profiles").upsert(
@@ -42,10 +53,15 @@ Deno.serve(async (req) => {
     // Replace roles to match desired role exactly
     await supabase.from("user_roles").delete().eq("user_id", userId);
     await supabase.from("user_roles").insert({ user_id: userId, role: a.role });
-    results.push({ email: a.email, user_id: userId });
+    results.push({ email: a.email, role: a.role, user_id: userId, status: existing ? "updated" : "created" });
   }
 
-  return new Response(JSON.stringify({ ok: true, results }), {
+  return json({ ok: results.every((r) => !r.error), results });
+});
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-});
+}
