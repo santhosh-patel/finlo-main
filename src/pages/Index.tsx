@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Loader2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
@@ -177,35 +177,26 @@ const Index = () => {
   return (
     <main className="min-h-dvh bg-background text-foreground font-sans">
       <div className="w-full max-w-[520px] mx-auto px-6 pt-12 pb-32">
-        <header className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-2.5">
-            <img src="/finlo-logo.png" alt="Finlo" className="h-9 w-9 rounded-xl object-contain" />
-            <div>
-              <h1 className="font-serif text-xl text-foreground leading-none">Finlo</h1>
-              <p className="text-[10px] text-ink-muted mt-1 tracking-wider uppercase">{profile.name}</p>
+        <header className="flex items-center justify-between mb-10 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <img src="/finlo-logo.png" alt="Finlo" className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl object-contain shrink-0" />
+            <div className="min-w-0">
+              <h1 className="font-serif text-lg sm:text-xl text-foreground leading-none truncate">Finlo</h1>
+              <p className="hidden sm:block text-[10px] text-ink-muted mt-1 tracking-wider uppercase truncate">{profile.name}</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-xs mr-1">
+          <div className="flex items-center gap-1 shrink-0">
+            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1">
               {(["today", "week", "month"] as View[]).map((v) => (
                 <button
                   key={v} onClick={() => setView(v)}
                   className={cn(
-                    "px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors",
+                    "px-2.5 sm:px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors",
                     view === v ? "bg-background text-foreground shadow-sm" : "text-ink-muted hover:text-foreground"
                   )}
                 >{v}</button>
               ))}
             </nav>
-            <button
-              onClick={() => sync()}
-              disabled={syncing}
-              title={lastSync ? `Last sync: ${new Date(lastSync).toLocaleTimeString()}` : "Sync"}
-              aria-label="Sync"
-              className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface disabled:opacity-50"
-            >
-              <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-            </button>
             <button onClick={() => setSearchOpen(true)} aria-label="Search" title="Search"
               className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
               <Search className="h-4 w-4" />
