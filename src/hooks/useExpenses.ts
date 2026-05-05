@@ -163,7 +163,10 @@ export function useExpenses(userId: string | null) {
 
   // Initial sync + realtime
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      didInitialSyncRef.current = null;
+      return;
+    }
     if (didInitialSyncRef.current === userId) return;
     didInitialSyncRef.current = userId;
     let cancelled = false;
