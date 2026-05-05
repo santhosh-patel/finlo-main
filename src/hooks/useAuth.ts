@@ -17,22 +17,26 @@ export function useAuth() {
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setLoading(true);
       setSession(sess);
       setUser(sess?.user ?? null);
       if (!sess) {
         setProfile({ user_id: "", email: "", name: "" });
         setIsAdmin(false);
+        setLoading(false);
       } else {
         // defer DB calls
-        setTimeout(() => loadProfileAndRole(sess.user.id, sess.user.email ?? ""), 0);
+        setTimeout(() => {
+          loadProfileAndRole(sess.user.id, sess.user.email ?? "").finally(() => setLoading(false));
+        }, 0);
       }
     });
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
       setUser(data.session?.user ?? null);
       if (data.session) {
-        loadProfileAndRole(data.session.user.id, data.session.user.email ?? "");
+        await loadProfileAndRole(data.session.user.id, data.session.user.email ?? "");
       }
       setLoading(false);
     });
