@@ -20,6 +20,7 @@ import {
   Tag,
   type LucideIcon,
 } from "lucide-react";
+import { DEFAULT_CATEGORIES } from "@/lib/expenses";
 
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   Utensils,
@@ -55,4 +56,18 @@ export const CATEGORY_COLORS = [
 export function getCategoryIcon(key?: string): LucideIcon {
   if (key && CATEGORY_ICONS[key]) return CATEGORY_ICONS[key];
   return Tag;
+}
+
+// Resolve icon for a category name by checking DEFAULT_CATEGORIES mapping
+export function getIconForCategory(categoryName: string, customIcon?: string): LucideIcon {
+  if (customIcon && CATEGORY_ICONS[customIcon]) return CATEGORY_ICONS[customIcon];
+  const def = DEFAULT_CATEGORIES.find((c) => c.name.toLowerCase() === categoryName.toLowerCase());
+  if (def?.icon && CATEGORY_ICONS[def.icon]) return CATEGORY_ICONS[def.icon];
+  return Tag;
+}
+
+export function getColorForCategory(categoryName: string, customColor?: string): string {
+  if (customColor) return customColor;
+  const def = DEFAULT_CATEGORIES.find((c) => c.name.toLowerCase() === categoryName.toLowerCase());
+  return def?.color || "hsl(var(--wash-sage))";
 }
