@@ -11,6 +11,7 @@ import { SearchOverlay } from "@/components/SearchOverlay";
 import { ExpenseDetailsDrawer } from "@/components/ExpenseDetailsDrawer";
 import { BudgetsSheet } from "@/components/BudgetsSheet";
 import { ImportSheet } from "@/components/ImportSheet";
+import { RecurringSheet } from "@/components/RecurringSheet";
 import { PeriodNav } from "@/components/PeriodNav";
 import Settings from "@/pages/Settings";
 import {
@@ -23,6 +24,7 @@ import {
 import Login from "@/pages/Login";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/hooks/useAuth";
+import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
 import { useTheme } from "@/hooks/useTheme";
 import {
   Expense, addDays, formatINR, fullDateLabel,
@@ -67,6 +69,7 @@ const Index = () => {
   const [details, setDetails] = useState<Expense | null>(null);
   const [budgetsOpen, setBudgetsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [recurringOpen, setRecurringOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
 
@@ -106,6 +109,8 @@ const Index = () => {
     });
     return map;
   }, [expenses, monthStart]);
+
+  useBudgetAlerts(spentByCategory, budgets);
 
   if (loading) {
     return (
@@ -335,6 +340,9 @@ const Index = () => {
 
       <ImportSheet open={importOpen} onOpenChange={setImportOpen} onImport={importExpenses} />
 
+      <RecurringSheet open={recurringOpen} onOpenChange={setRecurringOpen}
+        categories={categories} userId={user?.id ?? null} />
+
       <Settings
         open={settingsOpen} onOpenChange={setSettingsOpen}
         categories={categories}
@@ -344,6 +352,7 @@ const Index = () => {
         onOpenBudgets={() => setBudgetsOpen(true)}
         onOpenImport={() => setImportOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
+        onOpenRecurring={() => setRecurringOpen(true)}
         profile={profile} onUpdateProfile={updateProfile}
         theme={theme} onUpdateTheme={updateTheme}
         onLogout={logout}

@@ -6,7 +6,7 @@ import { CategoryDef, Expense } from "@/lib/expenses";
 import { useRef, useState } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import type { Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
@@ -25,6 +25,7 @@ interface Props {
   onOpenBudgets: () => void;
   onOpenImport: () => void;
   onOpenSearch: () => void;
+  onOpenRecurring: () => void;
   profile: Profile;
   onUpdateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
   theme: ThemeSettings;
@@ -289,12 +290,14 @@ function AppearanceSection({ theme, onUpdateTheme }: Props) {
 }
 
 function DataSection({
-  onOpenBudgets, onOpenImport, onOpenSearch, onOpenChange,
+  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenChange,
   onSync, syncing, lastSync, onExportData, onRestoreData, profile,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [restoreMode, setRestoreMode] = useState<"merge" | "replace">("merge");
   const [restoring, setRestoring] = useState(false);
+  const [exportFrom, setExportFrom] = useState<string>("");
+  const [exportTo, setExportTo] = useState<string>("");
 
   const item = (label: string, desc: string, onClick: () => void, icon?: React.ReactNode) => (
     <button onClick={onClick}
@@ -310,14 +313,25 @@ function DataSection({
   const handleExportJSON = () => {
     const data = onExportData();
     const username = (profile.name || profile.email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const date = new Date().toISOString().slice(0, 10);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    let filtered = data.expenses;
+    if (exportFrom) filtered = filtered.filter((e) => e.date >= exportFrom);
+    if (exportTo) filtered = filtered.filter((e) => e.date <= exportTo);
+    const payload = { ...data, expenses: filtered, range: { from: exportFrom || null, to: exportTo || null } };
+    let suffix: string;
+    if (exportFrom && exportTo) {
+      suffix = exportFrom === exportTo ? exportFrom
+        : (exportFrom.slice(0, 7) === exportTo.slice(0, 7) && exportFrom.endsWith("-01"))
+        ? exportFrom.slice(0, 7) : `${exportFrom}_to_${exportTo}`;
+    } else {
+      suffix = new Date().toISOString().slice(0, 10);
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `finlo-backup-${username}-${date}.json`;
+    a.href = url; a.download = `finlo-${username}-${suffix}.json`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast({ title: "Backup downloaded" });
+    toast({ title: "Backup downloaded", description: `${filtered.length} expense(s)` });
   };
 
   const handleRestoreFile = async (f: File) => {
@@ -357,12 +371,32 @@ function DataSection({
       </div>
 
       {item("Manage transactions", "Search, edit, delete, export", () => { onOpenSearch(); onOpenChange(false); })}
-      {item("Monthly budgets", "Set per-category limits", () => { onOpenBudgets(); onOpenChange(false); })}
+      {item("Monthly budgets", "Set per-category limits & alerts", () => { onOpenBudgets(); onOpenChange(false); })}
+      {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
       {item("Import CSV / Excel", "Upload spreadsheet of expenses", () => { onOpenImport(); onOpenChange(false); })}
 
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">
         <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Backup</p>
-        {item("Export JSON backup", "Full snapshot of expenses, categories, budgets", handleExportJSON)}
+        <div className="px-4 py-4 rounded-2xl border border-border/40 bg-surface/30 space-y-3">
+          <p className="text-foreground text-sm">Export JSON</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">From</Label>
+              <Input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)}
+                className="rounded-full bg-background border-border h-9 text-xs" />
+            </div>
+            <div>
+              <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">To</Label>
+              <Input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)}
+                className="rounded-full bg-background border-border h-9 text-xs" />
+            </div>
+          </div>
+          <p className="text-[11px] text-ink-muted">Leave both blank to export everything.</p>
+          <Button size="sm" onClick={handleExportJSON}
+            className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-9">
+            Download JSON backup
+          </Button>
+        </div>
 
         <div className="px-4 py-4 rounded-2xl border border-border/40 bg-surface/30 space-y-3">
           <p className="text-foreground text-sm">Restore from JSON</p>
