@@ -18,8 +18,10 @@ Deno.serve(async (req) => {
   const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userResp.user.id, _role: "admin" });
   if (!isAdmin) return json({ error: "Forbidden" }, 403);
 
+  const { data: authUsers } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const { data: profiles } = await admin.from("profiles").select("user_id, email, display_name, created_at");
   const { data: roles } = await admin.from("user_roles").select("user_id, role");
+  const profileMap = new Map((profiles ?? []).map((p) => [p.user_id, p]));
   const roleMap = new Map<string, string[]>();
   (roles ?? []).forEach((r) => {
     const arr = roleMap.get(r.user_id) ?? [];
@@ -27,13 +29,16 @@ Deno.serve(async (req) => {
     roleMap.set(r.user_id, arr);
   });
 
-  const out = (profiles ?? []).map((p) => ({
-    user_id: p.user_id,
-    email: p.email,
-    display_name: p.display_name,
-    created_at: p.created_at,
-    roles: roleMap.get(p.user_id) ?? [],
-  }));
+  const out = (authUsers?.users ?? []).map((u) => {
+    const p = profileMap.get(u.id);
+    return {
+      user_id: u.id,
+      email: p?.email ?? u.email ?? "",
+      display_name: p?.display_name ?? u.user_metadata?.display_name ?? u.email?.split("@")[0] ?? "",
+      created_at: p?.created_at ?? u.created_at,
+      roles: roleMap.get(u.id) ?? [],
+    };
+  }).filter((u) => u.email);
 
   return json({ users: out });
 });

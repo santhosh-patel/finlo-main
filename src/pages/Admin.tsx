@@ -117,8 +117,10 @@ export default function Admin() {
     try {
       const data = await callFn("seed-admin");
       const lines = (data.results ?? [])
-        .map((r: { email: string; user_id?: string; error?: string }) =>
-          r.error ? `✗ ${r.email} — ${r.error}` : `✓ ${r.email} (${r.user_id?.slice(0, 8)}…)`)
+        .map((r: { email: string; role?: string; status?: string; user_id?: string; error?: string }) =>
+          r.error
+            ? `✗ ${r.email} — ${r.error}`
+            : `✓ ${r.email} — ${r.role ?? "user"} ${r.status ?? "updated"} (${r.user_id?.slice(0, 8)}…)`)
         .join("\n");
       setSeedResult(lines || "Seed completed.");
       toast({ title: "Seed completed", description: `${data.results?.length ?? 0} accounts processed.` });

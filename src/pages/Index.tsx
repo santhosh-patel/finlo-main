@@ -47,7 +47,8 @@ const Index = () => {
   const { isAuthed, loading, login, logout, profile, updateProfile, isAdmin, user } = useAuth();
   const { theme, update: updateTheme } = useTheme();
   // Admins never use the consumer app — skip data subscriptions for them.
-  const exp = useExpenses(isAdmin ? null : user?.id ?? null);
+  const expenseUserId = !loading && !isAdmin ? user?.id ?? null : null;
+  const exp = useExpenses(expenseUserId);
   const {
     expenses, categories, budgets,
     syncing, lastSync, sync,

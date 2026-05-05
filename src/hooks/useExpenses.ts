@@ -44,6 +44,9 @@ export function useExpenses(userId: string | null) {
     () => localStorage.getItem(LAST_SYNC_KEY)
   );
   const pendingRef = useRef<PendingOp[]>(readJSON<PendingOp[]>(PENDING_KEY, []));
+  const syncInFlightRef = useRef(false);
+  const didInitialSyncRef = useRef<string | null>(null);
+  const skipNextRealtimePullRef = useRef(false);
 
   useEffect(() => writeJSON(EXP_KEY, expenses), [expenses]);
   useEffect(() => writeJSON(CAT_KEY, categories), [categories]);
@@ -141,22 +144,31 @@ export function useExpenses(userId: string | null) {
 
   const sync = useCallback(async () => {
     if (!userId) return;
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
     setSyncing(true);
     try {
       await flushPending();
+      skipNextRealtimePullRef.current = true;
       await pullFromServer();
       toast({ title: "Synced", description: "All changes are up to date." });
     } catch (e) {
       console.error(e);
       toast({ title: "Sync failed", description: String(e), variant: "destructive" });
     } finally {
+      syncInFlightRef.current = false;
       setSyncing(false);
     }
   }, [userId, flushPending, pullFromServer]);
 
   // Initial sync + realtime
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      didInitialSyncRef.current = null;
+      return;
+    }
+    if (didInitialSyncRef.current === userId) return;
+    didInitialSyncRef.current = userId;
     let cancelled = false;
     let pullTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedPull = () => {
@@ -169,7 +181,13 @@ export function useExpenses(userId: string | null) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "expenses", filter: `user_id=eq.${userId}` },
-        () => debouncedPull(),
+        () => {
+          if (skipNextRealtimePullRef.current) {
+            skipNextRealtimePullRef.current = false;
+            return;
+          }
+          debouncedPull();
+        },
       )
       .subscribe();
     const onOnline = () => { if (!cancelled) sync(); };
