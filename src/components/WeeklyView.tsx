@@ -1,4 +1,5 @@
-import { CategoryDef, Expense, dayLabel, formatINR, rangeDays, weekRangeOf } from "@/lib/expenses";
+import { Expense, dayLabel, formatINR, rangeDays, weekRangeOf } from "@/lib/expenses";
+import type { CategoryDef } from "@/lib/expenses";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExpenseRow } from "@/components/ExpenseRow";
@@ -17,8 +18,33 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
   const days = useMemo(() => rangeDays(from, to), [from, to]);
   const [openDay, setOpenDay] = useState<string | null>(null);
 
-  const colorOf = (name: string) =>
-    categories.find((c) => c.name === name)?.color || "hsl(var(--wash-sage))";
+  // Blue gradient palette for stacked bar segments (like the reference image)
+  const BLUE_SHADES = [
+    "hsl(220, 80%, 58%)",   // vivid blue (top spend)
+    "hsl(220, 65%, 68%)",   // medium blue
+    "hsl(220, 55%, 76%)",   // soft blue
+    "hsl(225, 45%, 82%)",   // light periwinkle
+    "hsl(225, 35%, 88%)",   // very light
+    "hsl(225, 25%, 92%)",   // near-white blue
+  ];
+
+  // Assign colors by spend rank across the whole week
+  const categoryColorMap = useMemo(() => {
+    const weekTotalsMap: Record<string, number> = {};
+    expenses.forEach((e) => {
+      if (e.date >= from && e.date <= to) {
+        weekTotalsMap[e.category] = (weekTotalsMap[e.category] || 0) + e.amount;
+      }
+    });
+    const sorted = Object.entries(weekTotalsMap).sort(([, a], [, b]) => b - a);
+    const map: Record<string, string> = {};
+    sorted.forEach(([cat], i) => {
+      map[cat] = BLUE_SHADES[Math.min(i, BLUE_SHADES.length - 1)];
+    });
+    return map;
+  }, [expenses, from, to]);
+
+  const colorOf = (name: string) => categoryColorMap[name] || BLUE_SHADES[BLUE_SHADES.length - 1];
 
   const byDay = useMemo(() => {
     const map = new Map<string, Expense[]>();
@@ -69,14 +95,14 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
         <div className="flex flex-wrap gap-2 mb-4">
           {legend.map((l) => (
             <span key={l.category} className="inline-flex items-center gap-1.5 text-[11px] text-ink-muted">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorOf(l.category) }} />
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: colorOf(l.category) }} />
               {l.category}
             </span>
           ))}
         </div>
       )}
 
-      <div className="flex items-end justify-between gap-2 h-44 px-1 mb-8">
+      <div className="flex items-end justify-between gap-3 h-52 px-1 mb-8">
         {dayStats.map((d) => {
           const heightPct = (d.total / maxTotal) * 100;
           const isOpen = openDay === d.date;
@@ -84,7 +110,7 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
             <button
               type="button" key={d.date}
               onClick={() => setOpenDay(isOpen ? null : d.date)}
-              className="flex-1 flex flex-col items-center gap-2 group"
+              className="flex-1 flex flex-col items-center gap-1.5 group"
             >
               <span className="text-[10px] tabular-nums text-ink-muted">
                 {d.total > 0 ? Math.round(d.total) : ""}
@@ -92,21 +118,23 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
               <div className="w-full flex-1 flex items-end">
                 <div
                   className={cn(
-                    "w-full rounded-t-md overflow-hidden flex flex-col-reverse transition-all group-hover:opacity-90",
+                    "w-full rounded-t-lg overflow-hidden flex flex-col-reverse transition-all group-hover:opacity-90",
                     isOpen && "ring-2 ring-foreground/40"
                   )}
-                  style={{ height: `${Math.max(heightPct, d.total > 0 ? 6 : 2)}%`, minHeight: 4 }}
+                  style={{ height: `${Math.max(heightPct, d.total > 0 ? 8 : 3)}%`, minHeight: 4 }}
                 >
                   {d.total === 0 ? (
-                    <div className="w-full h-full bg-surface" />
+                    <div className="w-full h-full bg-surface/40" />
                   ) : (
                     d.segments.map((s) => (
                       <div
                         key={s.category}
                         title={`${s.category} · ₹${formatINR(s.amount)}`}
+                        className="w-full"
                         style={{
                           height: `${(s.amount / d.total) * 100}%`,
                           backgroundColor: colorOf(s.category),
+                          minHeight: 2,
                         }}
                       />
                     ))
