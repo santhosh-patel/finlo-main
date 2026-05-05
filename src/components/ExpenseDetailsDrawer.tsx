@@ -17,6 +17,7 @@ import {
   Expense,
   formatINR,
   fullDateLabel,
+  getCurrencySymbol,
   todayISO,
 } from "@/lib/expenses";
 import { Check, Pencil, Trash2, X } from "lucide-react";

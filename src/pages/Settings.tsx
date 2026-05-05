@@ -8,6 +8,16 @@ import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } 
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
 import { toast } from "@/hooks/use-toast";
@@ -18,7 +28,7 @@ interface Props {
   categories: CategoryDef[];
   onAddCategory: (name: string) => void;
   onRenameCategory: (oldName: string, newName: string) => void;
-  onDeleteCategory: (name: string) => void;
+  onDeleteCategory: (name: string, strategy: "delete" | "move", target?: string) => void;
   onSetCategoryStyle: (name: string, patch: { color?: string; icon?: string }) => void;
   onAddSubcategory: (category: string, sub: string) => void;
   onDeleteSubcategory: (category: string, sub: string) => void;
@@ -140,6 +150,9 @@ function CategoriesSection({
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [newSub, setNewSub] = useState<Record<string, string>>({});
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleteStrategy, setDeleteStrategy] = useState<"delete" | "move">("move");
+  const [targetCat, setTargetCat] = useState("Misc");
 
   return (
     <div className="space-y-4">
@@ -183,13 +196,59 @@ function CategoriesSection({
                     <button onClick={() => { setEditing(c.name); setEditName(c.name); }} className="p-1.5 text-ink-muted hover:text-foreground rounded-full hover:bg-surface" aria-label="Rename">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => { if (confirm(`Delete category "${c.name}"?`)) onDeleteCategory(c.name); }} className="p-1.5 text-ink-muted hover:text-destructive rounded-full hover:bg-surface" aria-label="Delete">
+                    <button onClick={() => setConfirmDelete(c.name)} className="p-1.5 text-ink-muted hover:text-destructive rounded-full hover:bg-surface" aria-label="Delete">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </>
                 )}
               </div>
             </div>
+
+            {/* Deletion Dialog */}
+            <AlertDialog open={confirmDelete === c.name} onOpenChange={(open) => !open && setConfirmDelete(null)}>
+              <AlertDialogContent className="bg-background border-border">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="font-serif text-2xl font-normal">Delete category?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    What should happen to the expenses in <span className="font-medium text-foreground">"{c.name}"</span>?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="py-4 space-y-4">
+                  <div className="flex gap-2">
+                    {(["move", "delete"] as const).map((s) => (
+                      <button key={s} onClick={() => setDeleteStrategy(s)}
+                        className={cn("flex-1 px-3 py-2 rounded-full text-xs uppercase tracking-wider transition-colors border capitalize",
+                          deleteStrategy === s ? "bg-foreground text-background border-foreground" : "border-border text-ink-muted")}>
+                        {s === "move" ? "Move them" : "Delete them"}
+                      </button>
+                    ))}
+                  </div>
+                  {deleteStrategy === "move" && (
+                    <div className="space-y-2">
+                      <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Move to category</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {categories.filter(x => x.name !== c.name).map(x => (
+                          <button key={x.name} onClick={() => setTargetCat(x.name)}
+                            className={cn("px-3 py-1.5 rounded-full text-xs border transition-colors",
+                              targetCat === x.name ? "bg-wash-sage border-wash-sage text-foreground" : "border-border text-ink-muted")}>
+                            {x.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="rounded-full">Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => {
+                    onDeleteCategory(c.name, deleteStrategy, deleteStrategy === "move" ? targetCat : undefined);
+                    setConfirmDelete(null);
+                  }} className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Delete Category
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             <div>
               <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted mb-2">Color</p>

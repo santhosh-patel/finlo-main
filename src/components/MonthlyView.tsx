@@ -2,14 +2,15 @@ import { getCurrencySymbol,  Expense, formatINR, monthRangeOf } from "@/lib/expe
 import { Budgets } from "@/hooks/useExpenses";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Wallet, ChevronDown, Sparkles, Loader2, TrendingUp } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Wallet, ChevronDown, Sparkles, Loader2, TrendingUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
 import type { CategoryDef } from "@/lib/expenses";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 
 interface Props {
   expenses: Expense[];
@@ -31,6 +32,8 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   const [insights, setInsights] = useState<Insight[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [chartType, setChartType] = useState<"pie" | "trend">("pie");
 
   const monthExpenses = useMemo(
     () => expenses.filter((e) => e.date >= from && e.date <= to),
@@ -100,6 +103,24 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
     return map;
   }, [monthExpenses]);
 
+  const trendData = useMemo(() => {
+    const daysInMonth = new Date(new Date(from).getFullYear(), new Date(from).getMonth() + 1, 0).getDate();
+    const data = [];
+    let runningTotal = 0;
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dateStr = `${from.slice(0, 8)}${String(i).padStart(2, "0")}`;
+      const dayTotal = monthExpenses.filter(e => e.date === dateStr).reduce((a, b) => a + b.amount, 0);
+      runningTotal += dayTotal;
+      data.push({
+        day: i,
+        amount: dayTotal,
+        total: runningTotal,
+        date: dateStr
+      });
+    }
+    return data;
+  }, [monthExpenses, from]);
+
   const sortedDays = Array.from(byDay.keys()).sort((a, b) => b.localeCompare(a));
 
   return (
@@ -130,37 +151,108 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
           </div>
         </div>
 
-        {/* Donut Chart */}
+        {/* Chart Header / Toggle */}
+        <div className="flex items-center justify-between mb-6">
+          <h4 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted">
+            {chartType === "pie" ? "Category breakdown" : "Daily spending trend"}
+          </h4>
+          <div className="flex bg-surface rounded-full p-0.5 border border-border/20">
+            <button 
+              onClick={() => setChartType("pie")}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wider transition-all",
+                chartType === "pie" ? "bg-background text-foreground shadow-sm" : "text-ink-muted"
+              )}
+            >Pie</button>
+            <button 
+              onClick={() => setChartType("trend")}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wider transition-all",
+                chartType === "trend" ? "bg-background text-foreground shadow-sm" : "text-ink-muted"
+              )}
+            >Trend</button>
+          </div>
+        </div>
+
+        {/* Charts */}
         <div className="h-64 mb-8">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={byCategory}
-                dataKey="amount"
-                nameKey="category"
-                cx="50%"
-                cy="50%"
-                innerRadius={70}
-                outerRadius={90}
-                paddingAngle={4}
-                stroke="none"
-              >
-                {byCategory.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={getColorForCategory(entry.category)} />
-                ))}
-              </Pie>
-              <RechartsTooltip
-                formatter={(value: number) => `${getCurrencySymbol()}${formatINR(value)}`}
-                contentStyle={{
-                  backgroundColor: "hsl(var(--surface))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "12px",
-                  fontSize: "12px",
-                  color: "hsl(var(--foreground))"
-                }}
-                itemStyle={{ color: "hsl(var(--foreground))" }}
-              />
-            </PieChart>
+            {chartType === "pie" ? (
+              <PieChart>
+                <Pie
+                  data={byCategory}
+                  dataKey="amount"
+                  nameKey="category"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={70}
+                  outerRadius={90}
+                  paddingAngle={4}
+                  stroke="none"
+                  onClick={(data) => {
+                    const cat = data?.category || data?.name;
+                    if (cat) setSelectedCategory(cat);
+                  }}
+                >
+                  {byCategory.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={getColorForCategory(entry.category)} />
+                  ))}
+                </Pie>
+                <RechartsTooltip
+                  formatter={(value: number) => `${getCurrencySymbol()}${formatINR(value)}`}
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--surface))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    fontSize: "12px",
+                    color: "hsl(var(--foreground))"
+                  }}
+                  itemStyle={{ color: "hsl(var(--foreground))" }}
+                />
+              </PieChart>
+            ) : (
+              <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--foreground))" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="hsl(var(--foreground))" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.3} />
+                <XAxis 
+                  dataKey="day" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: 'hsl(var(--ink-muted))' }}
+                  interval={Math.floor(trendData.length / 7)}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: 'hsl(var(--ink-muted))' }}
+                />
+                <RechartsTooltip
+                  formatter={(value: number) => [`${getCurrencySymbol()}${formatINR(value)}`, "Total Spent"]}
+                  labelFormatter={(label) => `Day ${label}`}
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--surface))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    fontSize: "12px",
+                    color: "hsl(var(--foreground))"
+                  }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="total" 
+                  stroke="hsl(var(--foreground))" 
+                  strokeWidth={2}
+                  fillOpacity={1} 
+                  fill="url(#colorTotal)" 
+                  animationDuration={1000}
+                />
+              </AreaChart>
+            )}
           </ResponsiveContainer>
         </div>
 
@@ -168,7 +260,11 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
           {byCategory.map((c) => {
             const pct = total > 0 ? (c.amount / total) * 100 : 0;
             return (
-              <div key={c.category} className="group cursor-pointer">
+              <div 
+                key={c.category} 
+                className="group cursor-pointer"
+                onClick={() => setSelectedCategory(c.category)}
+              >
                 <div className="flex justify-between items-baseline mb-1.5">
                   <span className="text-foreground text-sm flex items-center gap-2">
                     <span 
@@ -415,6 +511,46 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
           )}
         </div>
       )}
+
+      {/* Category Filter Sheet */}
+      <Sheet open={!!selectedCategory} onOpenChange={(open) => !open && setSelectedCategory(null)}>
+        <SheetContent side="bottom" className="bg-background border-border rounded-t-[32px] max-h-[85vh] overflow-hidden flex flex-col p-0">
+          <div className="px-6 pt-8 pb-4 shrink-0">
+            <SheetHeader className="text-left flex flex-row items-center justify-between space-y-0">
+              <div>
+                <SheetTitle className="font-serif text-3xl font-normal text-foreground">
+                  {selectedCategory}
+                </SheetTitle>
+                <p className="text-xs text-ink-muted mt-1">
+                  {monthExpenses.filter(e => e.category === selectedCategory).length} transactions this month
+                </p>
+              </div>
+              <div className="font-serif text-2xl text-foreground tabular-nums">
+                {getCurrencySymbol()}{formatINR(monthExpenses.filter(e => e.category === selectedCategory).reduce((a, b) => a + b.amount, 0))}
+              </div>
+            </SheetHeader>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 pb-8">
+            <div className="flex flex-col divide-y divide-border/50">
+              {monthExpenses
+                .filter(e => e.category === selectedCategory)
+                .sort((a, b) => b.date.localeCompare(a.date))
+                .map((e) => (
+                  <ExpenseRow 
+                    key={e.id} 
+                    expense={e} 
+                    onSelect={(exp) => {
+                      setSelectedCategory(null);
+                      onSelect?.(exp);
+                    }} 
+                    categories={categories} 
+                  />
+                ))}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </section>
   );
 }

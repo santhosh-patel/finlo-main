@@ -7,11 +7,13 @@ import { cn, vibrate } from "@/lib/utils";
 import {
   CategoryDef,
   Expense,
+  getCurrencySymbol,
   PAYMENT_METHODS,
   PaymentMethod,
+  formatINR,
   todayISO,
 } from "@/lib/expenses";
-import { Plus } from "lucide-react";
+import { Plus, AlertCircle } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -20,12 +22,16 @@ interface Props {
   onAdd: (e: Omit<Expense, "id" | "created_at">) => void;
   onAddCategory: (name: string) => void;
   onAddSubcategory?: (category: string, sub: string) => void;
-  /** When provided, the sheet is in edit mode and saves changes to this expense. */
   editing?: Expense | null;
   onUpdate?: (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => void;
+  budgets?: Record<string, number>;
+  spentByCategory?: Record<string, number>;
 }
 
-export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCategory, onAddSubcategory, editing, onUpdate }: Props) {
+export function AddExpenseSheet({ 
+  open, onOpenChange, categories, onAdd, onAddCategory, onAddSubcategory, editing, onUpdate,
+  budgets = {}, spentByCategory = {}
+}: Props) {
   const isEdit = !!editing;
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>(categories[0]?.name ?? "Food");
@@ -39,15 +45,35 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
   const [showAddSub, setShowAddSub] = useState(false);
   const [errors, setErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
   const [submitted, setSubmitted] = useState(false);
+  const [subSearch, setSubSearch] = useState("");
   const amountRef = useRef<HTMLInputElement>(null);
+  
+  const budgetLimit = budgets[category] || 0;
+  const currentSpent = spentByCategory[category] || 0;
+  const draftAmount = parseFloat(amount) || 0;
+  
+  // If editing, we subtract the original amount from currentSpent to get the status
+  const adjustedSpent = isEdit && editing?.category === category 
+    ? Math.max(0, currentSpent - editing.amount) 
+    : currentSpent;
+    
+  const totalWithDraft = adjustedSpent + draftAmount;
+  const isOverBudget = budgetLimit > 0 && totalWithDraft > budgetLimit;
+  const isCloseToBudget = budgetLimit > 0 && !isOverBudget && totalWithDraft > (budgetLimit * 0.8);
 
   const subs = useMemo(
     () => categories.find((c) => c.name === category)?.subcategories ?? [],
     [category, categories]
   );
 
+  const filteredSubs = useMemo(() => {
+    if (!subSearch.trim()) return subs;
+    return subs.filter(s => s.toLowerCase().includes(subSearch.toLowerCase()));
+  }, [subs, subSearch]);
+
   useEffect(() => {
     if (open) {
+      setSubSearch("");
       if (editing) {
         setAmount(String(editing.amount));
         setCategory(editing.category);
@@ -162,6 +188,24 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
                 {errors.amount}
               </p>
             )}
+            
+            {budgetLimit > 0 && (draftAmount > 0 || isEdit) && (
+              <div className={cn(
+                "mt-3 flex items-center gap-2 text-[11px] font-medium px-2 py-1.5 rounded-lg transition-colors",
+                isOverBudget ? "text-destructive bg-destructive/5" : 
+                isCloseToBudget ? "text-amber-600 bg-amber-50" : "text-ink-muted/60"
+              )}>
+                <AlertCircle className="h-3 w-3" />
+                {isOverBudget ? (
+                  <span>Over budget by {getCurrencySymbol()}{formatINR(totalWithDraft - budgetLimit)}</span>
+                ) : isCloseToBudget ? (
+                  <span>{getCurrencySymbol()}{formatINR(budgetLimit - totalWithDraft)} left before limit</span>
+                ) : (
+                  <span>{getCurrencySymbol()}{formatINR(budgetLimit - totalWithDraft)} remaining in budget</span>
+                )}
+              </div>
+            )}
+
             <Input
               type="text"
               maxLength={120}
@@ -243,8 +287,19 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
               <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">
                 Subcategory <span className="opacity-60 normal-case tracking-normal">(optional)</span>
               </Label>
-              <div className="flex flex-wrap gap-2">
-                {subs.map((s) => (
+              {subs.length > 8 && (
+                <div className="relative mb-2">
+                  <Input 
+                    value={subSearch}
+                    onChange={(e) => setSubSearch(e.target.value)}
+                    placeholder="Search subcategories..."
+                    className="h-8 rounded-full bg-surface/40 border-border text-xs pl-8"
+                  />
+                  <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-ink-muted rotate-45" />
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1">
+                {filteredSubs.map((s) => (
                   <button
                     key={s}
                     type="button"

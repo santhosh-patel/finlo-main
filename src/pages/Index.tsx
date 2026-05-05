@@ -27,7 +27,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
 import { useTheme } from "@/hooks/useTheme";
 import {
-  Expense, addDays, formatINR, fullDateLabel,
+  Expense, addDays, formatINR, fullDateLabel, getCurrencySymbol,
   monthRangeOf, shiftMonth, shiftWeek, startOfMonthISO, todayISO, weekRangeOf,
 } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,6 @@ const Index = () => {
   const { theme, update: updateTheme } = useTheme();
   // Admins never use the consumer app — skip data subscriptions for them.
   const expenseUserId = !loading && !isAdmin ? user?.id ?? null : null;
-  const exp = useExpenses(expenseUserId);
   const {
     expenses, categories, budgets,
     syncing, lastSync, sync,
@@ -59,7 +58,7 @@ const Index = () => {
     addSubcategory, deleteSubcategory,
     importExpenses, setBudget,
     exportData, restoreData,
-  } = exp;
+  } = useExpenses(expenseUserId);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -236,9 +235,15 @@ const Index = () => {
               {dayExpenses.length === 0 ? "Nothing logged" : "Recorded"}
             </h3>
             {dayExpenses.length === 0 ? (
-              <p className="text-center text-ink-muted text-sm font-light max-w-xs mx-auto">
-                Tap <span className="text-foreground">Add expense</span> to log your first entry.
-              </p>
+              <div className="flex flex-col items-center justify-center py-12 px-6 bg-surface/30 rounded-[32px] border border-dashed border-border/60">
+                <div className="h-12 w-12 rounded-full bg-surface flex items-center justify-center mb-4">
+                  <Plus className="h-6 w-6 text-ink-muted/40" />
+                </div>
+                <p className="text-center text-foreground text-sm font-medium">No entries for this day</p>
+                <p className="text-center text-ink-muted text-xs mt-1 max-w-[200px]">
+                  Tap <span className="text-foreground font-medium">Add expense</span> to start tracking your spending.
+                </p>
+              </div>
             ) : (
               <div className="flex flex-col divide-y divide-border/50">
                 {dayExpenses.map((e) => (
@@ -308,6 +313,7 @@ const Index = () => {
         categories={categories} onAdd={addExpense}
         onAddCategory={addCategory} onAddSubcategory={addSubcategory}
         editing={editing} onUpdate={updateExpense}
+        budgets={budgets} spentByCategory={spentByCategory}
       />
 
       <SearchOverlay
@@ -315,6 +321,7 @@ const Index = () => {
         expenses={expenses} categories={categories}
         filters={filters} onFiltersChange={setFilters}
         onSelect={(e) => { setSearchOpen(false); setDetails(e); }}
+        onDelete={deleteExpense}
         username={profile.name || profile.email.split("@")[0]}
       />
 

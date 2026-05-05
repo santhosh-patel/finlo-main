@@ -2,7 +2,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { SearchFilters, FilterState } from "@/components/SearchFilters";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { getCurrencySymbol, CategoryDef, Expense, downloadCSV, expensesToCSV, formatINR, todayISO } from "@/lib/expenses";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Trash2, X, CheckSquare, Square } from "lucide-react";
+import { Button } from "./ui/button";
+import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -12,6 +15,7 @@ interface Props {
   filters: FilterState;
   onFiltersChange: (f: FilterState) => void;
   onSelect: (e: Expense) => void;
+  onDelete?: (id: string) => void;
   username?: string;
 }
 
@@ -23,8 +27,10 @@ export function SearchOverlay({
   filters,
   onFiltersChange,
   onSelect,
+  onDelete,
   username = "finlo",
 }: Props) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const filtered = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
     return expenses.filter((e) => {
@@ -107,16 +113,63 @@ export function SearchOverlay({
             No expenses match your filters.
           </p>
         ) : (
-          <div className="flex flex-col divide-y divide-border/50 pb-12">
-            {filtered.map((e) => (
-              <ExpenseRow
-                key={e.id}
-                expense={e}
-                showDate
-                onSelect={() => onSelect(e)}
-                categories={categories}
-              />
-            ))}
+          <div className="flex flex-col divide-y divide-border/50 pb-20">
+            {filtered.map((e) => {
+              const isSelected = selectedIds.has(e.id);
+              return (
+                <div key={e.id} className="flex items-center gap-2 group">
+                  <button 
+                    onClick={() => {
+                      const next = new Set(selectedIds);
+                      if (isSelected) next.delete(e.id);
+                      else next.add(e.id);
+                      setSelectedIds(next);
+                    }}
+                    className={cn(
+                      "p-2 rounded-lg transition-colors",
+                      isSelected ? "text-foreground" : "text-ink-muted/30 hover:text-ink-muted group-hover:opacity-100"
+                    )}
+                  >
+                    {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <ExpenseRow
+                      expense={e}
+                      showDate
+                      onSelect={() => onSelect(e)}
+                      categories={categories}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {selectedIds.size > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-[400px] bg-foreground text-background rounded-2xl shadow-2xl p-4 flex items-center justify-between z-50 animate-in fade-in slide-in-from-bottom-4">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setSelectedIds(new Set())} className="p-1 hover:bg-background/10 rounded-full">
+                <X className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                className="h-8 rounded-full px-4 text-xs font-semibold"
+                onClick={() => {
+                  if (confirm(`Delete ${selectedIds.size} expenses?`)) {
+                    selectedIds.forEach(id => onDelete?.(id));
+                    setSelectedIds(new Set());
+                  }
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Delete
+              </Button>
+            </div>
           </div>
         )}
       </SheetContent>

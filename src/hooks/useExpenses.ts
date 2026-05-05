@@ -43,6 +43,7 @@ export function useExpenses(userId: string | null) {
   const [lastSync, setLastSync] = useState<string | null>(
     () => localStorage.getItem(LAST_SYNC_KEY)
   );
+  const [pendingCount, setPendingCount] = useState(() => readJSON<PendingOp[]>(PENDING_KEY, []).length);
   const pendingRef = useRef<PendingOp[]>(readJSON<PendingOp[]>(PENDING_KEY, []));
   const syncInFlightRef = useRef(false);
   const didInitialSyncRef = useRef<string | null>(null);
@@ -55,6 +56,7 @@ export function useExpenses(userId: string | null) {
   const queue = (op: PendingOp) => {
     pendingRef.current.push(op);
     writeJSON(PENDING_KEY, pendingRef.current);
+    setPendingCount(pendingRef.current.length);
   };
 
   const flushPending = useCallback(async () => {
@@ -92,6 +94,7 @@ export function useExpenses(userId: string | null) {
     }
     pendingRef.current = [];
     writeJSON(PENDING_KEY, []);
+    setPendingCount(0);
   }, [userId]);
 
   const pullFromServer = useCallback(async () => {
@@ -298,12 +301,25 @@ export function useExpenses(userId: string | null) {
     }
   }, [userId]);
 
-  const deleteCategory = useCallback((name: string) => {
+  const deleteCategory = useCallback((name: string, strategy: "delete" | "move" = "move", targetCategory: string = "Misc") => {
     setCategories((prev) => prev.filter((c) => c.name !== name));
     setBudgets((prev) => { const n = { ...prev }; delete n[name]; return n; });
+    
+    if (strategy === "delete") {
+      setExpenses((prev) => prev.filter((e) => e.category !== name));
+    } else {
+      setExpenses((prev) => prev.map((e) => (e.category === name ? { ...e, category: targetCategory } : e)));
+    }
+
     if (userId) {
       supabase.from("categories").delete().eq("user_id", userId).eq("name", name);
       supabase.from("budgets").delete().eq("user_id", userId).eq("category", name);
+      
+      if (strategy === "delete") {
+        supabase.from("expenses").delete().eq("user_id", userId).eq("category", name);
+      } else {
+        supabase.from("expenses").update({ category: targetCategory }).eq("user_id", userId).eq("category", name);
+      }
     }
   }, [userId]);
 
@@ -458,6 +474,7 @@ export function useExpenses(userId: string | null) {
   return {
     expenses, categories, budgets,
     syncing, lastSync, sync,
+    pendingCount: pendingRef.current.length,
     addExpense, updateExpense, deleteExpense,
     addCategory, renameCategory, deleteCategory, setCategoryStyle,
     addSubcategory, deleteSubcategory,
