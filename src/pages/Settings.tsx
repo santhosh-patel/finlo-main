@@ -371,12 +371,32 @@ function DataSection({
       </div>
 
       {item("Manage transactions", "Search, edit, delete, export", () => { onOpenSearch(); onOpenChange(false); })}
-      {item("Monthly budgets", "Set per-category limits", () => { onOpenBudgets(); onOpenChange(false); })}
+      {item("Monthly budgets", "Set per-category limits & alerts", () => { onOpenBudgets(); onOpenChange(false); })}
+      {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
       {item("Import CSV / Excel", "Upload spreadsheet of expenses", () => { onOpenImport(); onOpenChange(false); })}
 
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">
         <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Backup</p>
-        {item("Export JSON backup", "Full snapshot of expenses, categories, budgets", handleExportJSON)}
+        <div className="px-4 py-4 rounded-2xl border border-border/40 bg-surface/30 space-y-3">
+          <p className="text-foreground text-sm">Export JSON</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">From</Label>
+              <Input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)}
+                className="rounded-full bg-background border-border h-9 text-xs" />
+            </div>
+            <div>
+              <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">To</Label>
+              <Input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)}
+                className="rounded-full bg-background border-border h-9 text-xs" />
+            </div>
+          </div>
+          <p className="text-[11px] text-ink-muted">Leave both blank to export everything.</p>
+          <Button size="sm" onClick={handleExportJSON}
+            className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-9">
+            Download JSON backup
+          </Button>
+        </div>
 
         <div className="px-4 py-4 rounded-2xl border border-border/40 bg-surface/30 space-y-3">
           <p className="text-foreground text-sm">Restore from JSON</p>
