@@ -1,11 +1,14 @@
-import { Expense, formatINR, monthRangeOf, rangeDays } from "@/lib/expenses";
+import { Expense, formatINR, monthRangeOf } from "@/lib/expenses";
 import { Budgets } from "@/hooks/useExpenses";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Wallet, ChevronDown } from "lucide-react";
+import { Wallet, ChevronDown, Sparkles, Loader2, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { supabase } from "@/integrations/supabase/client";
+import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
+import type { CategoryDef } from "@/lib/expenses";
 
 interface Props {
   expenses: Expense[];
@@ -13,12 +16,21 @@ interface Props {
   onOpenBudgets: () => void;
   anchor: string;
   onSelect?: (e: Expense) => void;
+  categories?: CategoryDef[];
 }
 
-export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect }: Props) {
+interface Insight {
+  emoji: string;
+  text: string;
+}
+
+export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect, categories }: Props) {
   const { from, to, label } = useMemo(() => monthRangeOf(anchor), [anchor]);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const monthExpenses = useMemo(
     () => expenses.filter((e) => e.date >= from && e.date <= to),
@@ -40,6 +52,32 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   }, [monthExpenses]);
 
   const top = byCategory[0];
+
+  // Top 5 largest transactions
+  const top5 = useMemo(() =>
+    [...monthExpenses].sort((a, b) => b.amount - a.amount).slice(0, 5),
+    [monthExpenses]
+  );
+
+  // AI insights
+  const fetchInsights = useCallback(async () => {
+    if (monthExpenses.length === 0) return;
+    setInsightsLoading(true);
+    setInsightsError(null);
+    try {
+      const summary = `Month: ${label}\nTotal: ₹${total.toFixed(2)}\nEntries: ${count}\nAvg per entry: ₹${avg.toFixed(2)}\n\nBy category:\n${byCategory.map((c) => `- ${c.category}: ₹${c.amount.toFixed(2)} (${total > 0 ? ((c.amount / total) * 100).toFixed(0) : 0}%)`).join("\n")}\n\nTop 5 transactions:\n${top5.map((e) => `- ₹${e.amount.toFixed(2)} ${e.category}${e.note ? ` (${e.note})` : ""} on ${e.date}`).join("\n")}`;
+      const { data, error } = await supabase.functions.invoke("spending-insights", {
+        body: { summary },
+      });
+      if (error) throw error;
+      setInsights(data?.insights ?? []);
+    } catch (e) {
+      console.error("Insights error:", e);
+      setInsightsError("Couldn't generate insights right now.");
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [monthExpenses.length, label, total, count, avg, byCategory, top5]);
 
   const budgetEntries = useMemo(() => {
     return Object.entries(budgets).map(([category, limit]) => {
@@ -119,15 +157,97 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
       )}
 
       {top && (
-        <div className="mt-10 bg-wash-clay/40 rounded-3xl p-6 border border-border/40">
-          <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted mb-2">
-            Insight
-          </p>
-          <p className="font-serif text-xl text-foreground leading-snug">
-            Top category this month is{" "}
-            <span className="italic">{top.category}</span> at{" "}
-            ₹{formatINR(top.amount)}.
-          </p>
+        <div className="mt-10 space-y-4">
+          {/* Static insight */}
+          <div className="bg-wash-clay/40 rounded-3xl p-6 border border-border/40">
+            <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted mb-2">
+              Insight
+            </p>
+            <p className="font-serif text-xl text-foreground leading-snug">
+              Top category this month is{" "}
+              <span className="italic">{top.category}</span> at{" "}
+              ₹{formatINR(top.amount)}.
+            </p>
+          </div>
+
+          {/* AI insights */}
+          <div className="bg-surface/60 rounded-3xl p-6 border border-border/40">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted inline-flex items-center gap-1.5">
+                <Sparkles className="h-3 w-3" /> AI Insights
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={fetchInsights}
+                disabled={insightsLoading}
+                className="text-xs text-ink-muted hover:text-foreground h-7"
+              >
+                {insightsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Generate"}
+              </Button>
+            </div>
+            {insights.length > 0 ? (
+              <ul className="space-y-3">
+                {insights.map((ins, i) => (
+                  <li key={i} className="flex gap-2 text-sm text-foreground/90 leading-snug">
+                    <span className="shrink-0">{ins.emoji}</span>
+                    <span>{ins.text}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : insightsError ? (
+              <p className="text-xs text-ink-muted">{insightsError}</p>
+            ) : (
+              <p className="text-xs text-ink-muted">Tap Generate to get AI-powered spending insights for this month.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Top 5 Transactions */}
+      {top5.length > 0 && (
+        <div className="mt-12">
+          <div className="flex items-baseline justify-between mb-5">
+            <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted inline-flex items-center gap-1.5">
+              <TrendingUp className="h-3 w-3" /> Top 5 Transactions
+            </h3>
+          </div>
+          <div className="space-y-1">
+            {top5.map((e, i) => {
+              const Icon = getIconForCategory(e.category);
+              const color = getColorForCategory(e.category, categories?.find((c) => c.name === e.category)?.color);
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => onSelect?.(e)}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-surface/60 transition-colors text-left group"
+                >
+                  <span className="text-[11px] text-ink-muted/60 font-mono w-5 text-right shrink-0">
+                    {i + 1}
+                  </span>
+                  <span
+                    className="h-8 w-8 rounded-full flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: color }}
+                  >
+                    <Icon className="h-3.5 w-3.5 text-foreground" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-foreground truncate">
+                      {e.note || e.category}
+                    </p>
+                    <p className="text-[11px] text-ink-muted truncate">
+                      {e.category}{e.subcategory ? ` · ${e.subcategory}` : ""} · {new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                  <span className="font-serif text-lg text-foreground tabular-nums shrink-0">
+                    ₹{formatINR(e.amount)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 

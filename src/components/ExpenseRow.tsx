@@ -1,6 +1,7 @@
-import { CategoryDef, Expense, formatINR } from "@/lib/expenses";
+import { Expense, formatINR } from "@/lib/expenses";
 import { Trash2 } from "lucide-react";
-import { getCategoryIcon } from "@/lib/categoryIcons";
+import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
+import type { CategoryDef } from "@/lib/expenses";
 
 interface Props {
   expense: Expense;
@@ -12,7 +13,8 @@ interface Props {
 
 export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }: Props) {
   const def = categories?.find((c) => c.name === expense.category);
-  const Icon = getCategoryIcon(def?.icon);
+  const Icon = getIconForCategory(expense.category, def?.icon);
+  const bgColor = getColorForCategory(expense.category, def?.color);
   const time = new Date(expense.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -41,8 +43,8 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }
     >
       <div className="flex gap-5 items-baseline min-w-0">
         <span
-          className="h-7 w-7 rounded-full flex items-center justify-center shrink-0"
-          style={{ backgroundColor: def?.color || "hsl(var(--wash-sage))" }}
+          className="h-7 w-7 rounded-full flex items-center justify-center shrink-0 self-center"
+          style={{ backgroundColor: bgColor }}
           aria-hidden
         >
           <Icon className="h-3.5 w-3.5 text-foreground" />
