@@ -157,49 +157,42 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
       )}
 
       {top && (
-        <div className="mt-10 space-y-4">
-          {/* Static insight */}
-          <div className="bg-wash-clay/40 rounded-3xl p-6 border border-border/40">
-            <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted mb-2">
-              Insight
-            </p>
-            <p className="font-serif text-xl text-foreground leading-snug">
-              Top category this month is{" "}
-              <span className="italic">{top.category}</span> at{" "}
-              ₹{formatINR(top.amount)}.
-            </p>
+        <div className="mt-10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted inline-flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3" /> Insights
+            </h3>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={fetchInsights}
+              disabled={insightsLoading}
+              className="text-xs text-ink-muted hover:text-foreground h-7"
+            >
+              {insightsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : insights.length > 0 ? "Refresh" : "Generate"}
+            </Button>
           </div>
 
-          {/* AI insights */}
-          <div className="bg-surface/60 rounded-3xl p-6 border border-border/40">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted inline-flex items-center gap-1.5">
-                <Sparkles className="h-3 w-3" /> AI Insights
+          <div className="space-y-2">
+            <div className="rounded-2xl border border-border/40 bg-surface/40 px-4 py-3">
+              <p className="text-sm text-foreground leading-snug">
+                Top category is <span className="font-medium">{top.category}</span> at ₹{formatINR(top.amount)}
+                <span className="text-ink-muted"> · {total > 0 ? Math.round((top.amount / total) * 100) : 0}% of spend</span>
               </p>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={fetchInsights}
-                disabled={insightsLoading}
-                className="text-xs text-ink-muted hover:text-foreground h-7"
-              >
-                {insightsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Generate"}
-              </Button>
             </div>
-            {insights.length > 0 ? (
-              <ul className="space-y-3">
-                {insights.map((ins, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-foreground/90 leading-snug">
-                    <span className="shrink-0">{ins.emoji}</span>
-                    <span>{ins.text}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : insightsError ? (
-              <p className="text-xs text-ink-muted">{insightsError}</p>
-            ) : (
-              <p className="text-xs text-ink-muted">Tap Generate to get AI-powered spending insights for this month.</p>
+
+            {insights.map((ins, i) => (
+              <div key={i} className="rounded-2xl border border-border/40 bg-surface/40 px-4 py-3 flex gap-3">
+                <span className="text-base leading-snug shrink-0" aria-hidden>{ins.emoji}</span>
+                <p className="text-sm text-foreground leading-snug">{ins.text}</p>
+              </div>
+            ))}
+
+            {insights.length === 0 && !insightsLoading && (
+              <p className="text-xs text-ink-muted px-1">
+                {insightsError ?? "Tap Generate for AI-powered tips on this month's spending."}
+              </p>
             )}
           </div>
         </div>
