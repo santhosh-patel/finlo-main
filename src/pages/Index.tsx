@@ -300,7 +300,7 @@ const Index = () => {
           <MonthlyView
             expenses={expenses} budgets={budgets}
             onOpenBudgets={() => setBudgetsOpen(true)}
-            anchor={monthAnchor} onSelect={setDetails}
+            anchor={monthAnchor} onSelect={setDetails} categories={categories}
           />
         )}
       </div>
