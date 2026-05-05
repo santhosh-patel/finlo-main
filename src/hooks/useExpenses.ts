@@ -113,24 +113,35 @@ export function useExpenses(userId: string | null) {
         created_at: r.created_at,
       })));
     }
-    if (cat && cat.length > 0) {
-      setCategories(cat.map((c) => ({
+    if (cat) {
+      const serverCats = cat.map((c) => ({
         name: c.name,
         subcategories: c.subcategories ?? [],
         color: c.color ?? undefined,
         icon: c.icon ?? undefined,
         custom: true,
-      })));
-    } else if (cat && cat.length === 0) {
-      // seed defaults to server on first sync
-      const rows = DEFAULT_CATEGORIES.map((c) => ({
-        user_id: userId,
-        name: c.name,
-        subcategories: c.subcategories,
-        color: c.color ?? null,
-        icon: c.icon ?? null,
       }));
-      await supabase.from("categories").upsert(rows, { onConflict: "user_id,name" });
+
+      // Merge defaults with server categories, preferring server data for matches
+      const merged = [...DEFAULT_CATEGORIES];
+      serverCats.forEach((sc) => {
+        const idx = merged.findIndex((m) => m.name.toLowerCase() === sc.name.toLowerCase());
+        if (idx !== -1) merged[idx] = { ...merged[idx], ...sc };
+        else merged.push(sc);
+      });
+      setCategories(merged);
+
+      if (cat.length === 0 && userId) {
+        // seed defaults to server on first sync
+        const rows = DEFAULT_CATEGORIES.map((c) => ({
+          user_id: userId,
+          name: c.name,
+          subcategories: c.subcategories,
+          color: c.color ?? null,
+          icon: c.icon ?? null,
+        }));
+        await supabase.from("categories").upsert(rows, { onConflict: "user_id,name" });
+      }
     }
     if (bud) {
       const m: Budgets = {};
@@ -244,13 +255,18 @@ export function useExpenses(userId: string | null) {
   }, [userId]);
 
   // ---- categories (cloud-backed) ----
-  const upsertCategoryRow = (c: CategoryDef) => {
+  const upsertCategoryRow = async (c: CategoryDef) => {
     if (!userId) return;
-    supabase.from("categories").upsert({
+    const { error } = await supabase.from("categories").upsert({
       user_id: userId, name: c.name,
       subcategories: c.subcategories,
       color: c.color ?? null, icon: c.icon ?? null,
     }, { onConflict: "user_id,name" });
+    
+    if (error) {
+      console.error("Failed to sync category:", error);
+      toast({ title: "Sync Error", description: `Couldn't save category "${c.name}" to cloud.`, variant: "destructive" });
+    }
   };
 
   const addCategory = useCallback((name: string) => {
@@ -259,7 +275,9 @@ export function useExpenses(userId: string | null) {
     setCategories((prev) => {
       if (prev.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) return prev;
       const next: CategoryDef = { name: trimmed, subcategories: [], custom: true };
-      upsertCategoryRow(next);
+      upsertCategoryRow(next).then(() => {
+        toast({ title: "Category added", description: `"${trimmed}" is now available.` });
+      });
       return [...prev, next];
     });
   }, [userId]);
@@ -305,7 +323,9 @@ export function useExpenses(userId: string | null) {
       if (c.name !== category) return c;
       if (c.subcategories.some((x) => x.toLowerCase() === s)) return c;
       const next = { ...c, subcategories: [...c.subcategories, s] };
-      upsertCategoryRow(next);
+      upsertCategoryRow(next).then(() => {
+        toast({ title: "Subcategory added", description: `"${s}" added to ${category}.` });
+      });
       return next;
     }));
   }, [userId]);

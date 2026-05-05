@@ -1,4 +1,4 @@
-import { Expense, formatINR, monthRangeOf } from "@/lib/expenses";
+import { getCurrencySymbol,  Expense, formatINR, monthRangeOf } from "@/lib/expenses";
 import { Budgets } from "@/hooks/useExpenses";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { supabase } from "@/integrations/supabase/client";
 import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
 import type { CategoryDef } from "@/lib/expenses";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 
 interface Props {
   expenses: Expense[];
@@ -20,7 +21,6 @@ interface Props {
 }
 
 interface Insight {
-  emoji: string;
   text: string;
 }
 
@@ -65,7 +65,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
     setInsightsLoading(true);
     setInsightsError(null);
     try {
-      const summary = `Month: ${label}\nTotal: ₹${total.toFixed(2)}\nEntries: ${count}\nAvg per entry: ₹${avg.toFixed(2)}\n\nBy category:\n${byCategory.map((c) => `- ${c.category}: ₹${c.amount.toFixed(2)} (${total > 0 ? ((c.amount / total) * 100).toFixed(0) : 0}%)`).join("\n")}\n\nTop 5 transactions:\n${top5.map((e) => `- ₹${e.amount.toFixed(2)} ${e.category}${e.note ? ` (${e.note})` : ""} on ${e.date}`).join("\n")}`;
+      const summary = `Month: ${label}\nTotal: ${getCurrencySymbol()}${total.toFixed(2)}\nEntries: ${count}\nAvg per entry: ${getCurrencySymbol()}${avg.toFixed(2)}\n\nBy category:\n${byCategory.map((c) => `- ${c.category}: ${getCurrencySymbol()}${c.amount.toFixed(2)} (${total > 0 ? ((c.amount / total) * 100).toFixed(0) : 0}%)`).join("\n")}\n\nTop 5 transactions:\n${top5.map((e) => `- ${getCurrencySymbol()}${e.amount.toFixed(2)} ${e.category}${e.note ? ` (${e.note})` : ""} on ${e.date}`).join("\n")}`;
       const { data, error } = await supabase.functions.invoke("spending-insights", {
         body: { summary },
       });
@@ -109,7 +109,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
           {label}
         </h3>
         <span className="font-serif text-xl text-foreground tabular-nums">
-          ₹{formatINR(total)}
+          {getCurrencySymbol()}{formatINR(total)}
         </span>
       </div>
 
@@ -126,27 +126,69 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
           </div>
           <div className="bg-surface/60 rounded-2xl p-4 border border-border/40">
             <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Avg / entry</p>
-            <p className="font-serif text-2xl text-foreground mt-1 tabular-nums">₹{formatINR(avg)}</p>
+            <p className="font-serif text-2xl text-foreground mt-1 tabular-nums">{getCurrencySymbol()}{formatINR(avg)}</p>
           </div>
         </div>
+
+        {/* Donut Chart */}
+        <div className="h-64 mb-8">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={byCategory}
+                dataKey="amount"
+                nameKey="category"
+                cx="50%"
+                cy="50%"
+                innerRadius={70}
+                outerRadius={90}
+                paddingAngle={4}
+                stroke="none"
+              >
+                {byCategory.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={getColorForCategory(entry.category)} />
+                ))}
+              </Pie>
+              <RechartsTooltip
+                formatter={(value: number) => `${getCurrencySymbol()}${formatINR(value)}`}
+                contentStyle={{
+                  backgroundColor: "hsl(var(--surface))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "12px",
+                  fontSize: "12px",
+                  color: "hsl(var(--foreground))"
+                }}
+                itemStyle={{ color: "hsl(var(--foreground))" }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
         <div className="space-y-4">
           {byCategory.map((c) => {
             const pct = total > 0 ? (c.amount / total) * 100 : 0;
             return (
-              <div key={c.category}>
+              <div key={c.category} className="group cursor-pointer">
                 <div className="flex justify-between items-baseline mb-1.5">
-                  <span className="text-foreground text-sm">
+                  <span className="text-foreground text-sm flex items-center gap-2">
+                    <span 
+                      className="w-2.5 h-2.5 rounded-full inline-block" 
+                      style={{ backgroundColor: getColorForCategory(c.category) }}
+                    />
                     {c.category}
                     <span className="text-ink-muted ml-2 text-xs tabular-nums">{pct.toFixed(0)}%</span>
                   </span>
                   <span className="font-serif text-base text-foreground tabular-nums">
-                    ₹{formatINR(c.amount)}
+                    {getCurrencySymbol()}{formatINR(c.amount)}
                   </span>
                 </div>
                 <div className="h-1 bg-surface rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-wash-sage rounded-full"
-                    style={{ width: `${pct}%` }}
+                    className="h-full rounded-full transition-all duration-500 ease-out"
+                    style={{ 
+                      width: `${pct}%`,
+                      backgroundColor: getColorForCategory(c.category) 
+                    }}
                   />
                 </div>
               </div>
@@ -177,14 +219,13 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
           <div className="space-y-2">
             <div className="rounded-2xl border border-border/40 bg-surface/40 px-4 py-3">
               <p className="text-sm text-foreground leading-snug">
-                Top category is <span className="font-medium">{top.category}</span> at ₹{formatINR(top.amount)}
+                Top category is <span className="font-medium">{top.category}</span> at {getCurrencySymbol()}{formatINR(top.amount)}
                 <span className="text-ink-muted"> · {total > 0 ? Math.round((top.amount / total) * 100) : 0}% of spend</span>
               </p>
             </div>
 
             {insights.map((ins, i) => (
-              <div key={i} className="rounded-2xl border border-border/40 bg-surface/40 px-4 py-3 flex gap-3">
-                <span className="text-base leading-snug shrink-0" aria-hidden>{ins.emoji}</span>
+              <div key={i} className="rounded-2xl border border-border/40 bg-surface/40 px-4 py-3">
                 <p className="text-sm text-foreground leading-snug">{ins.text}</p>
               </div>
             ))}
@@ -235,7 +276,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                     </p>
                   </div>
                   <span className="font-serif text-lg text-foreground tabular-nums shrink-0">
-                    ₹{formatINR(e.amount)}
+                    {getCurrencySymbol()}{formatINR(e.amount)}
                   </span>
                 </button>
               );
@@ -283,7 +324,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                         over ? "text-destructive" : "text-ink-muted"
                       )}
                     >
-                      ₹{formatINR(b.spent)} / ₹{formatINR(b.limit)}
+                      {getCurrencySymbol()}{formatINR(b.spent)} / {getCurrencySymbol()}{formatINR(b.limit)}
                     </span>
                   </div>
                   <div className="h-1.5 bg-background rounded-full overflow-hidden">
@@ -302,8 +343,8 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                     )}
                   >
                     {over
-                      ? `Over by ₹${formatINR(Math.abs(b.remaining))}`
-                      : `₹${formatINR(b.remaining)} remaining`}
+                      ? `Over by ${getCurrencySymbol()}${formatINR(Math.abs(b.remaining))}`
+                      : `${getCurrencySymbol()}${formatINR(b.remaining)} remaining`}
                   </p>
                 </div>
               );
@@ -357,13 +398,13 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                         <span className="text-ink-muted text-xs">({items.length})</span>
                       </span>
                       <span className="font-serif text-base text-foreground tabular-nums">
-                        ₹{formatINR(dayTotal)}
+                        {getCurrencySymbol()}{formatINR(dayTotal)}
                       </span>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
                         {items.map((e) => (
-                          <ExpenseRow key={e.id} expense={e} onSelect={onSelect} />
+                          <ExpenseRow key={e.id} expense={e} onSelect={onSelect} categories={categories} />
                         ))}
                       </div>
                     </CollapsibleContent>

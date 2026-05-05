@@ -120,7 +120,7 @@ export function ExpenseDetailsDrawer({
                   <>
                     <div className="bg-surface/60 rounded-3xl p-6 border border-border/40 text-center">
                       <div className="font-serif text-6xl text-foreground tabular-nums">
-                        <span className="text-ink-muted/40 text-3xl mr-1">₹</span>
+                        <span className="text-ink-muted/40 text-3xl mr-1">{getCurrencySymbol()}</span>
                         {formatINR(expense.amount)}
                       </div>
                       {expense.note && (
@@ -160,7 +160,7 @@ export function ExpenseDetailsDrawer({
                   <>
                     <div className="bg-surface/60 rounded-3xl p-6 border border-border/40">
                       <div className="flex items-center gap-3">
-                        <span className="font-serif text-4xl text-ink-muted/60">₹</span>
+                        <span className="font-serif text-4xl text-ink-muted/60">{getCurrencySymbol()}</span>
                         <Input
                           type="number"
                           inputMode="decimal"
@@ -320,7 +320,7 @@ export function ExpenseDetailsDrawer({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {expense
-                ? `₹${formatINR(expense.amount)} · ${expense.category}${
+                ? `${getCurrencySymbol()}${formatINR(expense.amount)} · ${expense.category}${
                     expense.note ? ` · ${expense.note}` : ""
                   }. This can't be undone.`
                 : ""}

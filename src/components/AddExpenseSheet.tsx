@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, vibrate } from "@/lib/utils";
 import {
   CategoryDef,
   Expense,
@@ -112,11 +112,14 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);
+      vibrate([30, 50, 30]); // Success vibration
     } else {
       onAdd(payload);
+      vibrate([30, 50, 30]); // Success vibration
     }
     onOpenChange(false);
   };
+
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -139,7 +142,7 @@ export function AddExpenseSheet({ open, onOpenChange, categories, onAdd, onAddCa
             )}
           >
             <div className="flex items-center gap-3">
-              <span className="font-serif text-4xl text-ink-muted/60">₹</span>
+              <span className="font-serif text-4xl text-ink-muted/60">{getCurrencySymbol()}</span>
               <Input
                 ref={amountRef}
                 type="number"

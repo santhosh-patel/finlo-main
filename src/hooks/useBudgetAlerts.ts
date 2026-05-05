@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
 import type { Budgets } from "@/hooks/useExpenses";
-import { formatINR } from "@/lib/expenses";
+import { getCurrencySymbol, formatINR } from "@/lib/expenses";
 
 const NOTIFIED_KEY = "finlo.budget_alerts.v1";
 const WARN_PCT = 0.8;
@@ -30,7 +30,7 @@ export function useBudgetAlerts(spentByCategory: Record<string, number>, budgets
       if (pct >= 1 && prevSameMonth !== "over") {
         toast({
           title: `Over budget · ${cat}`,
-          description: `Spent ₹${formatINR(spent)} of ₹${formatINR(limit)} this month.`,
+          description: `Spent ${getCurrencySymbol()}${formatINR(spent)} of ${getCurrencySymbol()}${formatINR(limit)} this month.`,
           variant: "destructive",
         });
         next[cat] = { month, level: "over" };
@@ -38,7 +38,7 @@ export function useBudgetAlerts(spentByCategory: Record<string, number>, budgets
       } else if (pct >= WARN_PCT && pct < 1 && !prevSameMonth) {
         toast({
           title: `${Math.round(pct * 100)}% of ${cat} budget used`,
-          description: `₹${formatINR(limit - spent)} left of ₹${formatINR(limit)} this month.`,
+          description: `${getCurrencySymbol()}${formatINR(limit - spent)} left of ${getCurrencySymbol()}${formatINR(limit)} this month.`,
         });
         next[cat] = { month, level: "warn" };
         changed = true;

@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "std/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,7 +28,7 @@ serve(async (req) => {
 - Top spending category and its share
 - Notable trends or changes
 - Simple saving tips based on the data
-Keep each insight to 1-2 sentences. Use ₹ for currency. Be friendly and direct. Return as a JSON array of objects with "emoji" and "text" keys.`,
+Keep each insight to 1-2 sentences. Use ₹ for currency. Be friendly and direct. DO NOT use emojis. Return as a JSON array of objects with a "text" key.`,
           },
           {
             role: "user",
@@ -49,10 +49,9 @@ Keep each insight to 1-2 sentences. Use ₹ for currency. Be friendly and direct
                     items: {
                       type: "object",
                       properties: {
-                        emoji: { type: "string" },
                         text: { type: "string" },
                       },
-                      required: ["emoji", "text"],
+                      required: ["text"],
                       additionalProperties: false,
                     },
                   },
@@ -97,7 +96,7 @@ Keep each insight to 1-2 sentences. Use ₹ for currency. Be friendly and direct
         const parsed = JSON.parse(toolCall.function.arguments);
         insights = parsed.insights ?? [];
       } catch {
-        insights = [{ emoji: "📊", text: "Unable to parse insights." }];
+        insights = [{ text: "Unable to parse insights." }];
       }
     }
 

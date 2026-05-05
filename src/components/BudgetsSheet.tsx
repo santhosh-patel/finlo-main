@@ -2,7 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { CategoryDef, formatINR } from "@/lib/expenses";
+import { getCurrencySymbol, CategoryDef, formatINR } from "@/lib/expenses";
 import { Budgets } from "@/hooks/useExpenses";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -104,11 +104,11 @@ export function BudgetsSheet({
                       {c.name}
                     </Label>
                     <p className="text-[11px] text-ink-muted tabular-nums">
-                      Spent ₹{formatINR(spent)}
+                      Spent {getCurrencySymbol()}{formatINR(spent)}
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-ink-muted text-sm">₹</span>
+                    <span className="text-ink-muted text-sm">{getCurrencySymbol()}</span>
                     <Input
                       id={`budget-${c.name}`}
                       type="number"
@@ -141,8 +141,8 @@ export function BudgetsSheet({
                       )}
                     >
                       {over
-                        ? `Over by ₹${formatINR(Math.abs(remaining))}`
-                        : `₹${formatINR(remaining)} remaining`}
+                        ? `Over by ${getCurrencySymbol()}${formatINR(Math.abs(remaining))}`
+                        : `${getCurrencySymbol()}${formatINR(remaining)} remaining`}
                     </p>
                   </div>
                 )}

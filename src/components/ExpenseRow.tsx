@@ -1,4 +1,4 @@
-import { Expense, formatINR } from "@/lib/expenses";
+import { getCurrencySymbol,  Expense, formatINR } from "@/lib/expenses";
 import { Trash2 } from "lucide-react";
 import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
 import type { CategoryDef } from "@/lib/expenses";
@@ -33,7 +33,7 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }
         ? {
             type: "button",
             onClick: () => onSelect(expense),
-            "aria-label": `View ${expense.note || expense.category} ₹${formatINR(expense.amount)}`,
+            "aria-label": `View ${expense.note || expense.category} ${getCurrencySymbol()}${formatINR(expense.amount)}`,
           }
         : {})}
       className={
@@ -68,7 +68,7 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <span className="font-serif text-2xl text-foreground tabular-nums">
-          ₹{formatINR(expense.amount)}
+          {getCurrencySymbol()}{formatINR(expense.amount)}
         </span>
         {onDelete && (
           <span

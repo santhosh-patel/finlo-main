@@ -155,4 +155,15 @@
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--ink-muted));
   }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--ink-muted));
+  }
 }

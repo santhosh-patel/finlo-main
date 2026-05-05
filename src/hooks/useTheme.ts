@@ -5,9 +5,16 @@ const THEME_KEY = "finlo.theme.v1";
 export interface ThemeSettings {
   mode: "light" | "dark" | "system";
   accent: string; // hex
+  currency: string;
+  currencySymbol: string;
 }
 
-const DEFAULT: ThemeSettings = { mode: "dark", accent: "#7DD3FC" };
+const DEFAULT: ThemeSettings = { 
+  mode: "dark", 
+  accent: "#7DD3FC",
+  currency: "INR",
+  currencySymbol: "₹" 
+};
 
 export const ACCENT_PALETTE = [
   "#7DD3FC", // sky

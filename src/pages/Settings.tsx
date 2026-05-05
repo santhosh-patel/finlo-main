@@ -206,15 +206,15 @@ function CategoriesSection({
 
             <div>
               <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted mb-2">Icon</p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto pr-1 pb-1 border border-border/20 rounded-xl p-2 bg-background/50 custom-scrollbar">
                 {CATEGORY_ICON_KEYS.map((key) => {
                   const I = CATEGORY_ICONS[key];
                   const active = c.icon === key;
                   return (
                     <button key={key} type="button"
                       onClick={() => onSetCategoryStyle(c.name, { icon: key })}
-                      className={cn("h-8 w-8 rounded-full flex items-center justify-center transition-colors",
-                        active ? "bg-foreground text-background" : "bg-surface text-ink-muted hover:text-foreground")}
+                      className={cn("h-8 w-8 rounded-lg flex items-center justify-center transition-all",
+                        active ? "bg-foreground text-background scale-90 shadow-sm" : "bg-surface/50 text-ink-muted hover:text-foreground hover:bg-surface")}
                       aria-label={`Use icon ${key}`}>
                       <I className="h-4 w-4" />
                     </button>
@@ -285,6 +285,25 @@ function AppearanceSection({ theme, onUpdateTheme }: Props) {
           ))}
         </div>
       </div>
+      <div>
+        <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium mb-3">Currency</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { code: "INR", symbol: "₹" },
+            { code: "USD", symbol: "$" },
+            { code: "EUR", symbol: "€" },
+            { code: "GBP", symbol: "£" }
+          ].map((c) => (
+            <button key={c.code} onClick={() => onUpdateTheme({ currency: c.code, currencySymbol: c.symbol })}
+              className={cn(
+                "px-4 py-2 rounded-full text-sm border transition-colors",
+                theme.currency === c.code ? "bg-foreground text-background border-foreground" : "border-border text-ink-muted hover:bg-surface"
+              )}>
+              {c.symbol} {c.code}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -321,7 +340,7 @@ function DataSection({
     if (exportFrom && exportTo) {
       suffix = exportFrom === exportTo ? exportFrom
         : (exportFrom.slice(0, 7) === exportTo.slice(0, 7) && exportFrom.endsWith("-01"))
-        ? exportFrom.slice(0, 7) : `${exportFrom}_to_${exportTo}`;
+          ? exportFrom.slice(0, 7) : `${exportFrom}_to_${exportTo}`;
     } else {
       suffix = new Date().toISOString().slice(0, 10);
     }

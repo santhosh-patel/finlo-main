@@ -27,6 +27,9 @@ export const DEFAULT_CATEGORIES: CategoryDef[] = [
   { name: "Shopping", subcategories: ["clothing", "electronics", "gifts"], icon: "ShoppingBag", color: "#E8C9D6" },
   { name: "Rent", subcategories: [], icon: "Home", color: "#D6CFE8" },
   { name: "Misc", subcategories: [], icon: "Wallet", color: "#E0DDD5" },
+  { name: "Salon", subcategories: ["haircut", "spa"], icon: "Heart", color: "#F4C2C2" },
+  { name: "Lending", subcategories: ["friends", "family"], icon: "PiggyBank", color: "#B8D8BA" },
+  { name: "Hehe", subcategories: [], icon: "Film", color: "#FFD6A5" },
 ];
 
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
@@ -35,8 +38,29 @@ export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "card", label: "Card" },
 ];
 
+export function getCurrencySymbol(): string {
+  try {
+    const raw = localStorage.getItem("finlo.theme.v1");
+    if (raw) {
+      const theme = JSON.parse(raw);
+      if (theme.currencySymbol) return theme.currencySymbol;
+    }
+  } catch {}
+  return "₹";
+}
+
 export function formatINR(n: number): string {
-  return new Intl.NumberFormat("en-IN", {
+  let locale = "en-IN";
+  try {
+    const raw = localStorage.getItem("finlo.theme.v1");
+    if (raw) {
+      const theme = JSON.parse(raw);
+      if (theme.currency === "USD") locale = "en-US";
+      else if (theme.currency === "EUR") locale = "de-DE";
+      else if (theme.currency === "GBP") locale = "en-GB";
+    }
+  } catch {}
+  return new Intl.NumberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
@@ -137,7 +161,9 @@ export function dayLabelRich(iso: string): string {
   const today = todayISO();
   if (iso === today) return "Today";
   if (iso === addDays(today, -1)) return "Yesterday";
-  if (iso === addDays(today, -2)) return "Day before yesterday";
+  if (iso === addDays(today, -2)) {
+    return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
+  }
   return fullDateLabel(iso);
 }
 

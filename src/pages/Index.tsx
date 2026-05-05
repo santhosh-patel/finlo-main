@@ -76,6 +76,7 @@ const Index = () => {
   const today = todayISO();
   const yesterday = addDays(today, -1);
   const dayBefore = addDays(today, -2);
+  const dayBeforeName = new Date(dayBefore + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
 
   const [dayAnchor, setDayAnchor] = useState(today);
   const [weekAnchor, setWeekAnchor] = useState(today);
@@ -130,7 +131,7 @@ const Index = () => {
     heroLabel =
       dayAnchor === today ? "Today's outgoings"
       : dayAnchor === yesterday ? "Yesterday"
-      : dayAnchor === dayBefore ? "Day before yesterday"
+      : dayAnchor === dayBefore ? dayBeforeName
       : fullDateLabel(dayAnchor);
     heroTotal = dayTotal;
   } else if (view === "week") {
@@ -147,7 +148,7 @@ const Index = () => {
     view === "today"
       ? (dayAnchor === today ? "Today"
         : dayAnchor === yesterday ? "Yesterday"
-        : dayAnchor === dayBefore ? "Day before yesterday"
+        : dayAnchor === dayBefore ? dayBeforeName
         : new Date(dayAnchor + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }))
       : view === "week" ? weekRangeOf(weekAnchor).label
       : monthRangeOf(monthAnchor).label;
@@ -213,7 +214,7 @@ const Index = () => {
             {heroLabel}
           </span>
           <div className="font-serif text-7xl md:text-8xl font-normal tracking-tight text-foreground flex items-start">
-            <span className="text-ink-muted/40 text-4xl mt-3 mr-1">₹</span>
+            <span className="text-ink-muted/40 text-4xl mt-3 mr-1">{getCurrencySymbol()}</span>
             {formatINR(heroTotal)}
           </div>
         </section>
@@ -244,6 +245,7 @@ const Index = () => {
                   <ExpenseRow
                     key={e.id} expense={e} onSelect={setDetails}
                     onDelete={() => handleAskDelete(e)}
+                    categories={categories}
                   />
                 ))}
               </div>
@@ -253,7 +255,7 @@ const Index = () => {
               <div className="mt-10 space-y-3">
                 {[
                   { date: yesterday, label: "Yesterday" },
-                  { date: dayBefore, label: "Day before yesterday" },
+                  { date: dayBefore, label: dayBeforeName },
                 ].map(({ date, label }) => {
                   const items = expensesByDate(date);
                   const total = sumByDate(date);
@@ -266,7 +268,7 @@ const Index = () => {
                           <span className="text-ink-muted text-xs">({items.length})</span>
                         </span>
                         <span className="font-serif text-base text-foreground tabular-nums">
-                          ₹{formatINR(total)}
+                          {getCurrencySymbol()}{formatINR(total)}
                         </span>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
@@ -275,7 +277,7 @@ const Index = () => {
                         ) : (
                           <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
                             {items.map((e) => (
-                              <ExpenseRow key={e.id} expense={e} onSelect={setDetails} />
+                              <ExpenseRow key={e.id} expense={e} onSelect={setDetails} categories={categories} />
                             ))}
                           </div>
                         )}
@@ -360,7 +362,7 @@ const Index = () => {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDelete
-                ? `₹${formatINR(confirmDelete.amount)} · ${confirmDelete.category}${confirmDelete.note ? ` · ${confirmDelete.note}` : ""}. This can't be undone.`
+                ? `${getCurrencySymbol()}${formatINR(confirmDelete.amount)} · ${confirmDelete.category}${confirmDelete.note ? ` · ${confirmDelete.note}` : ""}. This can't be undone.`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

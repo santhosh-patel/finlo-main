@@ -1,10 +1,11 @@
-import { Expense, dayLabel, formatINR, rangeDays, weekRangeOf } from "@/lib/expenses";
+import { getCurrencySymbol,  Expense, dayLabel, formatINR, rangeDays, weekRangeOf } from "@/lib/expenses";
 import type { CategoryDef } from "@/lib/expenses";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
+import { getColorForCategory } from "@/lib/categoryIcons";
 
 interface Props {
   expenses: Expense[];
@@ -18,33 +19,10 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
   const days = useMemo(() => rangeDays(from, to), [from, to]);
   const [openDay, setOpenDay] = useState<string | null>(null);
 
-  // Blue gradient palette for stacked bar segments (like the reference image)
-  const BLUE_SHADES = [
-    "hsl(220, 80%, 58%)",   // vivid blue (top spend)
-    "hsl(220, 65%, 68%)",   // medium blue
-    "hsl(220, 55%, 76%)",   // soft blue
-    "hsl(225, 45%, 82%)",   // light periwinkle
-    "hsl(225, 35%, 88%)",   // very light
-    "hsl(225, 25%, 92%)",   // near-white blue
-  ];
-
-  // Assign colors by spend rank across the whole week
-  const categoryColorMap = useMemo(() => {
-    const weekTotalsMap: Record<string, number> = {};
-    expenses.forEach((e) => {
-      if (e.date >= from && e.date <= to) {
-        weekTotalsMap[e.category] = (weekTotalsMap[e.category] || 0) + e.amount;
-      }
-    });
-    const sorted = Object.entries(weekTotalsMap).sort(([, a], [, b]) => b - a);
-    const map: Record<string, string> = {};
-    sorted.forEach(([cat], i) => {
-      map[cat] = BLUE_SHADES[Math.min(i, BLUE_SHADES.length - 1)];
-    });
-    return map;
-  }, [expenses, from, to]);
-
-  const colorOf = (name: string) => categoryColorMap[name] || BLUE_SHADES[BLUE_SHADES.length - 1];
+  const colorOf = (name: string) => {
+    const cat = categories.find((c) => c.name === name);
+    return getColorForCategory(name, cat?.color);
+  };
 
   const byDay = useMemo(() => {
     const map = new Map<string, Expense[]>();
@@ -88,21 +66,21 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
     <section className="mt-8">
       <div className="flex items-baseline justify-between mb-6">
         <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted">{label}</h3>
-        <span className="font-serif text-xl text-foreground tabular-nums">₹{formatINR(weekTotal)}</span>
+        <span className="font-serif text-xl text-foreground tabular-nums">{getCurrencySymbol()}{formatINR(weekTotal)}</span>
       </div>
 
       {legend.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 mb-6 px-1">
           {legend.map((l) => (
             <span key={l.category} className="inline-flex items-center gap-1.5 text-[11px] text-ink-muted">
-              <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: colorOf(l.category) }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colorOf(l.category) }} />
               {l.category}
             </span>
           ))}
         </div>
       )}
 
-      <div className="flex items-end justify-between gap-3 h-52 px-1 mb-8">
+      <div className="flex items-end justify-between gap-1.5 h-64 px-1 mb-8">
         {dayStats.map((d) => {
           const heightPct = (d.total / maxTotal) * 100;
           const isOpen = openDay === d.date;
@@ -110,18 +88,18 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
             <button
               type="button" key={d.date}
               onClick={() => setOpenDay(isOpen ? null : d.date)}
-              className="flex-1 flex flex-col items-center gap-1.5 group"
+              className="flex-1 flex flex-col items-center gap-2 group h-full justify-end"
             >
-              <span className="text-[10px] tabular-nums text-ink-muted">
+              <span className="text-[10px] tabular-nums text-ink-muted mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {d.total > 0 ? Math.round(d.total) : ""}
               </span>
               <div className="w-full flex-1 flex items-end">
                 <div
                   className={cn(
-                    "w-full rounded-t-lg overflow-hidden flex flex-col-reverse transition-all group-hover:opacity-90",
-                    isOpen && "ring-2 ring-foreground/40"
+                    "w-full rounded-t-lg overflow-hidden flex flex-col-reverse transition-all duration-500 ease-out group-hover:opacity-90",
+                    isOpen && "ring-2 ring-foreground/20 ring-offset-1 ring-offset-background"
                   )}
-                  style={{ height: `${Math.max(heightPct, d.total > 0 ? 8 : 3)}%`, minHeight: 4 }}
+                  style={{ height: `${heightPct}%`, minHeight: d.total > 0 ? 4 : 2 }}
                 >
                   {d.total === 0 ? (
                     <div className="w-full h-full bg-surface/40" />
@@ -129,12 +107,11 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
                     d.segments.map((s) => (
                       <div
                         key={s.category}
-                        title={`${s.category} · ₹${formatINR(s.amount)}`}
+                        title={`${s.category} · ${getCurrencySymbol()}${formatINR(s.amount)}`}
                         className="w-full"
                         style={{
                           height: `${(s.amount / d.total) * 100}%`,
                           backgroundColor: colorOf(s.category),
-                          minHeight: 2,
                         }}
                       />
                     ))
@@ -143,8 +120,8 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
               </div>
               <span
                 className={cn(
-                  "text-[10px] tracking-wider uppercase",
-                  isOpen ? "text-foreground font-medium" : "text-ink-muted"
+                  "text-[10px] tracking-wider uppercase mt-1",
+                  isOpen ? "text-foreground font-semibold" : "text-ink-muted"
                 )}
               >{dayLabel(d.date)}</span>
             </button>
@@ -166,12 +143,12 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
                   {new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
                   <span className="text-ink-muted text-xs">({items.length})</span>
                 </span>
-                <span className="font-serif text-base text-foreground tabular-nums">₹{formatINR(dayTotal)}</span>
+                <span className="font-serif text-base text-foreground tabular-nums">{getCurrencySymbol()}{formatINR(dayTotal)}</span>
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
                   {items.map((e) => (
-                    <ExpenseRow key={e.id} expense={e} onSelect={onSelect} />
+                    <ExpenseRow key={e.id} expense={e} onSelect={onSelect} categories={categories} />
                   ))}
                 </div>
               </CollapsibleContent>

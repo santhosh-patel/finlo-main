@@ -1,7 +1,7 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SearchFilters, FilterState } from "@/components/SearchFilters";
 import { ExpenseRow } from "@/components/ExpenseRow";
-import { CategoryDef, Expense, downloadCSV, expensesToCSV, formatINR, todayISO } from "@/lib/expenses";
+import { getCurrencySymbol, CategoryDef, Expense, downloadCSV, expensesToCSV, formatINR, todayISO } from "@/lib/expenses";
 import { useMemo } from "react";
 
 interface Props {
@@ -97,7 +97,7 @@ export function SearchOverlay({
               Filtered total
             </span>
             <span className="font-serif text-xl text-foreground tabular-nums">
-              ₹{formatINR(total)}
+              {getCurrencySymbol()}{formatINR(total)}
             </span>
           </div>
         )}
@@ -114,6 +114,7 @@ export function SearchOverlay({
                 expense={e}
                 showDate
                 onSelect={() => onSelect(e)}
+                categories={categories}
               />
             ))}
           </div>

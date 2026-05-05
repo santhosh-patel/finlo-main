@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { CategoryDef, formatINR, todayISO } from "@/lib/expenses";
+import { getCurrencySymbol, CategoryDef, formatINR, todayISO } from "@/lib/expenses";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -176,7 +176,7 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
             <div key={r.id} className="rounded-2xl border border-border/40 bg-surface/30 p-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-serif text-lg text-foreground tabular-nums">₹{formatINR(r.amount)}</span>
+                  <span className="font-serif text-lg text-foreground tabular-nums">{getCurrencySymbol()}{formatINR(r.amount)}</span>
                   <span className="text-xs text-foreground">{r.category}</span>
                 </div>
                 <p className="text-[11px] text-ink-muted truncate">

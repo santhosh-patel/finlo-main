@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Expense, PaymentMethod, todayISO } from "@/lib/expenses";
+import { getCurrencySymbol, Expense, PaymentMethod, todayISO } from "@/lib/expenses";
 import * as XLSX from "xlsx";
 import { Upload, FileWarning, CheckCircle2 } from "lucide-react";
 
@@ -142,7 +142,7 @@ export function ImportSheet({ open, onOpenChange, onImport }: Props) {
                   {rows.slice(0, 50).map((r, i) => (
                     <div key={i} className="py-2 flex justify-between text-xs">
                       <span className="text-foreground">{r.date} · {r.category}{r.note ? ` · ${r.note}` : ""}</span>
-                      <span className="tabular-nums text-foreground">₹{r.amount.toFixed(2)}</span>
+                      <span className="tabular-nums text-foreground">{getCurrencySymbol()}{r.amount.toFixed(2)}</span>
                     </div>
                   ))}
                   {rows.length > 50 && (
