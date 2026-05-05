@@ -290,12 +290,14 @@ function AppearanceSection({ theme, onUpdateTheme }: Props) {
 }
 
 function DataSection({
-  onOpenBudgets, onOpenImport, onOpenSearch, onOpenChange,
+  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenChange,
   onSync, syncing, lastSync, onExportData, onRestoreData, profile,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [restoreMode, setRestoreMode] = useState<"merge" | "replace">("merge");
   const [restoring, setRestoring] = useState(false);
+  const [exportFrom, setExportFrom] = useState<string>("");
+  const [exportTo, setExportTo] = useState<string>("");
 
   const item = (label: string, desc: string, onClick: () => void, icon?: React.ReactNode) => (
     <button onClick={onClick}
@@ -311,14 +313,25 @@ function DataSection({
   const handleExportJSON = () => {
     const data = onExportData();
     const username = (profile.name || profile.email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const date = new Date().toISOString().slice(0, 10);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    let filtered = data.expenses;
+    if (exportFrom) filtered = filtered.filter((e) => e.date >= exportFrom);
+    if (exportTo) filtered = filtered.filter((e) => e.date <= exportTo);
+    const payload = { ...data, expenses: filtered, range: { from: exportFrom || null, to: exportTo || null } };
+    let suffix: string;
+    if (exportFrom && exportTo) {
+      suffix = exportFrom === exportTo ? exportFrom
+        : (exportFrom.slice(0, 7) === exportTo.slice(0, 7) && exportFrom.endsWith("-01"))
+        ? exportFrom.slice(0, 7) : `${exportFrom}_to_${exportTo}`;
+    } else {
+      suffix = new Date().toISOString().slice(0, 10);
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `finlo-backup-${username}-${date}.json`;
+    a.href = url; a.download = `finlo-${username}-${suffix}.json`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast({ title: "Backup downloaded" });
+    toast({ title: "Backup downloaded", description: `${filtered.length} expense(s)` });
   };
 
   const handleRestoreFile = async (f: File) => {
