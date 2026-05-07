@@ -12,6 +12,8 @@ import {
   PaymentMethod,
   formatINR,
   todayISO,
+  TxnType,
+  INCOME_CATEGORIES,
 } from "@/lib/expenses";
 import { Plus, AlertCircle } from "lucide-react";
 
