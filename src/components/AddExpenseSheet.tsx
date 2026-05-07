@@ -35,6 +35,7 @@ export function AddExpenseSheet({
   budgets = {}, spentByCategory = {}
 }: Props) {
   const isEdit = !!editing;
+  const [txnType, setTxnType] = useState<TxnType>("expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>(categories[0]?.name ?? "Food");
   const [subcategory, setSubcategory] = useState<string>("");
@@ -48,6 +49,8 @@ export function AddExpenseSheet({
   const [errors, setErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
   const [submitted, setSubmitted] = useState(false);
   const [subSearch, setSubSearch] = useState("");
+
+  const activeCategories = txnType === "income" ? INCOME_CATEGORIES : categories;
   const amountRef = useRef<HTMLInputElement>(null);
   
   const budgetLimit = budgets[category] || 0;
