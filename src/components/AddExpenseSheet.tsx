@@ -67,8 +67,8 @@ export function AddExpenseSheet({
   const isCloseToBudget = budgetLimit > 0 && !isOverBudget && totalWithDraft > (budgetLimit * 0.8);
 
   const subs = useMemo(
-    () => categories.find((c) => c.name === category)?.subcategories ?? [],
-    [category, categories]
+    () => activeCategories.find((c) => c.name === category)?.subcategories ?? [],
+    [category, activeCategories]
   );
 
   const filteredSubs = useMemo(() => {
@@ -80,6 +80,7 @@ export function AddExpenseSheet({
     if (open) {
       setSubSearch("");
       if (editing) {
+        setTxnType(editing.type ?? "expense");
         setAmount(String(editing.amount));
         setCategory(editing.category);
         setSubcategory(editing.subcategory ?? "");
@@ -87,6 +88,7 @@ export function AddExpenseSheet({
         setDate(editing.date);
         setPayment(editing.payment_method);
       } else {
+        setTxnType("expense");
         setAmount("");
         setCategory(categories[0]?.name ?? "Food");
         setSubcategory("");
