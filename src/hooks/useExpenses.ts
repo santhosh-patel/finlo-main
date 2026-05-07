@@ -111,7 +111,7 @@ export function useExpenses(userId: string | null) {
       supabase.from("budgets").select("*").eq("user_id", userId),
     ]);
     if (exp) {
-      setExpenses(exp.map((r) => ({
+      setExpenses(exp.map((r: any) => ({
         id: r.id,
         amount: Number(r.amount),
         category: r.category,
@@ -120,6 +120,9 @@ export function useExpenses(userId: string | null) {
         date: r.date,
         payment_method: (r.payment_method as Expense["payment_method"]) ?? "upi",
         created_at: r.created_at,
+        type: (r.type as Expense["type"]) ?? "expense",
+        currency: r.currency ?? "INR",
+        is_reimbursable: !!r.is_reimbursable,
       })));
     }
     if (cat) {
