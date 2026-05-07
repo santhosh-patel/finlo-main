@@ -168,6 +168,33 @@ export function AddExpenseSheet({
         </SheetHeader>
 
         <form onSubmit={submit} className="mt-6 space-y-8 pb-8">
+          {/* Type toggle */}
+          <div className="flex p-1 rounded-full bg-surface/60 border border-border/40">
+            {(["expense", "income"] as TxnType[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  if (t === txnType) return;
+                  setTxnType(t);
+                  const list = t === "income" ? INCOME_CATEGORIES : categories;
+                  setCategory(list[0]?.name ?? "");
+                  setSubcategory("");
+                }}
+                className={cn(
+                  "flex-1 px-4 py-2 rounded-full text-sm font-medium capitalize transition-colors",
+                  txnType === t
+                    ? t === "income"
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      : "bg-foreground text-background"
+                    : "text-ink-muted"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
           {/* Amount */}
           <div
             className={cn(
