@@ -12,6 +12,8 @@ import {
   PaymentMethod,
   formatINR,
   todayISO,
+  TxnType,
+  INCOME_CATEGORIES,
 } from "@/lib/expenses";
 import { Plus, AlertCircle } from "lucide-react";
 
@@ -33,6 +35,7 @@ export function AddExpenseSheet({
   budgets = {}, spentByCategory = {}
 }: Props) {
   const isEdit = !!editing;
+  const [txnType, setTxnType] = useState<TxnType>("expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>(categories[0]?.name ?? "Food");
   const [subcategory, setSubcategory] = useState<string>("");
@@ -46,6 +49,8 @@ export function AddExpenseSheet({
   const [errors, setErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
   const [submitted, setSubmitted] = useState(false);
   const [subSearch, setSubSearch] = useState("");
+
+  const activeCategories = txnType === "income" ? INCOME_CATEGORIES : categories;
   const amountRef = useRef<HTMLInputElement>(null);
   
   const budgetLimit = budgets[category] || 0;
@@ -62,8 +67,8 @@ export function AddExpenseSheet({
   const isCloseToBudget = budgetLimit > 0 && !isOverBudget && totalWithDraft > (budgetLimit * 0.8);
 
   const subs = useMemo(
-    () => categories.find((c) => c.name === category)?.subcategories ?? [],
-    [category, categories]
+    () => activeCategories.find((c) => c.name === category)?.subcategories ?? [],
+    [category, activeCategories]
   );
 
   const filteredSubs = useMemo(() => {
@@ -75,6 +80,7 @@ export function AddExpenseSheet({
     if (open) {
       setSubSearch("");
       if (editing) {
+        setTxnType(editing.type ?? "expense");
         setAmount(String(editing.amount));
         setCategory(editing.category);
         setSubcategory(editing.subcategory ?? "");
@@ -82,6 +88,7 @@ export function AddExpenseSheet({
         setDate(editing.date);
         setPayment(editing.payment_method);
       } else {
+        setTxnType("expense");
         setAmount("");
         setCategory(categories[0]?.name ?? "Food");
         setSubcategory("");
@@ -135,6 +142,7 @@ export function AddExpenseSheet({
       note: note.trim() || undefined,
       date,
       payment_method: payment,
+      type: txnType,
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);
@@ -160,6 +168,33 @@ export function AddExpenseSheet({
         </SheetHeader>
 
         <form onSubmit={submit} className="mt-6 space-y-8 pb-8">
+          {/* Type toggle */}
+          <div className="flex p-1 rounded-full bg-surface/60 border border-border/40">
+            {(["expense", "income"] as TxnType[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  if (t === txnType) return;
+                  setTxnType(t);
+                  const list = t === "income" ? INCOME_CATEGORIES : categories;
+                  setCategory(list[0]?.name ?? "");
+                  setSubcategory("");
+                }}
+                className={cn(
+                  "flex-1 px-4 py-2 rounded-full text-sm font-medium capitalize transition-colors",
+                  txnType === t
+                    ? t === "income"
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      : "bg-foreground text-background"
+                    : "text-ink-muted"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
           {/* Amount */}
           <div
             className={cn(
@@ -189,7 +224,7 @@ export function AddExpenseSheet({
               </p>
             )}
             
-            {budgetLimit > 0 && (draftAmount > 0 || isEdit) && (
+            {txnType === "expense" && budgetLimit > 0 && (draftAmount > 0 || isEdit) && (
               <div className={cn(
                 "mt-3 flex items-center gap-2 text-[11px] font-medium px-2 py-1.5 rounded-lg transition-colors",
                 isOverBudget ? "text-destructive bg-destructive/5" : 
@@ -222,7 +257,7 @@ export function AddExpenseSheet({
               Category
             </Label>
             <div className="flex flex-wrap gap-2">
-              {categories.map((c) => (
+              {activeCategories.map((c) => (
                 <button
                   key={c.name}
                   type="button"

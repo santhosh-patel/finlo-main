@@ -107,41 +107,336 @@ export type Database = {
         }
         Relationships: []
       }
-      expenses: {
+      category_suggestions: {
+        Row: {
+          category: string
+          confidence: number
+          created_at: string
+          note_normalized: string
+          subcategory: string | null
+          user_id: string
+        }
+        Insert: {
+          category: string
+          confidence?: number
+          created_at?: string
+          note_normalized: string
+          subcategory?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string
+          confidence?: number
+          created_at?: string
+          note_normalized?: string
+          subcategory?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      expense_history: {
+        Row: {
+          action: string
+          changed_at: string
+          expense_id: string
+          id: string
+          snapshot: Json
+          user_id: string
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          expense_id: string
+          id?: string
+          snapshot: Json
+          user_id: string
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          expense_id?: string
+          id?: string
+          snapshot?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      expense_splits: {
         Row: {
           amount: number
           category: string
           created_at: string
-          date: string
           id: string
           note: string | null
-          payment_method: string
+          parent_expense_id: string
           subcategory: string | null
-          updated_at: string
           user_id: string
         }
         Insert: {
           amount: number
           category: string
           created_at?: string
-          date: string
           id?: string
           note?: string | null
-          payment_method?: string
+          parent_expense_id: string
           subcategory?: string | null
-          updated_at?: string
           user_id: string
         }
         Update: {
           amount?: number
           category?: string
           created_at?: string
-          date?: string
           id?: string
           note?: string | null
-          payment_method?: string
+          parent_expense_id?: string
           subcategory?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_splits_parent_expense_id_fkey"
+            columns: ["parent_expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_tags: {
+        Row: {
+          expense_id: string
+          tag_id: string
+          user_id: string
+        }
+        Insert: {
+          expense_id: string
+          tag_id: string
+          user_id: string
+        }
+        Update: {
+          expense_id?: string
+          tag_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_tags_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          auto_generated: boolean
+          base_amount: number | null
+          category: string
+          client_updated_at: string
+          created_at: string
+          currency: string
+          date: string
+          deleted_at: string | null
+          fx_rate: number
+          id: string
+          import_hash: string | null
+          is_reimbursable: boolean
+          note: string | null
+          payment_method: string
+          receipt_url: string | null
+          reimbursed_at: string | null
+          subcategory: string | null
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          auto_generated?: boolean
+          base_amount?: number | null
+          category: string
+          client_updated_at?: string
+          created_at?: string
+          currency?: string
+          date: string
+          deleted_at?: string | null
+          fx_rate?: number
+          id?: string
+          import_hash?: string | null
+          is_reimbursable?: boolean
+          note?: string | null
+          payment_method?: string
+          receipt_url?: string | null
+          reimbursed_at?: string | null
+          subcategory?: string | null
+          type?: string
           updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          auto_generated?: boolean
+          base_amount?: number | null
+          category?: string
+          client_updated_at?: string
+          created_at?: string
+          currency?: string
+          date?: string
+          deleted_at?: string | null
+          fx_rate?: number
+          id?: string
+          import_hash?: string | null
+          is_reimbursable?: boolean
+          note?: string | null
+          payment_method?: string
+          receipt_url?: string | null
+          reimbursed_at?: string | null
+          subcategory?: string | null
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      fx_rates: {
+        Row: {
+          base: string
+          date: string
+          quote: string
+          rate: number
+        }
+        Insert: {
+          base: string
+          date: string
+          quote: string
+          rate: number
+        }
+        Update: {
+          base?: string
+          date?: string
+          quote?: string
+          rate?: number
+        }
+        Relationships: []
+      }
+      insight_cache: {
+        Row: {
+          created_at: string
+          expires_at: string
+          key: string
+          payload: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          key: string
+          payload: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          key?: string
+          payload?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      loans: {
+        Row: {
+          amount: number
+          counterparty: string
+          created_at: string
+          currency: string
+          date: string
+          direction: string
+          due_date: string | null
+          expense_id: string | null
+          id: string
+          note: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          counterparty: string
+          created_at?: string
+          currency?: string
+          date: string
+          direction: string
+          due_date?: string | null
+          expense_id?: string | null
+          id?: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          counterparty?: string
+          created_at?: string
+          currency?: string
+          date?: string
+          direction?: string
+          due_date?: string | null
+          expense_id?: string | null
+          id?: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loans_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          kind: string
+          link: string | null
+          read_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          link?: string | null
+          read_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          link?: string | null
+          read_at?: string | null
+          title?: string
           user_id?: string
         }
         Relationships: []
@@ -223,6 +518,30 @@ export type Database = {
           payment_method?: string
           subcategory?: string | null
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tags: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
           user_id?: string
         }
         Relationships: []

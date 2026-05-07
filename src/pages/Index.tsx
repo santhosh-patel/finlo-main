@@ -92,20 +92,26 @@ const Index = () => {
     else if (fresh !== details) setDetails(fresh);
   }, [expenses, details]);
 
+  const isExp = (e: Expense) => (e.type ?? "expense") === "expense";
+  const isInc = (e: Expense) => e.type === "income";
+  const sumOut = (rows: Expense[]) => rows.filter(isExp).reduce((a, b) => a + b.amount, 0);
+  const sumIn = (rows: Expense[]) => rows.filter(isInc).reduce((a, b) => a + b.amount, 0);
+
   const dayExpenses = useMemo(
     () => expenses.filter((e) => e.date === dayAnchor),
     [expenses, dayAnchor]
   );
-  const dayTotal = dayExpenses.reduce((a, b) => a + b.amount, 0);
+  const dayTotal = sumOut(dayExpenses);
+  const dayIncome = sumIn(dayExpenses);
 
   const expensesByDate = (d: string) => expenses.filter((e) => e.date === d);
-  const sumByDate = (d: string) => expensesByDate(d).reduce((a, b) => a + b.amount, 0);
+  const sumByDate = (d: string) => sumOut(expensesByDate(d));
 
   const monthStart = startOfMonthISO();
   const spentByCategory = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e) => {
-      if (e.date >= monthStart) map[e.category] = (map[e.category] || 0) + e.amount;
+      if (e.date >= monthStart && isExp(e)) map[e.category] = (map[e.category] || 0) + e.amount;
     });
     return map;
   }, [expenses, monthStart]);
@@ -126,6 +132,7 @@ const Index = () => {
 
   let heroLabel = "Today's outgoings";
   let heroTotal = dayTotal;
+  let heroIncome = dayIncome;
   if (view === "today") {
     heroLabel =
       dayAnchor === today ? "Today's outgoings"
@@ -133,15 +140,21 @@ const Index = () => {
       : dayAnchor === dayBefore ? dayBeforeName
       : fullDateLabel(dayAnchor);
     heroTotal = dayTotal;
+    heroIncome = dayIncome;
   } else if (view === "week") {
     const r = weekRangeOf(weekAnchor);
     heroLabel = "Week total";
-    heroTotal = expenses.filter((e) => e.date >= r.from && e.date <= r.to).reduce((a, b) => a + b.amount, 0);
+    const rows = expenses.filter((e) => e.date >= r.from && e.date <= r.to);
+    heroTotal = sumOut(rows);
+    heroIncome = sumIn(rows);
   } else {
     const r = monthRangeOf(monthAnchor);
     heroLabel = "Month total";
-    heroTotal = expenses.filter((e) => e.date >= r.from && e.date <= r.to).reduce((a, b) => a + b.amount, 0);
+    const rows = expenses.filter((e) => e.date >= r.from && e.date <= r.to);
+    heroTotal = sumOut(rows);
+    heroIncome = sumIn(rows);
   }
+  const heroNet = heroIncome - heroTotal;
 
   const periodLabel =
     view === "today"
@@ -216,6 +229,20 @@ const Index = () => {
             <span className="text-ink-muted/40 text-4xl mt-3 mr-1">{getCurrencySymbol()}</span>
             {formatINR(heroTotal)}
           </div>
+          {(heroIncome > 0 || heroNet !== -heroTotal) && (
+            <div className="flex items-center gap-4 text-xs">
+              <span className="text-emerald-600 dark:text-emerald-400">
+                + {getCurrencySymbol()}{formatINR(heroIncome)} in
+              </span>
+              <span className="text-ink-muted">·</span>
+              <span className={cn(
+                "font-medium",
+                heroNet >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
+              )}>
+                Net {heroNet >= 0 ? "+" : "−"}{getCurrencySymbol()}{formatINR(Math.abs(heroNet))}
+              </span>
+            </div>
+          )}
         </section>
 
         <PeriodNav label={periodLabel} onPrev={onPrev} onNext={onNext} canNext={canNext} />

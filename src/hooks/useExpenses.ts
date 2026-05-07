@@ -75,6 +75,9 @@ export function useExpenses(userId: string | null) {
             note: op.row.note ?? null,
             date: op.row.date,
             payment_method: op.row.payment_method,
+            type: op.row.type ?? "expense",
+            currency: op.row.currency ?? "INR",
+            is_reimbursable: op.row.is_reimbursable ?? false,
           });
         } else if (op.kind === "update") {
           await supabase.from("expenses").update({
@@ -84,6 +87,9 @@ export function useExpenses(userId: string | null) {
             ...(op.patch.note !== undefined && { note: op.patch.note ?? null }),
             ...(op.patch.date !== undefined && { date: op.patch.date }),
             ...(op.patch.payment_method !== undefined && { payment_method: op.patch.payment_method }),
+            ...(op.patch.type !== undefined && { type: op.patch.type }),
+            ...(op.patch.currency !== undefined && { currency: op.patch.currency }),
+            ...(op.patch.is_reimbursable !== undefined && { is_reimbursable: op.patch.is_reimbursable }),
           }).eq("id", op.id);
         } else if (op.kind === "delete") {
           await supabase.from("expenses").delete().eq("id", op.id);
@@ -105,7 +111,7 @@ export function useExpenses(userId: string | null) {
       supabase.from("budgets").select("*").eq("user_id", userId),
     ]);
     if (exp) {
-      setExpenses(exp.map((r) => ({
+      setExpenses(exp.map((r: any) => ({
         id: r.id,
         amount: Number(r.amount),
         category: r.category,
@@ -114,6 +120,9 @@ export function useExpenses(userId: string | null) {
         date: r.date,
         payment_method: (r.payment_method as Expense["payment_method"]) ?? "upi",
         created_at: r.created_at,
+        type: (r.type as Expense["type"]) ?? "expense",
+        currency: r.currency ?? "INR",
+        is_reimbursable: !!r.is_reimbursable,
       })));
     }
     if (cat) {
@@ -223,6 +232,9 @@ export function useExpenses(userId: string | null) {
         id: newE.id, user_id: userId, amount: newE.amount, category: newE.category,
         subcategory: newE.subcategory ?? null, note: newE.note ?? null,
         date: newE.date, payment_method: newE.payment_method,
+        type: newE.type ?? "expense",
+        currency: newE.currency ?? "INR",
+        is_reimbursable: newE.is_reimbursable ?? false,
       }).then(({ error }) => { if (error) queue({ kind: "insert", row: newE }); });
     } else {
       queue({ kind: "insert", row: newE });
@@ -240,6 +252,9 @@ export function useExpenses(userId: string | null) {
         ...(patch.note !== undefined && { note: patch.note ?? null }),
         ...(patch.date !== undefined && { date: patch.date }),
         ...(patch.payment_method !== undefined && { payment_method: patch.payment_method }),
+        ...(patch.type !== undefined && { type: patch.type }),
+        ...(patch.currency !== undefined && { currency: patch.currency }),
+        ...(patch.is_reimbursable !== undefined && { is_reimbursable: patch.is_reimbursable }),
       }).eq("id", id).then(({ error }) => { if (error) queue({ kind: "update", id, patch }); });
     } else {
       queue({ kind: "update", id, patch });
