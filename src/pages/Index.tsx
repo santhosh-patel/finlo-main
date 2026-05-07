@@ -13,6 +13,7 @@ import { BudgetsSheet } from "@/components/BudgetsSheet";
 import { ImportSheet } from "@/components/ImportSheet";
 import { RecurringSheet } from "@/components/RecurringSheet";
 import { PeriodNav } from "@/components/PeriodNav";
+import { cn } from "@/lib/utils";
 import Settings from "@/pages/Settings";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
