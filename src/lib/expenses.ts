@@ -1,4 +1,5 @@
 export type PaymentMethod = "upi" | "cash" | "card";
+export type TxnType = "expense" | "income";
 
 export interface Expense {
   id: string;
@@ -9,7 +10,17 @@ export interface Expense {
   date: string; // ISO yyyy-mm-dd
   payment_method: PaymentMethod;
   created_at: string; // ISO datetime
+  type?: TxnType; // defaults to "expense" when missing
+  currency?: string; // ISO 4217, defaults to user base
+  is_reimbursable?: boolean;
 }
+
+export const INCOME_CATEGORIES: CategoryDef[] = [
+  { name: "Salary", subcategories: [], icon: "PiggyBank", color: "#B8D8BA" },
+  { name: "Freelance", subcategories: [], icon: "Wallet", color: "#C8D6E5" },
+  { name: "Refund", subcategories: [], icon: "ShoppingBag", color: "#E8C9D6" },
+  { name: "Other Income", subcategories: [], icon: "Heart", color: "#FFD6A5" },
+];
 
 export interface CategoryDef {
   name: string;
