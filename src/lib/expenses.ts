@@ -37,6 +37,13 @@ export const DEFAULT_CATEGORIES: CategoryDef[] = [
   { name: "Hehe", subcategories: [], icon: "Film", color: "#FFD6A5" },
 ];
 
+export const INCOME_CATEGORIES: CategoryDef[] = [
+  { name: "Salary", subcategories: [], icon: "PiggyBank", color: "#B8D8BA" },
+  { name: "Freelance", subcategories: [], icon: "Wallet", color: "#C8D6E5" },
+  { name: "Refund", subcategories: [], icon: "ShoppingBag", color: "#E8C9D6" },
+  { name: "Other Income", subcategories: [], icon: "Heart", color: "#FFD6A5" },
+];
+
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "upi", label: "UPI" },
   { value: "cash", label: "Cash" },
