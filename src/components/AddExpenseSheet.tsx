@@ -257,7 +257,7 @@ export function AddExpenseSheet({
               Category
             </Label>
             <div className="flex flex-wrap gap-2">
-              {categories.map((c) => (
+              {activeCategories.map((c) => (
                 <button
                   key={c.name}
                   type="button"
