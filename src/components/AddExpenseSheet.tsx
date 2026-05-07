@@ -142,6 +142,7 @@ export function AddExpenseSheet({
       note: note.trim() || undefined,
       date,
       payment_method: payment,
+      type: txnType,
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);
