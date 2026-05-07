@@ -229,6 +229,20 @@ const Index = () => {
             <span className="text-ink-muted/40 text-4xl mt-3 mr-1">{getCurrencySymbol()}</span>
             {formatINR(heroTotal)}
           </div>
+          {(heroIncome > 0 || heroNet !== -heroTotal) && (
+            <div className="flex items-center gap-4 text-xs">
+              <span className="text-emerald-600 dark:text-emerald-400">
+                + {getCurrencySymbol()}{formatINR(heroIncome)} in
+              </span>
+              <span className="text-ink-muted">·</span>
+              <span className={cn(
+                "font-medium",
+                heroNet >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
+              )}>
+                Net {heroNet >= 0 ? "+" : "−"}{getCurrencySymbol()}{formatINR(Math.abs(heroNet))}
+              </span>
+            </div>
+          )}
         </section>
 
         <PeriodNav label={periodLabel} onPrev={onPrev} onNext={onNext} canNext={canNext} />
