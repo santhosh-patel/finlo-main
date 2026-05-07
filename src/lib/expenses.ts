@@ -15,12 +15,6 @@ export interface Expense {
   is_reimbursable?: boolean;
 }
 
-export const INCOME_CATEGORIES: CategoryDef[] = [
-  { name: "Salary", subcategories: [], icon: "PiggyBank", color: "#B8D8BA" },
-  { name: "Freelance", subcategories: [], icon: "Wallet", color: "#C8D6E5" },
-  { name: "Refund", subcategories: [], icon: "ShoppingBag", color: "#E8C9D6" },
-  { name: "Other Income", subcategories: [], icon: "Heart", color: "#FFD6A5" },
-];
 
 export interface CategoryDef {
   name: string;
