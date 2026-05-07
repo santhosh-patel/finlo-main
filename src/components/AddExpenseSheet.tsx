@@ -224,7 +224,7 @@ export function AddExpenseSheet({
               </p>
             )}
             
-            {budgetLimit > 0 && (draftAmount > 0 || isEdit) && (
+            {txnType === "expense" && budgetLimit > 0 && (draftAmount > 0 || isEdit) && (
               <div className={cn(
                 "mt-3 flex items-center gap-2 text-[11px] font-medium px-2 py-1.5 rounded-lg transition-colors",
                 isOverBudget ? "text-destructive bg-destructive/5" : 
