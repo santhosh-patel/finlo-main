@@ -40,9 +40,9 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
   // Per day: { total, segments: [{ category, amount }] }
   const dayStats = days.map((d) => {
     const items = byDay.get(d) || [];
-    const total = items.reduce((a, b) => a + b.amount, 0);
+    const total = items.reduce((a, b) => a + baseAmountOf(b), 0);
     const m: Record<string, number> = {};
-    items.forEach((e) => { m[e.category] = (m[e.category] || 0) + e.amount; });
+    items.forEach((e) => { m[e.category] = (m[e.category] || 0) + baseAmountOf(e); });
     const segments = Object.entries(m)
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount);
