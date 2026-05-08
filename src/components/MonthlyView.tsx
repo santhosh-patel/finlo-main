@@ -36,18 +36,18 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   const [chartType, setChartType] = useState<"pie" | "trend">("pie");
 
   const monthExpenses = useMemo(
-    () => expenses.filter((e) => e.date >= from && e.date <= to),
+    () => expenses.filter((e) => e.date >= from && e.date <= to && (e.type ?? "expense") === "expense"),
     [expenses, from, to]
   );
 
-  const total = monthExpenses.reduce((a, b) => a + b.amount, 0);
+  const total = monthExpenses.reduce((a, b) => a + baseAmountOf(b), 0);
   const count = monthExpenses.length;
   const avg = count > 0 ? total / count : 0;
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
     monthExpenses.forEach((e) =>
-      map.set(e.category, (map.get(e.category) || 0) + e.amount)
+      map.set(e.category, (map.get(e.category) || 0) + baseAmountOf(e))
     );
     return Array.from(map.entries())
       .map(([category, amount]) => ({ category, amount }))
@@ -56,9 +56,9 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
 
   const top = byCategory[0];
 
-  // Top 5 largest transactions
+  // Top 5 largest transactions (by base amount)
   const top5 = useMemo(() =>
-    [...monthExpenses].sort((a, b) => b.amount - a.amount).slice(0, 5),
+    [...monthExpenses].sort((a, b) => baseAmountOf(b) - baseAmountOf(a)).slice(0, 5),
     [monthExpenses]
   );
 
