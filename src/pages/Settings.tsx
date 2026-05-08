@@ -36,6 +36,7 @@ interface Props {
   onOpenImport: () => void;
   onOpenSearch: () => void;
   onOpenRecurring: () => void;
+  onOpenLoans: () => void;
   profile: Profile;
   onUpdateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
   theme: ThemeSettings;
