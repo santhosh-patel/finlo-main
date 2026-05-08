@@ -15,6 +15,8 @@ import {
   TxnType,
   INCOME_CATEGORIES,
 } from "@/lib/expenses";
+import { SUPPORTED_CURRENCIES, CURRENCY_SYMBOLS, getBaseCurrency, getFxRateSync, refreshFxRates } from "@/lib/fx";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, AlertCircle } from "lucide-react";
 
 interface Props {
