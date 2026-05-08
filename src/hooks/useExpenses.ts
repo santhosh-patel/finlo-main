@@ -124,6 +124,8 @@ export function useExpenses(userId: string | null) {
         created_at: r.created_at,
         type: (r.type as Expense["type"]) ?? "expense",
         currency: r.currency ?? "INR",
+        fx_rate: r.fx_rate != null ? Number(r.fx_rate) : 1,
+        base_amount: r.base_amount != null ? Number(r.base_amount) : undefined,
         is_reimbursable: !!r.is_reimbursable,
       })));
     }
