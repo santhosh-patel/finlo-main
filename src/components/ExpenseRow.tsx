@@ -1,4 +1,5 @@
-import { getCurrencySymbol,  Expense, formatINR } from "@/lib/expenses";
+import { getCurrencySymbol,  Expense, formatINR, baseAmountOf } from "@/lib/expenses";
+import { CURRENCY_SYMBOLS, getBaseCurrency } from "@/lib/fx";
 import { Trash2 } from "lucide-react";
 import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
 import type { CategoryDef } from "@/lib/expenses";
