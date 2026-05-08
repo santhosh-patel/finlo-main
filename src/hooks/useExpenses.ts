@@ -77,6 +77,7 @@ export function useExpenses(userId: string | null) {
             payment_method: op.row.payment_method,
             type: op.row.type ?? "expense",
             currency: op.row.currency ?? "INR",
+            fx_rate: op.row.fx_rate ?? 1,
             is_reimbursable: op.row.is_reimbursable ?? false,
           });
         } else if (op.kind === "update") {
@@ -89,6 +90,7 @@ export function useExpenses(userId: string | null) {
             ...(op.patch.payment_method !== undefined && { payment_method: op.patch.payment_method }),
             ...(op.patch.type !== undefined && { type: op.patch.type }),
             ...(op.patch.currency !== undefined && { currency: op.patch.currency }),
+            ...(op.patch.fx_rate !== undefined && { fx_rate: op.patch.fx_rate }),
             ...(op.patch.is_reimbursable !== undefined && { is_reimbursable: op.patch.is_reimbursable }),
           }).eq("id", op.id);
         } else if (op.kind === "delete") {
