@@ -466,6 +466,27 @@ export function AddExpenseSheet({
             </div>
           </div>
 
+          {txnType === "expense" && (
+            <button
+              type="button"
+              onClick={() => setReimbursable((v) => !v)}
+              className={cn(
+                "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border text-left transition-colors",
+                reimbursable
+                  ? "border-emerald-500/40 bg-emerald-500/5"
+                  : "border-border/40 bg-surface/40 hover:bg-surface"
+              )}
+            >
+              <div>
+                <div className="text-sm text-foreground font-medium">Reimbursable</div>
+                <div className="text-[11px] text-ink-muted">Track expenses to be paid back</div>
+              </div>
+              <div className={cn("h-5 w-9 rounded-full p-0.5 transition-colors", reimbursable ? "bg-emerald-500" : "bg-border")}>
+                <div className={cn("h-4 w-4 rounded-full bg-background transition-transform", reimbursable && "translate-x-4")} />
+              </div>
+            </button>
+          )}
+
           <Button
             type="submit"
             size="lg"
