@@ -29,6 +29,7 @@ import { useTheme } from "@/hooks/useTheme";
 import {
   Expense, addDays, formatINR, fullDateLabel, getCurrencySymbol,
   monthRangeOf, shiftMonth, shiftWeek, startOfMonthISO, todayISO, weekRangeOf,
+  baseAmountOf,
 } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
 
