@@ -93,6 +93,7 @@ export function AddExpenseSheet({
         setDate(editing.date);
         setPayment(editing.payment_method);
         setCurrency(editing.currency ?? baseCurrency);
+        setReimbursable(!!editing.is_reimbursable);
       } else {
         setTxnType("expense");
         setAmount("");
@@ -102,6 +103,7 @@ export function AddExpenseSheet({
         setDate(todayISO());
         setPayment("upi");
         setCurrency(baseCurrency);
+        setReimbursable(false);
       }
       // Refresh today's FX rates in background
       refreshFxRates(baseCurrency);
