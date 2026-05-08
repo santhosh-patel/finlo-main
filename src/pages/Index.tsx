@@ -71,6 +71,7 @@ const Index = () => {
   const [budgetsOpen, setBudgetsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
+  const [loansOpen, setLoansOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
 
