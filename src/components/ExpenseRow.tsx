@@ -68,9 +68,16 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }
         </div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        <span className="font-serif text-2xl text-foreground tabular-nums">
-          {getCurrencySymbol()}{formatINR(expense.amount)}
-        </span>
+        <div className="flex flex-col items-end">
+          <span className="font-serif text-2xl text-foreground tabular-nums">
+            {getCurrencySymbol()}{formatINR(baseAmountOf(expense))}
+          </span>
+          {expense.currency && expense.currency !== getBaseCurrency() && (
+            <span className="text-[10px] text-ink-muted tabular-nums">
+              {CURRENCY_SYMBOLS[expense.currency] ?? expense.currency}{formatINR(expense.amount)} {expense.currency}
+            </span>
+          )}
+        </div>
         {onDelete && (
           <span
             role="button"
