@@ -91,6 +91,7 @@ export function AddExpenseSheet({
         setNote(editing.note ?? "");
         setDate(editing.date);
         setPayment(editing.payment_method);
+        setCurrency(editing.currency ?? baseCurrency);
       } else {
         setTxnType("expense");
         setAmount("");
@@ -99,7 +100,10 @@ export function AddExpenseSheet({
         setNote("");
         setDate(todayISO());
         setPayment("upi");
+        setCurrency(baseCurrency);
       }
+      // Refresh today's FX rates in background
+      refreshFxRates(baseCurrency);
       setShowAddCat(false);
       setNewCat("");
       setErrors({});
