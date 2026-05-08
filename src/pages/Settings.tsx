@@ -6,7 +6,7 @@ import { CategoryDef, Expense } from "@/lib/expenses";
 import { useRef, useState } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import {
   AlertDialog,
@@ -36,6 +36,7 @@ interface Props {
   onOpenImport: () => void;
   onOpenSearch: () => void;
   onOpenRecurring: () => void;
+  onOpenLoans: () => void;
   profile: Profile;
   onUpdateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
   theme: ThemeSettings;
@@ -368,7 +369,7 @@ function AppearanceSection({ theme, onUpdateTheme }: Props) {
 }
 
 function DataSection({
-  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenChange,
+  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenLoans, onOpenChange,
   onSync, syncing, lastSync, onExportData, onRestoreData, profile,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -451,6 +452,7 @@ function DataSection({
       {item("Manage transactions", "Search, edit, delete, export", () => { onOpenSearch(); onOpenChange(false); })}
       {item("Monthly budgets", "Set per-category limits & alerts", () => { onOpenBudgets(); onOpenChange(false); })}
       {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
+      {item("Lending", "Track money you've lent or borrowed", () => { onOpenLoans(); onOpenChange(false); }, <HandCoins className="h-4 w-4" />)}
       {item("Import CSV / Excel", "Upload spreadsheet of expenses", () => { onOpenImport(); onOpenChange(false); })}
 
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">

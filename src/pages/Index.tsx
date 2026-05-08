@@ -12,6 +12,7 @@ import { ExpenseDetailsDrawer } from "@/components/ExpenseDetailsDrawer";
 import { BudgetsSheet } from "@/components/BudgetsSheet";
 import { ImportSheet } from "@/components/ImportSheet";
 import { RecurringSheet } from "@/components/RecurringSheet";
+import { LoansSheet } from "@/components/LoansSheet";
 import { PeriodNav } from "@/components/PeriodNav";
 import Settings from "@/pages/Settings";
 import {
@@ -70,6 +71,7 @@ const Index = () => {
   const [budgetsOpen, setBudgetsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
+  const [loansOpen, setLoansOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
 
@@ -371,6 +373,8 @@ const Index = () => {
       <RecurringSheet open={recurringOpen} onOpenChange={setRecurringOpen}
         categories={categories} userId={user?.id ?? null} />
 
+      <LoansSheet open={loansOpen} onOpenChange={setLoansOpen} userId={user?.id ?? null} />
+
       <Settings
         open={settingsOpen} onOpenChange={setSettingsOpen}
         categories={categories}
@@ -381,6 +385,7 @@ const Index = () => {
         onOpenImport={() => setImportOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenRecurring={() => setRecurringOpen(true)}
+        onOpenLoans={() => setLoansOpen(true)}
         profile={profile} onUpdateProfile={updateProfile}
         theme={theme} onUpdateTheme={updateTheme}
         onLogout={logout}
