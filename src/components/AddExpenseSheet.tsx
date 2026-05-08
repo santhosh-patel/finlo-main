@@ -158,6 +158,7 @@ export function AddExpenseSheet({
       currency,
       fx_rate: fxRate,
       base_amount: num * fxRate,
+      is_reimbursable: txnType === "expense" ? reimbursable : false,
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);
