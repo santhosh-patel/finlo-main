@@ -452,6 +452,7 @@ function DataSection({
       {item("Manage transactions", "Search, edit, delete, export", () => { onOpenSearch(); onOpenChange(false); })}
       {item("Monthly budgets", "Set per-category limits & alerts", () => { onOpenBudgets(); onOpenChange(false); })}
       {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
+      {item("Lending", "Track money you've lent or borrowed", () => { onOpenLoans(); onOpenChange(false); }, <HandCoins className="h-4 w-4" />)}
       {item("Import CSV / Excel", "Upload spreadsheet of expenses", () => { onOpenImport(); onOpenChange(false); })}
 
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">
