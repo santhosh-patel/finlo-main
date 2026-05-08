@@ -143,6 +143,7 @@ export function AddExpenseSheet({
       return;
     }
     const num = parseFloat(amount);
+    const fxRate = currency === baseCurrency ? 1 : getFxRateSync(currency, baseCurrency);
     const payload = {
       amount: num,
       category,
@@ -151,6 +152,9 @@ export function AddExpenseSheet({
       date,
       payment_method: payment,
       type: txnType,
+      currency,
+      fx_rate: fxRate,
+      base_amount: num * fxRate,
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);
