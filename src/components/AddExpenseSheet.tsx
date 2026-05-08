@@ -15,6 +15,8 @@ import {
   TxnType,
   INCOME_CATEGORIES,
 } from "@/lib/expenses";
+import { SUPPORTED_CURRENCIES, CURRENCY_SYMBOLS, getBaseCurrency, getFxRateSync, refreshFxRates } from "@/lib/fx";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, AlertCircle } from "lucide-react";
 
 interface Props {
@@ -42,6 +44,8 @@ export function AddExpenseSheet({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayISO());
   const [payment, setPayment] = useState<PaymentMethod>("upi");
+  const baseCurrency = getBaseCurrency();
+  const [currency, setCurrency] = useState<string>(baseCurrency);
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
   const [newSub, setNewSub] = useState("");
@@ -87,6 +91,7 @@ export function AddExpenseSheet({
         setNote(editing.note ?? "");
         setDate(editing.date);
         setPayment(editing.payment_method);
+        setCurrency(editing.currency ?? baseCurrency);
       } else {
         setTxnType("expense");
         setAmount("");
@@ -95,7 +100,10 @@ export function AddExpenseSheet({
         setNote("");
         setDate(todayISO());
         setPayment("upi");
+        setCurrency(baseCurrency);
       }
+      // Refresh today's FX rates in background
+      refreshFxRates(baseCurrency);
       setShowAddCat(false);
       setNewCat("");
       setErrors({});
@@ -135,6 +143,7 @@ export function AddExpenseSheet({
       return;
     }
     const num = parseFloat(amount);
+    const fxRate = currency === baseCurrency ? 1 : getFxRateSync(currency, baseCurrency);
     const payload = {
       amount: num,
       category,
@@ -143,6 +152,9 @@ export function AddExpenseSheet({
       date,
       payment_method: payment,
       type: txnType,
+      currency,
+      fx_rate: fxRate,
+      base_amount: num * fxRate,
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);
@@ -203,7 +215,7 @@ export function AddExpenseSheet({
             )}
           >
             <div className="flex items-center gap-3">
-              <span className="font-serif text-4xl text-ink-muted/60">{getCurrencySymbol()}</span>
+              <span className="font-serif text-4xl text-ink-muted/60">{CURRENCY_SYMBOLS[currency] ?? currency}</span>
               <Input
                 ref={amountRef}
                 type="number"
@@ -215,9 +227,27 @@ export function AddExpenseSheet({
                 onChange={(e) => setAmount(e.target.value)}
                 aria-invalid={!!errors.amount}
                 aria-describedby={errors.amount ? "amount-error" : undefined}
-                className="font-serif text-5xl h-16 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 placeholder:text-ink-muted/30 text-foreground"
+                className="font-serif text-5xl h-16 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 placeholder:text-ink-muted/30 text-foreground flex-1 min-w-0"
               />
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger className="h-9 w-[88px] rounded-full border-border bg-background/60 text-xs font-medium uppercase tracking-wider shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {SUPPORTED_CURRENCIES.map((c) => (
+                    <SelectItem key={c} value={c} className="text-xs">
+                      {CURRENCY_SYMBOLS[c]} {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+            {currency !== baseCurrency && parseFloat(amount) > 0 && (
+              <p className="text-[11px] text-ink-muted mt-2">
+                ≈ {getCurrencySymbol()}{formatINR(parseFloat(amount) * getFxRateSync(currency, baseCurrency))} {baseCurrency}
+                <span className="opacity-60"> · 1 {currency} = {getFxRateSync(currency, baseCurrency).toFixed(4)} {baseCurrency}</span>
+              </p>
+            )}
             {errors.amount && (
               <p id="amount-error" className="text-xs text-destructive mt-2" role="alert">
                 {errors.amount}

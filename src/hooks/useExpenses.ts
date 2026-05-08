@@ -77,6 +77,7 @@ export function useExpenses(userId: string | null) {
             payment_method: op.row.payment_method,
             type: op.row.type ?? "expense",
             currency: op.row.currency ?? "INR",
+            fx_rate: op.row.fx_rate ?? 1,
             is_reimbursable: op.row.is_reimbursable ?? false,
           });
         } else if (op.kind === "update") {
@@ -89,6 +90,7 @@ export function useExpenses(userId: string | null) {
             ...(op.patch.payment_method !== undefined && { payment_method: op.patch.payment_method }),
             ...(op.patch.type !== undefined && { type: op.patch.type }),
             ...(op.patch.currency !== undefined && { currency: op.patch.currency }),
+            ...(op.patch.fx_rate !== undefined && { fx_rate: op.patch.fx_rate }),
             ...(op.patch.is_reimbursable !== undefined && { is_reimbursable: op.patch.is_reimbursable }),
           }).eq("id", op.id);
         } else if (op.kind === "delete") {
@@ -122,6 +124,8 @@ export function useExpenses(userId: string | null) {
         created_at: r.created_at,
         type: (r.type as Expense["type"]) ?? "expense",
         currency: r.currency ?? "INR",
+        fx_rate: r.fx_rate != null ? Number(r.fx_rate) : 1,
+        base_amount: r.base_amount != null ? Number(r.base_amount) : undefined,
         is_reimbursable: !!r.is_reimbursable,
       })));
     }
@@ -225,7 +229,14 @@ export function useExpenses(userId: string | null) {
 
   // ------- mutators (optimistic local + queue/server) -------
   const addExpense = useCallback((e: Omit<Expense, "id" | "created_at">) => {
-    const newE: Expense = { ...e, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+    const fx = e.fx_rate ?? 1;
+    const newE: Expense = {
+      ...e,
+      fx_rate: fx,
+      base_amount: e.base_amount ?? Number(e.amount) * fx,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+    };
     setExpenses((prev) => [newE, ...prev]);
     if (userId) {
       supabase.from("expenses").insert({
@@ -234,6 +245,7 @@ export function useExpenses(userId: string | null) {
         date: newE.date, payment_method: newE.payment_method,
         type: newE.type ?? "expense",
         currency: newE.currency ?? "INR",
+        fx_rate: fx,
         is_reimbursable: newE.is_reimbursable ?? false,
       }).then(({ error }) => { if (error) queue({ kind: "insert", row: newE }); });
     } else {
@@ -243,7 +255,14 @@ export function useExpenses(userId: string | null) {
   }, [userId]);
 
   const updateExpense = useCallback((id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => {
-    setExpenses((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setExpenses((prev) => prev.map((x) => {
+      if (x.id !== id) return x;
+      const merged = { ...x, ...patch };
+      const fx = merged.fx_rate ?? 1;
+      merged.fx_rate = fx;
+      merged.base_amount = Number(merged.amount) * fx;
+      return merged;
+    }));
     if (userId) {
       supabase.from("expenses").update({
         ...(patch.amount !== undefined && { amount: patch.amount }),
@@ -254,6 +273,7 @@ export function useExpenses(userId: string | null) {
         ...(patch.payment_method !== undefined && { payment_method: patch.payment_method }),
         ...(patch.type !== undefined && { type: patch.type }),
         ...(patch.currency !== undefined && { currency: patch.currency }),
+        ...(patch.fx_rate !== undefined && { fx_rate: patch.fx_rate }),
         ...(patch.is_reimbursable !== undefined && { is_reimbursable: patch.is_reimbursable }),
       }).eq("id", id).then(({ error }) => { if (error) queue({ kind: "update", id, patch }); });
     } else {

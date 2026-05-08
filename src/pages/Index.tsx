@@ -29,6 +29,7 @@ import { useTheme } from "@/hooks/useTheme";
 import {
   Expense, addDays, formatINR, fullDateLabel, getCurrencySymbol,
   monthRangeOf, shiftMonth, shiftWeek, startOfMonthISO, todayISO, weekRangeOf,
+  baseAmountOf,
 } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
 
@@ -94,8 +95,8 @@ const Index = () => {
 
   const isExp = (e: Expense) => (e.type ?? "expense") === "expense";
   const isInc = (e: Expense) => e.type === "income";
-  const sumOut = (rows: Expense[]) => rows.filter(isExp).reduce((a, b) => a + b.amount, 0);
-  const sumIn = (rows: Expense[]) => rows.filter(isInc).reduce((a, b) => a + b.amount, 0);
+  const sumOut = (rows: Expense[]) => rows.filter(isExp).reduce((a, b) => a + baseAmountOf(b), 0);
+  const sumIn = (rows: Expense[]) => rows.filter(isInc).reduce((a, b) => a + baseAmountOf(b), 0);
 
   const dayExpenses = useMemo(
     () => expenses.filter((e) => e.date === dayAnchor),
@@ -111,7 +112,7 @@ const Index = () => {
   const spentByCategory = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e) => {
-      if (e.date >= monthStart && isExp(e)) map[e.category] = (map[e.category] || 0) + e.amount;
+      if (e.date >= monthStart && isExp(e)) map[e.category] = (map[e.category] || 0) + baseAmountOf(e);
     });
     return map;
   }, [expenses, monthStart]);
