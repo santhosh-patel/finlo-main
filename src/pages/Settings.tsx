@@ -6,7 +6,7 @@ import { CategoryDef, Expense } from "@/lib/expenses";
 import { useRef, useState } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import {
   AlertDialog,
