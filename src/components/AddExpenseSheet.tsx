@@ -44,6 +44,8 @@ export function AddExpenseSheet({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayISO());
   const [payment, setPayment] = useState<PaymentMethod>("upi");
+  const baseCurrency = getBaseCurrency();
+  const [currency, setCurrency] = useState<string>(baseCurrency);
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
   const [newSub, setNewSub] = useState("");
