@@ -12,7 +12,16 @@ export interface Expense {
   created_at: string; // ISO datetime
   type?: TxnType; // defaults to "expense" when missing
   currency?: string; // ISO 4217, defaults to user base
+  fx_rate?: number; // rate from `currency` to user base at time of entry
+  base_amount?: number; // amount * fx_rate, in user base currency
   is_reimbursable?: boolean;
+}
+
+/** Returns the amount of the expense converted to the user's base currency. */
+export function baseAmountOf(e: Expense): number {
+  if (e.base_amount != null && !Number.isNaN(e.base_amount)) return Number(e.base_amount);
+  const rate = e.fx_rate ?? 1;
+  return Number(e.amount) * rate;
 }
 
 
