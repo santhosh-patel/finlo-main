@@ -12,6 +12,7 @@ import { ExpenseDetailsDrawer } from "@/components/ExpenseDetailsDrawer";
 import { BudgetsSheet } from "@/components/BudgetsSheet";
 import { ImportSheet } from "@/components/ImportSheet";
 import { RecurringSheet } from "@/components/RecurringSheet";
+import { LoansSheet } from "@/components/LoansSheet";
 import { PeriodNav } from "@/components/PeriodNav";
 import Settings from "@/pages/Settings";
 import {
