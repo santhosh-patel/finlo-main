@@ -46,6 +46,7 @@ export function AddExpenseSheet({
   const [payment, setPayment] = useState<PaymentMethod>("upi");
   const baseCurrency = getBaseCurrency();
   const [currency, setCurrency] = useState<string>(baseCurrency);
+  const [reimbursable, setReimbursable] = useState(false);
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
   const [newSub, setNewSub] = useState("");
