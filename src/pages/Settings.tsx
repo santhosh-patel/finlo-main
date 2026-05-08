@@ -369,7 +369,7 @@ function AppearanceSection({ theme, onUpdateTheme }: Props) {
 }
 
 function DataSection({
-  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenChange,
+  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenLoans, onOpenChange,
   onSync, syncing, lastSync, onExportData, onRestoreData, profile,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
