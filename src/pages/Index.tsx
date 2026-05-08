@@ -373,6 +373,8 @@ const Index = () => {
       <RecurringSheet open={recurringOpen} onOpenChange={setRecurringOpen}
         categories={categories} userId={user?.id ?? null} />
 
+      <LoansSheet open={loansOpen} onOpenChange={setLoansOpen} userId={user?.id ?? null} />
+
       <Settings
         open={settingsOpen} onOpenChange={setSettingsOpen}
         categories={categories}
@@ -383,6 +385,7 @@ const Index = () => {
         onOpenImport={() => setImportOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenRecurring={() => setRecurringOpen(true)}
+        onOpenLoans={() => setLoansOpen(true)}
         profile={profile} onUpdateProfile={updateProfile}
         theme={theme} onUpdateTheme={updateTheme}
         onLogout={logout}
