@@ -40,6 +40,7 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({
     type: "expense" as "expense" | "income",
     amount: "",
@@ -79,9 +80,10 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
   useEffect(() => { if (open) load(); }, [open, load]);
 
   const create = async () => {
-    if (!userId) return;
+    if (!userId || creating) return;
     const amount = parseFloat(draft.amount);
     if (!Number.isFinite(amount) || amount <= 0) { toast({ title: "Enter a valid amount", variant: "destructive" }); return; }
+    setCreating(true);
     const dom = draft.frequency === "monthly" ? parseInt(draft.day_of_month, 10) : null;
     const { error } = await supabase.from("recurring_expenses").insert({
       user_id: userId,
@@ -94,6 +96,7 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
       next_due_date: draft.next_due_date,
       active: true,
     });
+    setCreating(false);
     if (error) { toast({ title: "Failed", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Recurring rule added" });
     setShowForm(false);
@@ -202,7 +205,7 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
                 placeholder="e.g. Netflix subscription"
                 className="rounded-full bg-background border-border" />
             </div>
-            <Button onClick={create} className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90">Save rule</Button>
+            <Button onClick={create} disabled={creating} className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:opacity-60">{creating ? "Saving…" : "Save rule"}</Button>
           </div>
         )}
 

@@ -86,6 +86,7 @@ const Index = () => {
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
   const [quickAddCycle, setQuickAddCycle] = useState(0);
   const quickAddTranscriptRef = useRef<((text: string) => void) | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const [sharePrefill, setSharePrefill] = useState<string | undefined>();
   const [pullRefreshEnabled, setPullRefreshEnabled] = useState(false);
   const [receiptScanPrefill, setReceiptScanPrefill] = useState<ReceiptScanPrefill | null>(null);
@@ -206,15 +207,38 @@ const Index = () => {
     }
   }, []);
 
+  // Scroll to top when switching view tabs
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [view]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName;
       if (
-        document.activeElement?.tagName === "INPUT" ||
-        document.activeElement?.tagName === "TEXTAREA" ||
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
         document.activeElement?.getAttribute("contenteditable") === "true"
       ) {
         return;
       }
+
+      // Don't fire single-key shortcuts when any overlay is open
+      const overlayOpen = searchOpen || settingsOpen || askAIOpen || budgetsOpen
+        || loansOpen || recurringOpen || importOpen || trashOpen || !!details || open;
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setSearchOpen((p) => !p);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+        e.preventDefault();
+        setAskAIOpen((p) => !p);
+        return;
+      }
+
+      if (overlayOpen) return;
 
       if (e.key === "n" || e.key === "N" || e.key === "a" || e.key === "A") {
         e.preventDefault();
@@ -236,18 +260,12 @@ const Index = () => {
           e.preventDefault();
           setShortcutsHelpOpen(true);
         }
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
-        e.preventDefault();
-        setSearchOpen(true);
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
-        e.preventDefault();
-        setAskAIOpen(true);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [searchOpen, settingsOpen, askAIOpen, budgetsOpen, loansOpen, recurringOpen, importOpen, trashOpen, details, open]);
 
   useEffect(() => {
     if (!details) return;
@@ -310,6 +328,7 @@ const Index = () => {
   const { phase: pullPhase, pullPx } = usePullToRefresh(
     pullRefreshEnabled && !!expenseUserId,
     handlePullRefresh,
+    mainRef,
   );
 
   if (isAdmin) return <Navigate to="/admin" replace />;
@@ -379,7 +398,7 @@ const Index = () => {
       : Math.min(100, (pullPx / 72) * 100);
 
   return (
-    <main className="min-h-dvh bg-background text-foreground font-sans">
+    <main ref={mainRef} className="min-h-dvh bg-background text-foreground font-sans">
       {(pullPx > 1 || pullPhase === "refreshing") && (
         <div
           className="fixed top-0 left-0 right-0 z-[90] pointer-events-none flex flex-col items-center gap-1 pt-[calc(env(safe-area-inset-top,0px)+8px)]"
@@ -839,6 +858,11 @@ const Index = () => {
               setSettingsOpen(false);
               setLoansOpen(false);
               setBudgetsOpen(false);
+              setSearchOpen(false);
+              setImportOpen(false);
+              setRecurringOpen(false);
+              setTrashOpen(false);
+              setDetails(null);
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
             className="flex items-center justify-center text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
@@ -852,6 +876,11 @@ const Index = () => {
             onClick={() => {
               setSettingsOpen(false);
               setLoansOpen(false);
+              setSearchOpen(false);
+              setImportOpen(false);
+              setRecurringOpen(false);
+              setTrashOpen(false);
+              setDetails(null);
               setBudgetsOpen(true);
             }}
             className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
@@ -886,6 +915,11 @@ const Index = () => {
             onClick={() => {
               setSettingsOpen(false);
               setBudgetsOpen(false);
+              setSearchOpen(false);
+              setImportOpen(false);
+              setRecurringOpen(false);
+              setTrashOpen(false);
+              setDetails(null);
               setLoansOpen(true);
             }}
             className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
@@ -899,6 +933,11 @@ const Index = () => {
             onClick={() => {
               setLoansOpen(false);
               setBudgetsOpen(false);
+              setSearchOpen(false);
+              setImportOpen(false);
+              setRecurringOpen(false);
+              setTrashOpen(false);
+              setDetails(null);
               setSettingsOpen(true);
             }}
             className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"

@@ -8,9 +8,15 @@ type Phase = "idle" | "pulling" | "refreshing";
 
 /**
  * Pull down from the top of the page (when scrollY is 0) to refresh.
- * Intended for narrow / touch layouts; gate with `enabled`.
+ *
+ * Scoped to a container ref so touches inside sheets / drawers / overlays
+ * are ignored. Pass the ref of the outermost scrollable home-page element.
  */
-export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<void>) {
+export function usePullToRefresh(
+  enabled: boolean,
+  onRefresh: () => Promise<void>,
+  containerRef?: React.RefObject<HTMLElement | null>,
+) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [pullPx, setPullPx] = useState(0);
   const startY = useRef(0);
@@ -19,6 +25,7 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<void
   const refreshLock = useRef(false);
   const onRefreshRef = useRef(onRefresh);
   onRefreshRef.current = onRefresh;
+  const touchedInContainer = useRef(false);
 
   const runRefresh = useCallback(async () => {
     if (refreshLock.current) return;
@@ -37,17 +44,52 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<void
   useEffect(() => {
     if (!enabled) return;
 
-    const atTop = () => window.scrollY <= 1;
+    const isAtTop = () => {
+      if (containerRef?.current) {
+        return containerRef.current.scrollTop <= 1;
+      }
+      return window.scrollY <= 1;
+    };
+
+    const isInsideOverlay = (target: EventTarget | null) => {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      return !!(
+        target.closest("[role='dialog']") ||
+        target.closest("[data-vaul-drawer]") ||
+        target.closest("[data-radix-popper-content-wrapper]") ||
+        target.closest(".rolling-picker-modal")
+      );
+    };
 
     const onTouchStart = (e: TouchEvent) => {
-      if (!atTop() || refreshLock.current) return;
+      if (refreshLock.current) return;
+
+      if (isInsideOverlay(e.target)) {
+        touchedInContainer.current = false;
+        return;
+      }
+
+      if (containerRef?.current) {
+        const el = e.target as Node;
+        if (!containerRef.current.contains(el)) {
+          touchedInContainer.current = false;
+          return;
+        }
+      }
+
+      if (!isAtTop()) {
+        touchedInContainer.current = false;
+        return;
+      }
+
+      touchedInContainer.current = true;
       startY.current = e.touches[0].clientY;
-      pulling.current = atTop();
+      pulling.current = true;
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (!pulling.current || refreshLock.current) return;
-      if (!atTop()) {
+      if (!touchedInContainer.current || !pulling.current || refreshLock.current) return;
+      if (!isAtTop()) {
         pulling.current = false;
         pullDistanceRef.current = 0;
         setPhase("idle");
@@ -64,16 +106,11 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<void
       }
     };
 
-    const onTouchEnd = () => {
-      if (!pulling.current || refreshLock.current) {
-        pulling.current = false;
-        pullDistanceRef.current = 0;
-        setPullPx(0);
-        setPhase("idle");
-        return;
-      }
-      pulling.current = false;
+    const reset = () => {
+      if (!touchedInContainer.current) return;
       const d = pullDistanceRef.current;
+      pulling.current = false;
+      touchedInContainer.current = false;
       pullDistanceRef.current = 0;
       setPullPx(0);
       if (d >= THRESHOLD_PX) void runRefresh();
@@ -82,6 +119,7 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<void
 
     const onTouchCancel = () => {
       pulling.current = false;
+      touchedInContainer.current = false;
       pullDistanceRef.current = 0;
       setPullPx(0);
       setPhase("idle");
@@ -89,16 +127,16 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<void
 
     document.addEventListener("touchstart", onTouchStart, { passive: true });
     document.addEventListener("touchmove", onTouchMove, { passive: false });
-    document.addEventListener("touchend", onTouchEnd);
+    document.addEventListener("touchend", reset);
     document.addEventListener("touchcancel", onTouchCancel);
 
     return () => {
       document.removeEventListener("touchstart", onTouchStart);
       document.removeEventListener("touchmove", onTouchMove);
-      document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("touchend", reset);
       document.removeEventListener("touchcancel", onTouchCancel);
     };
-  }, [enabled, runRefresh]);
+  }, [enabled, runRefresh, containerRef]);
 
   return { phase, pullPx, runRefresh };
 }

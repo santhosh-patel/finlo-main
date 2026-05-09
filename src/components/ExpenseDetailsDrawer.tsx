@@ -83,6 +83,7 @@ export function ExpenseDetailsDrawer({
   const [splits, setSplits] = useState<Split[]>([]);
   const [isSplitting, setIsSplitting] = useState(false);
   const [splitRows, setSplitRows] = useState<Array<{ category: string; amount: string; note: string }>>([]);
+  const [splitSaving, setSplitSaving] = useState(false);
 
   const open = !!expense;
   const subs = categories.find((c) => c.name === category)?.subcategories ?? [];
@@ -281,15 +282,15 @@ export function ExpenseDetailsDrawer({
   };
 
   const handleSaveSplits = async () => {
-    if (!expense || !userId) return;
+    if (!expense || !userId || splitSaving) return;
     const totalSplitAmt = splitRows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
     if (Math.abs(totalSplitAmt - expense.amount) > 0.01) {
       setError(`Lines total (${getCurrencySymbol()}${totalSplitAmt.toFixed(2)}) must match the transaction (${getCurrencySymbol()}${expense.amount.toFixed(2)}).`);
       return;
     }
 
+    setSplitSaving(true);
     try {
-      // 1. Delete existing splits
       const { error: delErr } = await supabase
         .from("expense_splits")
         .delete()
@@ -313,8 +314,10 @@ export function ExpenseDetailsDrawer({
       toast({ title: "Split saved" });
       setIsSplitting(false);
       setError(null);
+      setSplitSaving(false);
       loadTagsAndSplits();
     } catch (err: unknown) {
+      setSplitSaving(false);
       toast({ title: "Couldn’t save split", description: (err as Error).message, variant: "destructive" });
     }
   };
@@ -656,10 +659,11 @@ export function ExpenseDetailsDrawer({
                       </Button>
                       <Button
                         type="button"
+                        disabled={splitSaving}
                         onClick={handleSaveSplits}
-                        className="rounded-full min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm w-full bg-foreground text-background hover:bg-foreground/90"
+                        className="rounded-full min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm w-full bg-foreground text-background hover:bg-foreground/90 disabled:opacity-60"
                       >
-                        <Check className="h-4 w-4 mr-1.5 shrink-0" /> Save
+                        <Check className="h-4 w-4 mr-1.5 shrink-0" /> {splitSaving ? "Saving…" : "Save"}
                       </Button>
                     </div>
                   </div>

@@ -33,6 +33,7 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
     counterparty: "",
     amount: "",
@@ -61,12 +62,13 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
   const reset = () => setDraft({ counterparty: "", amount: "", direction: "lent", date: todayISO(), due_date: "", note: "" });
 
   const save = async () => {
-    if (!userId) return;
+    if (!userId || saving) return;
     const amt = parseFloat(draft.amount);
     if (!draft.counterparty.trim() || !amt || amt <= 0) {
       toast({ title: "Missing fields", description: "Person and amount required.", variant: "destructive" });
       return;
     }
+    setSaving(true);
     const { error } = await supabase.from("loans").insert({
       user_id: userId,
       counterparty: draft.counterparty.trim(),
@@ -76,6 +78,7 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
       due_date: draft.due_date || null,
       note: draft.note.trim() || null,
     });
+    setSaving(false);
     if (error) { toast({ title: "Save failed", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Loan added" });
     reset(); setShowForm(false); load();
@@ -193,7 +196,7 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
                 placeholder="What's it for?" className="mt-1 rounded-full bg-background" maxLength={120} />
             </div>
             <div className="flex gap-2 pt-2">
-              <Button onClick={save} className="flex-1 rounded-full">Save</Button>
+              <Button onClick={save} disabled={saving} className="flex-1 rounded-full disabled:opacity-60">{saving ? "Saving…" : "Save"}</Button>
               <Button variant="ghost" onClick={() => { reset(); setShowForm(false); }} className="rounded-full">Cancel</Button>
             </div>
           </div>
