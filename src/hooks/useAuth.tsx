@@ -37,7 +37,6 @@ function useProvideAuth(): AuthState {
   const [loading, setLoading] = useState(true);
 
   const mountedRef = useRef(true);
-  const profileTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -56,14 +55,10 @@ function useProvideAuth(): AuthState {
       setIsAdmin((roleData ?? []).some((r) => r.role === "admin"));
     };
 
+    // `loading` is ONLY for the first cold bootstrap (getSession). Never set it true from
+    // onAuthStateChange — INITIAL_SESSION / SIGNED_IN / token refresh on resume would
+    // unmount ProtectedRoute and wipe Index (tabs, Maya, sheets).
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
-      if (profileTimeoutRef.current !== null) {
-        window.clearTimeout(profileTimeoutRef.current);
-        profileTimeoutRef.current = null;
-      }
-
-      // Token refresh (common when returning from background) must not flip global
-      // `loading` — ProtectedRoute would unmount the app and wipe UI state.
       if (event === "TOKEN_REFRESHED" && sess) {
         setSession(sess);
         setUser(sess.user);
@@ -77,39 +72,44 @@ function useProvideAuth(): AuthState {
         return;
       }
 
-      setLoading(true);
       setSession(sess);
       setUser(sess?.user ?? null);
       if (!sess) {
         setProfile({ user_id: "", email: "", name: "" });
         setIsAdmin(false);
-        setLoading(false);
         return;
       }
 
-      profileTimeoutRef.current = window.setTimeout(() => {
-        profileTimeoutRef.current = null;
-        loadProfileAndRole(sess.user.id, sess.user.email ?? "").finally(() => {
-          if (mountedRef.current) setLoading(false);
-        });
-      }, 0);
+      void loadProfileAndRole(sess.user.id, sess.user.email ?? "");
     });
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mountedRef.current) return;
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      if (data.session) {
-        await loadProfileAndRole(data.session.user.id, data.session.user.email ?? "");
-      }
-      if (mountedRef.current) setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (!mountedRef.current) return;
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+        if (data.session) {
+          await loadProfileAndRole(data.session.user.id, data.session.user.email ?? "");
+        } else {
+          setProfile({ user_id: "", email: "", name: "" });
+          setIsAdmin(false);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setSession(null);
+          setUser(null);
+          setProfile({ user_id: "", email: "", name: "" });
+          setIsAdmin(false);
+        }
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
 
     return () => {
       mountedRef.current = false;
-      if (profileTimeoutRef.current !== null) {
-        window.clearTimeout(profileTimeoutRef.current);
-      }
       sub.subscription.unsubscribe();
     };
   }, []);
