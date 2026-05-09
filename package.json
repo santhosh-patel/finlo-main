@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.app.json",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed-admin": "node scripts/seed-admin-bootstrap.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

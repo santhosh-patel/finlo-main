@@ -1,7 +1,7 @@
 /** CORS for Edge Functions. Set ALLOWED_ORIGINS to comma-separated list (e.g. https://app.example.com,http://localhost:8080). If unset, allows * (dev only). */
 
 const DEFAULT_ALLOW_HEADERS =
-  "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version";
+  "authorization, x-client-info, apikey, content-type, x-seed-bootstrap-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version";
 
 export function getCorsHeaders(req: Request): Record<string, string> {
   const raw = Deno.env.get("ALLOWED_ORIGINS");

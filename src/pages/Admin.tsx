@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Loader2, Plus, RefreshCcw, Search, ShieldCheck, Trash2, Pencil, KeyRound,
   ShieldOff, LogOut, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  History, Sparkles,
+  History, Eye, EyeOff,
 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -58,8 +58,6 @@ export default function Admin() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [busy, setBusy] = useState(false);
-  const [seeding, setSeeding] = useState(false);
-  const [seedResult, setSeedResult] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -69,6 +67,7 @@ export default function Admin() {
   const [editing, setEditing] = useState<AppUser | null>(null);
   const [editName, setEditName] = useState("");
   const [editPassword, setEditPassword] = useState("");
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
 
@@ -76,6 +75,9 @@ export default function Admin() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [makeAdmin, setMakeAdmin] = useState(false);
 
   const refresh = async () => {
@@ -112,25 +114,6 @@ export default function Admin() {
       });
     }
   }, [loading, isAdmin]);
-
-  const runSeed = async () => {
-    setSeeding(true); setSeedResult(null);
-    try {
-      const data = await callFn("seed-admin");
-      const lines = (data.results ?? [])
-        .map((r: { email: string; role?: string; status?: string; user_id?: string; error?: string }) =>
-          r.error
-            ? `✗ ${r.email} — ${r.error}`
-            : `✓ ${r.email} — ${r.role ?? "user"} ${r.status ?? "updated"} (${r.user_id?.slice(0, 8)}…)`)
-        .join("\n");
-      setSeedResult(lines || "Seed completed.");
-      toast({ title: "Seed completed", description: `${data.results?.length ?? 0} accounts processed.` });
-      await refresh();
-    } catch (e) {
-      setSeedResult(`Failed: ${String(e)}`);
-      toast({ title: "Seed failed", description: String(e), variant: "destructive" });
-    } finally { setSeeding(false); }
-  };
 
   const filteredSorted = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -190,6 +173,10 @@ export default function Admin() {
       toast({ title: "Invalid input", description: "Email and password required.", variant: "destructive" });
       return;
     }
+    if (password !== confirmPassword) {
+      toast({ title: "Passwords don't match", description: "Please re-enter the confirm password.", variant: "destructive" });
+      return;
+    }
     const pwdErr = validatePassword(password);
     if (pwdErr) {
       toast({ title: "Weak password", description: pwdErr, variant: "destructive" });
@@ -202,7 +189,9 @@ export default function Admin() {
         role: makeAdmin ? "admin" : "user",
       });
       toast({ title: "User created", description: email });
-      setName(""); setEmail(""); setPassword(""); setMakeAdmin(false); setAddOpen(false);
+      setName(""); setEmail(""); setPassword(""); setConfirmPassword("");
+      setShowPassword(false); setShowConfirmPassword(false);
+      setMakeAdmin(false); setAddOpen(false);
       await refresh(); await loadAudit();
     } catch (e) {
       toast({ title: "Create failed", description: String(e), variant: "destructive" });
@@ -210,7 +199,7 @@ export default function Admin() {
   };
 
   const openEdit = (u: AppUser) => {
-    setEditing(u); setEditName(u.display_name ?? ""); setEditPassword("");
+    setEditing(u); setEditName(u.display_name ?? ""); setEditPassword(""); setShowEditPassword(false);
   };
 
   const handleSaveEdit = async () => {
@@ -278,29 +267,12 @@ export default function Admin() {
           </div>
         </header>
 
-        {/* Stats + Seed */}
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        {/* Stats */}
+        <section className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
           <StatCard label="Total users" value={stats.total} />
           <StatCard label="Admins" value={stats.admins} />
           <StatCard label="Standard" value={stats.total - stats.admins} />
-          <button
-            onClick={runSeed} disabled={seeding}
-            className="rounded-2xl border border-border/40 bg-card/40 p-5 text-left hover:bg-card/60 transition-colors disabled:opacity-60"
-          >
-            <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted mb-2 inline-flex items-center gap-1">
-              <Sparkles className="h-3 w-3" /> Seed
-            </p>
-            <p className="font-serif text-base font-light">
-              {seeding ? "Seeding…" : "Run seed-admin"}
-            </p>
-          </button>
         </section>
-
-        {seedResult && (
-          <pre className="mb-8 text-xs text-ink-muted bg-card/40 border border-border/40 rounded-2xl p-4 whitespace-pre-wrap">
-            {seedResult}
-          </pre>
-        )}
 
         {/* Toolbar */}
         <section className="flex items-center gap-2 mb-5">
@@ -328,7 +300,7 @@ export default function Admin() {
           </Button>
         </section>
 
-        {/* Table */}
+        {/* Users Table */}
         <section className="border border-border/50 rounded-3xl overflow-hidden bg-card/40">
           <Table>
             <TableHeader>
@@ -429,10 +401,43 @@ export default function Admin() {
             </div>
           )}
         </section>
+
+        {/* Audit Log (inline section) */}
+        <section className="mt-10">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-serif text-2xl font-light">Activity log</h2>
+            <Button variant="outline" size="sm" onClick={loadAudit} className="rounded-full h-8 px-3 border-border/60 text-xs">
+              <RefreshCcw className="h-3 w-3 mr-1.5" /> Refresh
+            </Button>
+          </div>
+          <div className="border border-border/50 rounded-3xl overflow-hidden bg-card/40">
+            {audit.length === 0 ? (
+              <p className="text-sm text-ink-muted py-10 text-center">No actions recorded yet.</p>
+            ) : (
+              <div className="divide-y divide-border/30 max-h-[400px] overflow-y-auto">
+                {audit.map((a) => (
+                  <div key={a.id} className="px-5 py-3.5 text-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-foreground font-medium">{a.action}</span>
+                      <span className="text-ink-muted shrink-0">{new Date(a.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="text-ink-muted mt-1">
+                      <span className="text-foreground/70">{a.actor_email ?? "—"}</span>
+                      {a.target_email && <> → <span className="text-foreground/70">{a.target_email}</span></>}
+                      {a.details && Object.keys(a.details).length > 0 && (
+                        <> · <span className="font-mono text-ink-muted/80">{JSON.stringify(a.details)}</span></>
+                      )}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       </div>
 
       {/* Add user dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog open={addOpen} onOpenChange={(v) => { if (!v) { setShowPassword(false); setShowConfirmPassword(false); } setAddOpen(v); }}>
         <DialogContent className="bg-background border-border rounded-3xl sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-serif text-2xl font-light">Add user</DialogTitle>
@@ -445,7 +450,48 @@ export default function Admin() {
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-full bg-surface border-border/60" />
             </Field>
             <Field label="Password">
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-full bg-surface border-border/60" placeholder="Strong password required" />
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="rounded-full bg-surface border-border/60 pr-10"
+                  placeholder="Strong password required"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </Field>
+            <Field label="Confirm password">
+              <div className="relative">
+                <Input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className={cn(
+                    "rounded-full bg-surface border-border/60 pr-10",
+                    confirmPassword && password !== confirmPassword && "border-destructive/60 focus-visible:ring-destructive/30"
+                  )}
+                  placeholder="Re-enter password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {confirmPassword && password !== confirmPassword && (
+                <p className="text-[11px] text-destructive mt-1 pl-3">Passwords don't match</p>
+              )}
             </Field>
             <label className="text-xs text-ink-muted inline-flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 cursor-pointer">
               <input type="checkbox" checked={makeAdmin} onChange={(e) => setMakeAdmin(e.target.checked)} />
@@ -454,7 +500,11 @@ export default function Admin() {
           </div>
           <DialogFooter>
             <Button variant="ghost" className="rounded-full" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={busy} className="rounded-full bg-foreground text-background hover:bg-foreground/90">
+            <Button
+              onClick={handleAdd}
+              disabled={busy || (!!confirmPassword && password !== confirmPassword)}
+              className="rounded-full bg-foreground text-background hover:bg-foreground/90"
+            >
               <Plus className="h-4 w-4 mr-1" /> Create user
             </Button>
           </DialogFooter>
@@ -462,7 +512,7 @@ export default function Admin() {
       </Dialog>
 
       {/* Edit user dialog */}
-      <Dialog open={!!editing} onOpenChange={(v) => { if (!v) setEditing(null); }}>
+      <Dialog open={!!editing} onOpenChange={(v) => { if (!v) { setEditing(null); setShowEditPassword(false); } }}>
         <DialogContent className="bg-background border-border rounded-3xl sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-serif text-2xl font-light">Edit user</DialogTitle>
@@ -474,7 +524,23 @@ export default function Admin() {
                 <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="rounded-full bg-surface border-border/60" />
               </Field>
               <Field label={<span className="inline-flex items-center gap-1.5"><KeyRound className="h-3 w-3" /> New password</span>}>
-                <Input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} className="rounded-full bg-surface border-border/60" placeholder="Leave blank to keep current" />
+                <div className="relative">
+                  <Input
+                    type={showEditPassword ? "text" : "password"}
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="rounded-full bg-surface border-border/60 pr-10"
+                    placeholder="Leave blank to keep current"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </Field>
             </div>
           )}
@@ -485,11 +551,11 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
 
-      {/* Audit log dialog */}
+      {/* Audit log dialog (kept for header button) */}
       <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
         <DialogContent className="bg-background border-border rounded-3xl sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="font-serif text-2xl font-light">Audit log</DialogTitle>
+            <DialogTitle className="font-serif text-2xl font-light">Full audit log</DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto -mx-6 px-6">
             {audit.length === 0 ? (
