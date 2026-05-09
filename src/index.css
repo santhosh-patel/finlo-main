@@ -12,6 +12,18 @@
     /* Space below scrollable content on mobile so it clears the floating tab bar + home indicator */
     --finlo-mobile-tab-clearance: calc(8.5rem + env(safe-area-inset-bottom, 0px));
 
+    /*
+      Stacking (mobile bottom nav uses --finlo-z-mobile-nav). Keep overlays above the pill.
+      Sheets/dialogs/popovers use Tailwind z-[var(--finlo-z-*)] in components.
+    */
+    --finlo-z-mobile-nav: 60;
+    --finlo-z-sheet: 65;
+    --finlo-z-dialog: 70;
+    --finlo-z-popover: 80;
+    --finlo-z-date-overlay: 85;
+    /* Voice / lightweight HUD on home (above nav, below sheets) */
+    --finlo-z-floating-hud: 62;
+
     /* Light theme — warm paper */
     --background: 42 27% 96%;
     --foreground: 220 18% 12%;

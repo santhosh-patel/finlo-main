@@ -62,8 +62,7 @@ export default function Settings(props: Props) {
       <SheetContent
         side="right"
         hideCloseButton
-        overlayClassName="z-[55]"
-        className="bg-background border-border w-full sm:max-w-[560px] p-0 flex flex-col h-full z-[55] pt-[env(safe-area-inset-top,0px)]"
+        className="bg-background border-border w-full sm:max-w-[560px] p-0 flex flex-col h-full pt-[env(safe-area-inset-top,0px)]"
       >
         {/* Fixed Header & Navigation Container */}
         <div className="p-6 pb-4 border-b border-border/10 bg-background/90 backdrop-blur-md shrink-0">

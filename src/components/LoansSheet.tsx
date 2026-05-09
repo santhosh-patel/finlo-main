@@ -102,8 +102,7 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
       <SheetContent
         side="right"
         hideCloseButton
-        overlayClassName="z-[55]"
-        className="bg-background border-border w-full sm:max-w-[520px] overflow-y-auto p-6 max-md:pb-[var(--finlo-mobile-tab-clearance)] z-[55] pt-[calc(1.5rem+env(safe-area-inset-top,0px))]"
+        className="bg-background border-border w-full sm:max-w-[520px] overflow-y-auto p-6 max-md:pb-[var(--finlo-mobile-tab-clearance)] pt-[calc(1.5rem+env(safe-area-inset-top,0px))]"
       >
         <div className="flex items-start gap-2 mb-6">
           <Button

@@ -668,7 +668,7 @@ export function AddExpenseSheet({
         </form>
 
         {isProcessingReceipt && (
-          <div className="absolute inset-0 bg-background/85 backdrop-blur-md z-50 flex flex-col items-center justify-center space-y-4 rounded-t-[32px] p-6 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-background/85 backdrop-blur-md z-20 flex flex-col items-center justify-center space-y-4 rounded-t-[32px] p-6 animate-in fade-in duration-300">
             <div className="h-14 w-14 rounded-2xl bg-surface flex items-center justify-center border border-border/40 shadow-sm relative">
               <Loader2 className="h-7 w-7 text-foreground animate-spin" />
               <Camera className="h-4 w-4 text-foreground/50 absolute bottom-1.5 right-1.5" />

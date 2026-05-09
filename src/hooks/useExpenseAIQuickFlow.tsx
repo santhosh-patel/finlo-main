@@ -670,7 +670,7 @@ export function useExpenseAIQuickFlow({
 
   const voiceHud = (isListening || loading) ? (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-[45] pointer-events-none px-5 md:hidden transition-all duration-200"
+      className="fixed left-1/2 -translate-x-1/2 z-[var(--finlo-z-floating-hud,62)] pointer-events-none px-5 md:hidden transition-all duration-200"
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 118px)" }}
       aria-live="polite"
     >

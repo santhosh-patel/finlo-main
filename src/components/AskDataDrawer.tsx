@@ -888,7 +888,7 @@ export function AskDataDrawer({
         {/* ================= MOBILE NAVIGATION OVERLAY DRAWER ================= */}
         {sidebarOpen && (
           <div 
-            className="md:hidden absolute inset-0 bg-black/60 z-50 animate-in fade-in duration-200"
+            className="md:hidden absolute inset-0 bg-black/60 z-10 animate-in fade-in duration-200"
             onClick={() => setSidebarOpen(false)}
           >
             <div 

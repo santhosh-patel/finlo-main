@@ -830,7 +830,7 @@ const Index = () => {
       {/* Mobile bottom navigation — hidden while Maya or transaction details are open */}
       {!askAIOpen && !details && (
       <div 
-        className="fixed z-[60] bottom-0 inset-x-0 md:hidden flex justify-center pointer-events-none pb-4" 
+        className="fixed z-[var(--finlo-z-mobile-nav,60)] bottom-0 inset-x-0 md:hidden flex justify-center pointer-events-none pb-4" 
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
       >
         <div className="bg-background/90 backdrop-blur-xl border border-border/60 shadow-[0_8px_32px_-8px_hsl(var(--foreground)/0.15)] rounded-full flex items-center justify-between px-2 py-1.5 pointer-events-auto w-[calc(100%-2rem)] max-w-[380px]">

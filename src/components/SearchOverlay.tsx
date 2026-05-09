@@ -152,7 +152,7 @@ export function SearchOverlay({
         )}
 
         {selectedIds.size > 0 && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-[400px] bg-foreground text-background rounded-2xl shadow-2xl p-4 flex items-center justify-between z-50 animate-in fade-in slide-in-from-bottom-4">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-48px)] max-w-[400px] bg-foreground text-background rounded-2xl shadow-2xl p-4 flex items-center justify-between z-[var(--finlo-z-popover,80)] animate-in fade-in slide-in-from-bottom-4">
             <div className="flex items-center gap-3">
               <button onClick={() => setSelectedIds(new Set())} className="p-1 hover:bg-background/10 rounded-full">
                 <X className="h-4 w-4" />
