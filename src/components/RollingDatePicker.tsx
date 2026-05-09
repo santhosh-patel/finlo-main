@@ -1,349 +1,465 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  type CSSProperties,
+} from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { Calendar, ChevronDown } from "lucide-react";
+import { Calendar, ChevronDown, Clock } from "lucide-react";
 
-/** Above popovers; portaled to body. z from `--finlo-z-date-overlay` in index.css */
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
 
 interface RollingDatePickerProps {
-  value: string; // YYYY-MM-DD
+  value: string; // YYYY-MM-DD  or  YYYY-MM-DDTHH:mm
   onChange: (value: string) => void;
   className?: string;
-  max?: string; // YYYY-MM-DD
+  max?: string;
   placeholder?: string;
+  showTime?: boolean;
 }
 
-const MONTHS_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
+
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
 ];
 
-function getDaysInMonth(month: number, year: number): number {
-  return new Date(year, month + 1, 0).getDate();
+const ITEM_H  = 42;
+const VISIBLE = 5;
+const WHEEL_H = ITEM_H * VISIBLE;
+const PAD     = ITEM_H * Math.floor(VISIBLE / 2);
+
+function getDaysInMonth(m: number, y: number) { return new Date(y, m + 1, 0).getDate(); }
+function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+function pad2(n: number) { return String(n).padStart(2, "0"); }
+
+/* ------------------------------------------------------------------ */
+/*  Wheel – barrel-roll column with distance-based transforms          */
+/* ------------------------------------------------------------------ */
+
+interface WheelItem { label: string; value: number }
+
+interface WheelProps {
+  items: WheelItem[];
+  selected: number;
+  onSelect: (v: number) => void;
+  label?: string;
+  width?: string;
 }
 
-export function RollingDatePicker({ value, onChange, className, max, placeholder }: RollingDatePickerProps) {
+function Wheel({ items, selected, onSelect, label, width }: WheelProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrolling    = useRef(false);
+  const raf          = useRef(0);
+  const settleTimer  = useRef<ReturnType<typeof setTimeout>>();
+
+  /* ---- programmatic scroll ---- */
+  const scrollToIdx = useCallback((idx: number, instant = false) => {
+    const el = containerRef.current;
+    if (!el) return;
+    scrolling.current = true;
+    el.scrollTo({ top: idx * ITEM_H, behavior: instant ? "instant" : "smooth" });
+    clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => { scrolling.current = false; }, instant ? 50 : 320);
+  }, []);
+
+  /* ---- sync to selected prop ---- */
+  useEffect(() => {
+    const idx = items.findIndex((i) => i.value === selected);
+    if (idx >= 0) scrollToIdx(idx, true);
+  }, [selected, items, scrollToIdx]);
+
+  /* ---- distance-based style for each item ---- */
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setScrollTop(el.scrollTop);
+
+    if (scrolling.current) return;
+    cancelAnimationFrame(raf.current);
+    raf.current = requestAnimationFrame(() => {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = setTimeout(() => {
+        if (!containerRef.current) return;
+        const idx = clamp(Math.round(containerRef.current.scrollTop / ITEM_H), 0, items.length - 1);
+        const v = items[idx].value;
+        if (v !== selected) onSelect(v);
+        scrollToIdx(idx);
+      }, 100);
+    });
+  }, [items, selected, onSelect, scrollToIdx]);
+
+  useEffect(() => () => { cancelAnimationFrame(raf.current); clearTimeout(settleTimer.current); }, []);
+
+  const itemStyle = useCallback((idx: number): CSSProperties => {
+    const center = scrollTop + PAD;
+    const itemCenter = idx * ITEM_H + ITEM_H / 2;
+    const dist = (itemCenter - center) / ITEM_H; // signed distance in items
+    const abs  = Math.min(Math.abs(dist), 2.5);
+
+    const scale   = 1 - abs * 0.08;            // 1.0 → 0.80
+    const opacity = 1 - abs * 0.32;            // 1.0 → 0.20
+    const rotateX = dist * -18;                // barrel tilt
+    const translateY = dist * 1.5;
+
+    return {
+      height: ITEM_H,
+      transform: `perspective(300px) rotateX(${rotateX}deg) scale(${scale}) translateY(${translateY}px)`,
+      opacity: Math.max(opacity, 0.12),
+      transition: scrolling.current ? "none" : "transform 120ms ease-out, opacity 120ms ease-out",
+      willChange: "transform, opacity",
+    };
+  }, [scrollTop]);
+
+  return (
+    <div className="flex flex-col items-center min-w-0" style={{ width: width || "auto", flex: width ? "none" : 1 }}>
+      {label && (
+        <span className="text-[9px] uppercase tracking-[0.18em] text-ink-muted/60 font-semibold mb-1 select-none">
+          {label}
+        </span>
+      )}
+      <div className="relative w-full overflow-hidden" style={{ height: WHEEL_H }}>
+        {/* center highlight */}
+        <div
+          className="absolute inset-x-0.5 rounded-[10px] bg-foreground/[0.05] pointer-events-none"
+          style={{ top: PAD, height: ITEM_H }}
+        />
+        {/* fade masks */}
+        <div className="absolute inset-x-0 top-0 pointer-events-none z-[1]"
+          style={{ height: PAD, background: "linear-gradient(to bottom, var(--background) 20%, transparent)" }} />
+        <div className="absolute inset-x-0 bottom-0 pointer-events-none z-[1]"
+          style={{ height: PAD, background: "linear-gradient(to top, var(--background) 20%, transparent)" }} />
+
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="h-full overflow-y-auto scrollbar-none overscroll-contain"
+          style={{ scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch" }}
+        >
+          <div style={{ height: PAD }} aria-hidden />
+          {items.map((item, idx) => {
+            const isActive = item.value === selected;
+            return (
+              <div
+                key={item.value}
+                role="option"
+                aria-selected={isActive}
+                onClick={() => { onSelect(item.value); scrollToIdx(items.findIndex(i => i.value === item.value)); }}
+                className={cn(
+                  "flex items-center justify-center select-none cursor-pointer snap-center",
+                  isActive ? "text-foreground font-semibold" : "text-ink-muted font-medium",
+                )}
+                style={itemStyle(idx)}
+              >
+                <span className="text-[15px] tabular-nums whitespace-nowrap">{item.label}</span>
+              </div>
+            );
+          })}
+          <div style={{ height: PAD }} aria-hidden />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main component                                                     */
+/* ------------------------------------------------------------------ */
+
+export function RollingDatePicker({
+  value,
+  onChange,
+  className,
+  max,
+  placeholder,
+  showTime = false,
+}: RollingDatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  
-  // Parse initial date
-  const initialDate = useMemo(() => {
-    if (!value) return new Date();
-    const parsed = new Date(value + "T00:00:00");
-    return isNaN(parsed.getTime()) ? new Date() : parsed;
+  const [closing, setClosing] = useState(false);
+
+  const close = useCallback(() => {
+    setClosing(true);
+    setTimeout(() => { setIsOpen(false); setClosing(false); }, 220);
+  }, []);
+
+  /* ---- parse value ---- */
+  const parsed = useMemo(() => {
+    const now = new Date();
+    const def = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate(), hr: 12, min: 0, ampm: "AM" as const };
+    if (!value) return def;
+    const dt = value.includes("T") ? new Date(value) : new Date(value + "T00:00:00");
+    if (isNaN(dt.getTime())) return def;
+    const h24 = dt.getHours();
+    return { y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate(), hr: h24 % 12 || 12, min: dt.getMinutes(), ampm: (h24 >= 12 ? "PM" : "AM") as "AM" | "PM" };
   }, [value]);
 
-  const [tempMonth, setTempMonth] = useState(initialDate.getMonth());
-  const [tempDay, setTempDay] = useState(initialDate.getDate());
-  const [tempYear, setTempYear] = useState(initialDate.getFullYear());
+  const [tmpY, setY]     = useState(parsed.y);
+  const [tmpM, setM]     = useState(parsed.m);
+  const [tmpD, setD]     = useState(parsed.d);
+  const [tmpHr, setHr]   = useState(parsed.hr);
+  const [tmpMn, setMn]   = useState(parsed.min);
+  const [tmpAP, setAP]   = useState<"AM"|"PM">(parsed.ampm);
+  const [timeOn, setTimeOn] = useState(showTime && value.includes("T"));
+  const [rawInput, setRawInput] = useState("");
 
-  const monthRef = useRef<HTMLDivElement>(null);
-  const dayRef = useRef<HTMLDivElement>(null);
-  const yearRef = useRef<HTMLDivElement>(null);
+  /* sync on open */
+  useEffect(() => {
+    if (!isOpen) return;
+    setY(parsed.y); setM(parsed.m); setD(parsed.d);
+    setHr(parsed.hr); setMn(parsed.min); setAP(parsed.ampm);
+    setTimeOn(showTime && value.includes("T"));
+    setRawInput("");
+  }, [isOpen, parsed, showTime, value]);
 
-  const ITEM_HEIGHT = 40; // px height of each roll item
-
-  // Years range
-  const years = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const list: number[] = [];
-    for (let y = currentYear - 6; y <= currentYear + 10; y++) {
-      list.push(y);
-    }
-    return list;
-  }, []);
+  const daysCount = useMemo(() => getDaysInMonth(tmpM, tmpY), [tmpM, tmpY]);
+  useEffect(() => { if (tmpD > daysCount) setD(daysCount); }, [daysCount, tmpD]);
 
   const maxDate = useMemo(() => {
     if (!max) return null;
-    const parsed = new Date(max + "T00:00:00");
-    return isNaN(parsed.getTime()) ? null : parsed;
+    const p = new Date(max + "T23:59:59");
+    return isNaN(p.getTime()) ? null : p;
   }, [max]);
 
-  // Total days in selected month/year
-  const daysCount = useMemo(() => {
-    return getDaysInMonth(tempMonth, tempYear);
-  }, [tempMonth, tempYear]);
-
-  const days = useMemo(() => {
-    const list: number[] = [];
-    for (let d = 1; d <= daysCount; d++) {
-      list.push(d);
-    }
-    return list;
-  }, [daysCount]);
-
-  // Adjust tempDay if it exceeds max days in month
-  useEffect(() => {
-    if (tempDay > daysCount) {
-      setTempDay(daysCount);
-    }
-  }, [daysCount, tempDay]);
-
-  // Handle outside click to close
+  /* keyboard / body lock */
   useEffect(() => {
     if (!isOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest(".rolling-picker-modal") === null && target.closest(".rolling-picker-trigger") === null) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [isOpen]);
+    const fn = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", fn);
+    return () => document.removeEventListener("keydown", fn);
+  }, [isOpen, close]);
 
   useEffect(() => {
     if (!isOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
-  // Sync temp variables with active value when opening
-  useEffect(() => {
-    if (isOpen) {
-      setTempMonth(initialDate.getMonth());
-      setTempDay(initialDate.getDate());
-      setTempYear(initialDate.getFullYear());
-    }
-  }, [isOpen, initialDate]);
+  /* ---- wheel data ---- */
+  const yearItems = useMemo(() => {
+    const c = new Date().getFullYear();
+    return Array.from({ length: 20 }, (_, i) => ({ label: String(c - 8 + i), value: c - 8 + i }));
+  }, []);
+  const monthItems = useMemo(() => MONTHS.map((m, i) => ({ label: m.slice(0, 3), value: i })), []);
+  const dayItems   = useMemo(() => Array.from({ length: daysCount }, (_, i) => ({ label: String(i + 1), value: i + 1 })), [daysCount]);
+  const hourItems  = useMemo(() => Array.from({ length: 12 }, (_, i) => ({ label: pad2(i + 1), value: i + 1 })), []);
+  const minItems   = useMemo(() => Array.from({ length: 60 }, (_, i) => ({ label: pad2(i), value: i })), []);
+  const apItems    = useMemo(() => [{ label: "AM", value: 0 }, { label: "PM", value: 1 }], []);
 
-  // Scroll to active index
-  const scrollTo = (ref: React.RefObject<HTMLDivElement | null>, index: number) => {
-    if (ref.current) {
-      ref.current.scrollTop = index * ITEM_HEIGHT;
+  /* ---- confirm ---- */
+  const handleConfirm = () => {
+    let s = `${tmpY}-${pad2(tmpM + 1)}-${pad2(tmpD)}`;
+    if (timeOn) {
+      let h24 = tmpHr % 12;
+      if (tmpAP === "PM") h24 += 12;
+      s += `T${pad2(h24)}:${pad2(tmpMn)}`;
     }
+    if (maxDate && new Date(timeOn ? s : s + "T23:59:59") > maxDate) {
+      onChange(max!); close(); return;
+    }
+    onChange(s); close();
   };
 
-  // Center wheels on open or temp changes
-  useEffect(() => {
-    if (isOpen) {
-      // Small timeout to allow render and scroll refs to settle
-      const timer = setTimeout(() => {
-        scrollTo(monthRef, tempMonth);
-        scrollTo(dayRef, tempDay - 1);
-        const yearIndex = years.indexOf(tempYear);
-        if (yearIndex !== -1) {
-          scrollTo(yearRef, yearIndex);
-        }
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, tempMonth, tempDay, tempYear, years]);
+  /* ---- direct input ---- */
+  const submitRaw = () => {
+    const t = rawInput.trim();
+    if (!t) return;
+    const parts = t.split(/[/\-.]/).map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return;
+    const [a, b, c] = parts;
+    let dt: Date;
+    if (a > 31) dt = new Date(a, b - 1, c);
+    else if (b > 12) dt = new Date(c < 100 ? 2000 + c : c, a - 1, b);
+    else dt = new Date(c < 100 ? 2000 + c : c, b - 1, a);
+    if (!isNaN(dt.getTime())) { setY(dt.getFullYear()); setM(dt.getMonth()); setD(dt.getDate()); setRawInput(""); }
+  };
 
-  // Format date for button display
-  const displayLabel = useMemo(() => {
-    if (!value) return placeholder || "Select Date";
-    const date = new Date(value + "T00:00:00");
-    if (isNaN(date.getTime())) return placeholder || "Select Date";
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  /* ---- display strings ---- */
+  const triggerLabel = useMemo(() => {
+    if (!value) return placeholder || "Select date";
+    const dt = value.includes("T") ? new Date(value) : new Date(value + "T00:00:00");
+    if (isNaN(dt.getTime())) return placeholder || "Select date";
+    let l = dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    if (value.includes("T")) l += " · " + dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    return l;
   }, [value, placeholder]);
 
-  // Handle scroll snap updates
-  const handleScroll = (
-    ref: React.RefObject<HTMLDivElement | null>,
-    type: "month" | "day" | "year",
-    itemsLength: number
-  ) => {
-    if (!ref.current) return;
-    const scrollTop = ref.current.scrollTop;
-    const index = Math.round(scrollTop / ITEM_HEIGHT);
-    const clampedIndex = Math.max(0, Math.min(index, itemsLength - 1));
+  const preview = useMemo(() => {
+    const day = tmpD;
+    const suffix = [,"st","nd","rd"][day % 10 > 3 || ~~(day % 100 / 10) === 1 ? 0 : day % 10] || "th";
+    let l = `${MONTHS[tmpM]} ${day}${suffix}, ${tmpY}`;
+    if (timeOn) l += `  ·  ${tmpHr}:${pad2(tmpMn)} ${tmpAP}`;
+    return l;
+  }, [tmpM, tmpD, tmpY, timeOn, tmpHr, tmpMn, tmpAP]);
 
-    if (type === "month" && clampedIndex !== tempMonth) {
-      setTempMonth(clampedIndex);
-    } else if (type === "day" && (clampedIndex + 1) !== tempDay) {
-      setTempDay(clampedIndex + 1);
-    } else if (type === "year" && years[clampedIndex] !== tempYear) {
-      setTempYear(years[clampedIndex]);
-    }
-  };
-
-  const handleConfirm = () => {
-    const formattedMonth = String(tempMonth + 1).padStart(2, "0");
-    const formattedDay = String(tempDay).padStart(2, "0");
-    const selectedDateStr = `${tempYear}-${formattedMonth}-${formattedDay}`;
-
-    // Apply max bounds if specified
-    if (maxDate) {
-      const selectedDate = new Date(selectedDateStr + "T00:00:00");
-      if (selectedDate > maxDate) {
-        onChange(max);
-        setIsOpen(false);
-        return;
-      }
-    }
-
-    onChange(selectedDateStr);
-    setIsOpen(false);
-  };
-
+  /* ---- render ---- */
   return (
     <div className="relative inline-block w-full">
-      {/* Trigger Button */}
+      {/* Trigger */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setIsOpen(true)}
         className={cn(
-          "rolling-picker-trigger flex items-center justify-between w-full px-4 h-10 rounded-full border border-border/60 bg-background hover:bg-surface/50 text-foreground text-sm transition-[color,background-color,transform,box-shadow] duration-200 ease-out cursor-pointer active:scale-[0.99]",
-          className
+          "rolling-picker-trigger flex items-center justify-between w-full px-4 h-11 rounded-full",
+          "border border-border/60 bg-background hover:bg-surface/40 text-foreground text-sm",
+          "transition-all duration-200 cursor-pointer active:scale-[0.98]",
+          className,
         )}
       >
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-2 min-w-0">
           <Calendar className="h-4 w-4 text-ink-muted shrink-0" />
-          <span className="truncate">{displayLabel}</span>
+          <span className="truncate">{triggerLabel}</span>
         </span>
-        <ChevronDown className="h-4 w-4 text-ink-muted shrink-0" />
+        <ChevronDown className={cn("h-4 w-4 text-ink-muted shrink-0 transition-transform duration-300", isOpen && "rotate-180")} />
       </button>
 
-      {/* Portaled so z-index beats bottom nav and parent sheets don’t clip fixed */}
+      {/* Portal overlay */}
       {isOpen &&
         createPortal(
           <div
-            className="rolling-picker-modal fixed inset-0 flex items-end sm:items-center justify-center p-3 sm:p-4 pt-8 sm:pt-4 bg-black/45 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-300"
+            className={cn(
+              "rolling-picker-modal fixed inset-0 flex items-end sm:items-center justify-center",
+              closing
+                ? "bg-black/0 backdrop-blur-0 transition-all duration-200"
+                : "bg-black/35 backdrop-blur-[2px] transition-all duration-300",
+            )}
             style={{ zIndex: "var(--finlo-z-date-overlay, 85)" }}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="rolling-date-picker-title"
-            onClick={() => setIsOpen(false)}
+            onClick={close}
           >
             <div
               className={cn(
-                "w-full max-w-sm max-h-[min(92dvh,720px)] overflow-y-auto overscroll-contain",
-                "bg-background/95 border border-border/80 rounded-t-[28px] sm:rounded-[28px] shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.35)] sm:shadow-2xl",
-                "flex flex-col gap-5 sm:gap-6",
-                "p-5 sm:p-6",
-                "pb-[max(1.25rem,calc(env(safe-area-inset-bottom,0px)+1rem))] sm:pb-6",
-                "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-6",
-                "motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
+                "rolling-picker-modal w-full max-w-[390px]",
+                "bg-background border border-border/50 rounded-t-[22px] sm:rounded-[22px]",
+                "shadow-[0_-16px_64px_-12px_rgba(0,0,0,0.25)] sm:shadow-2xl",
+                "flex flex-col gap-0",
+                "px-5 pt-3 pb-[max(1.25rem,calc(env(safe-area-inset-bottom,0px)+0.75rem))]",
+                "sm:px-6 sm:pt-5 sm:pb-6",
+                closing
+                  ? "opacity-0 translate-y-6 scale-[0.97] transition-all duration-200 ease-in"
+                  : "opacity-100 translate-y-0 scale-100 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-6 motion-safe:duration-[350ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]",
               )}
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                className="mx-auto h-1 w-10 shrink-0 rounded-full bg-border/70 sm:hidden"
-                aria-hidden
-              />
+              {/* drag handle */}
+              <div className="mx-auto h-[5px] w-10 rounded-full bg-foreground/10 mb-4 sm:hidden" aria-hidden />
 
-              {/* Header */}
-              <div className="flex items-center justify-between gap-3 border-b border-border/30 pb-3">
-                <span
-                  id="rolling-date-picker-title"
-                  className="text-sm font-semibold tracking-wide text-foreground uppercase"
-                >
-                  Select date
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="text-xs font-semibold text-ink-muted hover:text-foreground transition-colors duration-200 min-h-9 min-w-9 sm:min-h-0 sm:min-w-0 rounded-full hover:bg-surface/80 -mr-1 px-2"
-                >
-                  Cancel
-                </button>
+              {/* preview */}
+              <p className="text-center text-lg sm:text-xl font-medium text-foreground tracking-tight mb-5 select-none leading-snug">
+                {preview}
+              </p>
+
+              {/* ───── DATE WHEELS ───── */}
+              <div className="flex items-stretch rounded-2xl bg-surface/20 overflow-hidden">
+                <Wheel items={monthItems} selected={tmpM} onSelect={setM} label="Month" />
+                <Wheel items={dayItems}   selected={tmpD} onSelect={setD} label="Day" />
+                <Wheel items={yearItems}  selected={tmpY} onSelect={setY} label="Year" />
               </div>
 
-              {/* Rolling Wheel Interface */}
-              <div className="relative h-[180px] bg-surface/30 rounded-2xl border border-border/40 overflow-hidden flex shadow-inner">
-
-                <div className="absolute inset-x-0 top-[70px] h-10 border-y border-foreground/10 bg-foreground/[0.06] pointer-events-none rounded-sm transition-colors duration-200" />
-
-                <div
-                  className="absolute inset-0 pointer-events-none bg-gradient-to-b from-background via-transparent to-background opacity-95"
-                  style={{ backgroundSize: "100% 180px" }}
-                />
-
-                <div
-                  ref={monthRef}
-                  onScroll={() => handleScroll(monthRef, "month", MONTHS_SHORT.length)}
-                  className="flex-1 overflow-y-auto snap-y snap-mandatory scrollbar-none scroll-smooth py-[70px] [scroll-behavior:smooth]"
-                  style={{ height: "180px" }}
-                >
-                  {MONTHS_SHORT.map((m, idx) => (
-                    <div
-                      key={m}
-                      onClick={() => { setTempMonth(idx); scrollTo(monthRef, idx); }}
-                      className={cn(
-                        "h-10 flex items-center justify-center text-sm font-medium snap-center cursor-pointer select-none",
-                        "transition-[transform,color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                        tempMonth === idx ? "text-foreground font-bold scale-105 opacity-100" : "text-ink-muted/45 scale-100 opacity-70",
-                      )}
-                    >
-                      {m}
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  ref={dayRef}
-                  onScroll={() => handleScroll(dayRef, "day", days.length)}
-                  className="flex-1 overflow-y-auto snap-y snap-mandatory scrollbar-none scroll-smooth py-[70px] [scroll-behavior:smooth]"
-                  style={{ height: "180px" }}
-                >
-                  {days.map((d, idx) => (
-                    <div
-                      key={d}
-                      onClick={() => { setTempDay(d); scrollTo(dayRef, idx); }}
-                      className={cn(
-                        "h-10 flex items-center justify-center text-sm font-medium snap-center cursor-pointer select-none",
-                        "transition-[transform,color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                        tempDay === d ? "text-foreground font-bold scale-105 opacity-100" : "text-ink-muted/45 scale-100 opacity-70",
-                      )}
-                    >
-                      {d}
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  ref={yearRef}
-                  onScroll={() => handleScroll(yearRef, "year", years.length)}
-                  className="flex-1 overflow-y-auto snap-y snap-mandatory scrollbar-none scroll-smooth py-[70px] [scroll-behavior:smooth]"
-                  style={{ height: "180px" }}
-                >
-                  {years.map((y, idx) => (
-                    <div
-                      key={y}
-                      onClick={() => { setTempYear(y); scrollTo(yearRef, idx); }}
-                      className={cn(
-                        "h-10 flex items-center justify-center text-sm font-medium snap-center cursor-pointer select-none",
-                        "transition-[transform,color,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                        tempYear === y ? "text-foreground font-bold scale-105 opacity-100" : "text-ink-muted/45 scale-100 opacity-70",
-                      )}
-                    >
-                      {y}
-                    </div>
-                  ))}
+              {/* direct input */}
+              <div className="flex items-center gap-2 mt-4">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={rawInput}
+                    onChange={(e) => setRawInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") submitRaw(); }}
+                    placeholder="DD/MM/YYYY"
+                    className={cn(
+                      "w-full h-10 pl-3 pr-14 rounded-xl",
+                      "border border-border/40 bg-surface/20 text-sm text-foreground",
+                      "placeholder:text-ink-muted/35",
+                      "focus:outline-none focus:ring-1 focus:ring-foreground/15 focus:border-foreground/25",
+                      "transition-all duration-200",
+                    )}
+                  />
+                  <button
+                    type="button"
+                    onClick={submitRaw}
+                    className="absolute right-1 top-1 bottom-1 px-3 text-[11px] font-semibold rounded-lg bg-foreground/[0.06] hover:bg-foreground/10 text-foreground/70 transition-colors"
+                  >
+                    Go
+                  </button>
                 </div>
               </div>
 
-              <div className="flex gap-2.5 sm:gap-3 pt-0.5">
+              {/* ───── TIME (optional) ───── */}
+              {showTime && (
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={() => setTimeOn(!timeOn)}
+                    className="flex items-center gap-2.5 text-sm select-none group mb-3"
+                  >
+                    <div className={cn(
+                      "relative h-[22px] w-[40px] rounded-full transition-colors duration-300",
+                      timeOn ? "bg-foreground" : "bg-border/80",
+                    )}>
+                      <div className={cn(
+                        "absolute top-[3px] left-[3px] h-4 w-4 rounded-full bg-background shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                        timeOn && "translate-x-[18px]",
+                      )} />
+                    </div>
+                    <Clock className="h-3.5 w-3.5 text-ink-muted group-hover:text-foreground transition-colors" />
+                    <span className="font-medium text-ink-muted group-hover:text-foreground transition-colors">
+                      Add time
+                    </span>
+                  </button>
+
+                  <div
+                    className={cn(
+                      "grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                      timeOn ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+                    )}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="flex items-stretch rounded-2xl bg-surface/20 overflow-hidden">
+                        <Wheel items={hourItems} selected={tmpHr} onSelect={setHr} label="Hour" />
+                        <Wheel items={minItems}  selected={tmpMn} onSelect={setMn} label="Min" />
+                        <Wheel items={apItems} selected={tmpAP === "AM" ? 0 : 1} onSelect={(v) => setAP(v === 0 ? "AM" : "PM")} width="72px" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ───── ACTIONS ───── */}
+              <div className="flex gap-2.5 mt-5 pt-4 border-t border-border/20">
                 <button
                   type="button"
-                  onClick={() => {
-                    const today = new Date();
-                    setTempMonth(today.getMonth());
-                    setTempDay(today.getDate());
-                    setTempYear(today.getFullYear());
-                  }}
-                  className="flex-1 min-h-12 h-12 sm:h-11 text-xs sm:text-sm font-semibold rounded-full border border-border/60 hover:bg-surface/50 active:scale-[0.98] text-foreground transition-[transform,background-color,box-shadow] duration-200 ease-out"
+                  onClick={() => { const n = new Date(); setY(n.getFullYear()); setM(n.getMonth()); setD(n.getDate()); }}
+                  className={cn(
+                    "flex-1 h-11 text-[13px] font-semibold rounded-full",
+                    "border border-border/40 text-foreground",
+                    "hover:bg-surface/50 active:scale-[0.97]",
+                    "transition-all duration-200",
+                  )}
                 >
                   Today
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirm}
-                  className="flex-[2] min-h-12 h-12 sm:h-11 text-xs sm:text-sm font-semibold rounded-full bg-foreground text-background hover:bg-foreground/90 active:scale-[0.98] transition-[transform,background-color,box-shadow] duration-200 ease-out shadow-md"
+                  className={cn(
+                    "flex-[2] h-11 text-[13px] font-semibold rounded-full",
+                    "bg-foreground text-background shadow-sm",
+                    "hover:opacity-90 active:scale-[0.97]",
+                    "transition-all duration-200",
+                  )}
                 >
-                  Set date
+                  Done
                 </button>
               </div>
             </div>
