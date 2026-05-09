@@ -497,14 +497,20 @@ export function useExpenses(userId: string | null) {
     }
   }, [userId]);
 
-  const addCategory = useCallback((name: string) => {
+  const addCategory = useCallback((name: string, opts?: { subcategories?: string[]; type?: CategoryDef["type"]; silentToast?: boolean }) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const subs = opts?.subcategories?.map((s) => s.trim().toLowerCase()).filter(Boolean) ?? [];
     setCategories((prev) => {
       if (prev.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) return prev;
-      const next: CategoryDef = { name: trimmed, subcategories: [], custom: true };
+      const next: CategoryDef = {
+        name: trimmed,
+        subcategories: subs,
+        custom: true,
+        ...(opts?.type ? { type: opts.type } : {}),
+      };
       upsertCategoryRow(next).then(() => {
-        toast({ title: "Category added", description: `"${trimmed}" is now available.` });
+        if (!opts?.silentToast) toast({ title: "Category added", description: `"${trimmed}" is now available.` });
       });
       return [...prev, next];
     });

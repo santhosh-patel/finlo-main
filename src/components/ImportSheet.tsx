@@ -2,8 +2,9 @@ import { useRef, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { getCurrencySymbol, Expense, PaymentMethod, todayISO } from "@/lib/expenses";
-import * as XLSX from "xlsx";
 import { Upload, FileWarning, CheckCircle2 } from "lucide-react";
+
+type XlsxNs = typeof import("xlsx");
 
 type Row = Omit<Expense, "id" | "created_at">;
 
@@ -65,6 +66,10 @@ export function ImportSheet({ open, onOpenChange, onImport }: Props) {
     setImported(0);
     setDuplicates(0);
     setFilename(file.name);
+    const mod = await import("xlsx");
+    const XLSX = ("default" in mod && mod.default && typeof mod.default.read === "function"
+      ? mod.default
+      : mod) as XlsxNs;
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array", cellDates: true });
     const sheet = wb.Sheets[wb.SheetNames[0]];

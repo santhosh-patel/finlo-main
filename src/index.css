@@ -65,51 +65,51 @@
   }
 
   .dark {
-    /* Dark theme — refined near-black with cool tint */
-    --background: 220 16% 6%;
-    --foreground: 40 8% 95%;
+    /* Dark — layered charcoal, readable muted text, clearer borders */
+    --background: 220 16% 5%;
+    --foreground: 210 14% 98%;
 
-    --card: 220 14% 8%;
-    --card-foreground: 40 8% 95%;
-    --popover: 220 14% 9%;
-    --popover-foreground: 40 8% 95%;
+    --card: 220 14% 9%;
+    --card-foreground: 210 14% 98%;
+    --popover: 220 14% 10%;
+    --popover-foreground: 210 14% 98%;
 
-    --primary: 40 8% 95%;
-    --primary-foreground: 220 18% 8%;
+    --primary: 210 14% 98%;
+    --primary-foreground: 220 18% 6%;
 
-    --secondary: 220 12% 12%;
-    --secondary-foreground: 40 8% 95%;
-    --muted: 220 12% 12%;
-    --muted-foreground: 220 6% 62%;
+    --secondary: 220 12% 14%;
+    --secondary-foreground: 210 12% 95%;
+    --muted: 220 12% 13%;
+    --muted-foreground: 220 10% 64%;
 
     --accent: 199 89% 74%;
     --accent-foreground: 220 18% 8%;
 
-    --destructive: 0 62% 52%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 58% 50%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 220 10% 16%;
-    --input: 220 10% 16%;
-    --ring: 220 6% 70%;
+    --border: 220 11% 20%;
+    --input: 220 11% 17%;
+    --ring: 210 65% 58%;
 
-    --surface: 220 12% 10%;
-    --surface-elevated: 220 12% 13%;
-    --ink-muted: 220 6% 62%;
-    --wash-sage: 158 24% 26%;
-    --wash-clay: 25 28% 28%;
+    --surface: 220 13% 11%;
+    --surface-elevated: 220 13% 14%;
+    --ink-muted: 220 10% 66%;
+    --wash-sage: 165 22% 24%;
+    --wash-clay: 22 26% 26%;
 
-    --shadow-sm: 0 1px 0 hsl(220 30% 2% / 0.6);
-    --shadow-md: 0 4px 16px -2px hsl(220 30% 2% / 0.6);
-    --shadow-lg: 0 16px 48px -12px hsl(220 30% 2% / 0.8);
+    --shadow-sm: 0 1px 2px hsl(220 40% 2% / 0.72);
+    --shadow-md: 0 8px 24px -6px hsl(220 42% 2% / 0.62);
+    --shadow-lg: 0 22px 56px -14px hsl(220 48% 2% / 0.72);
 
-    --sidebar-background: 220 16% 6%;
-    --sidebar-foreground: 40 8% 95%;
-    --sidebar-primary: 199 89% 74%;
-    --sidebar-primary-foreground: 220 18% 8%;
-    --sidebar-accent: 220 12% 12%;
-    --sidebar-accent-foreground: 40 8% 95%;
-    --sidebar-border: 220 10% 16%;
-    --sidebar-ring: 199 89% 74%;
+    --sidebar-background: 220 16% 5%;
+    --sidebar-foreground: 210 14% 98%;
+    --sidebar-primary: 199 82% 70%;
+    --sidebar-primary-foreground: 220 18% 6%;
+    --sidebar-accent: 220 13% 13%;
+    --sidebar-accent-foreground: 210 12% 95%;
+    --sidebar-border: 220 11% 18%;
+    --sidebar-ring: 199 82% 70%;
   }
 }
 
@@ -142,6 +142,19 @@
   input, textarea, [contenteditable="true"] {
     -webkit-user-select: text;
     user-select: text;
+  }
+
+  /* Number inputs — no spinner arrows (clean pill fields) */
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
   }
 
   button, a, input, [role="button"] {

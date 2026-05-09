@@ -39,9 +39,14 @@ export default function Login() {
     <main className="min-h-dvh bg-background text-foreground font-sans flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-foreground text-background mb-4">
-            <span className="font-serif text-2xl">F</span>
-          </div>
+          <img
+            src="/finlo-logo.png"
+            alt="Finlo"
+            width={56}
+            height={56}
+            className="mx-auto mb-4 h-14 w-14 rounded-2xl shadow-sm"
+            decoding="async"
+          />
           <h1 className="font-serif text-4xl text-foreground">Finlo</h1>
           <p className="text-xs text-ink-muted mt-2 tracking-wider uppercase">
             Sign in to continue
@@ -50,7 +55,7 @@ export default function Login() {
 
         <form
           onSubmit={submit}
-          className="space-y-5 bg-surface/60 border border-border/40 rounded-3xl p-6 shadow-sm"
+          className="space-y-5 rounded-3xl border border-border/45 bg-surface/60 p-6 shadow-sm backdrop-blur-sm dark:bg-card/45 dark:border-border/55 dark:shadow-[var(--shadow-md)]"
         >
           <div className="space-y-2">
             <Label htmlFor="email" className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">

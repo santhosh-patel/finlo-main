@@ -19,32 +19,83 @@ function sanitizeTransactions(transactions: unknown): unknown[] {
   });
 }
 
-async function queryGemini(query: string, transactions: unknown[]) {
-  const apiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!apiKey) throw new Error("GEMINI_API_KEY missing");
+function sanitizeCategoriesForPrompt(categories: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(categories)) return [];
+  const out: Record<string, unknown>[] = [];
+  for (const row of categories) {
+    if (out.length >= 100) break;
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim() : "";
+    if (!name) continue;
+    const subcategories = Array.isArray(r.subcategories)
+      ? (r.subcategories as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 15)
+      : [];
+    const type = typeof r.type === "string" ? r.type : undefined;
+    out.push({ name, ...(subcategories.length ? { subcategories } : {}), ...(type ? { type } : {}) });
+  }
+  return out;
+}
 
-  const payload = sanitizeTransactions(transactions);
-  const systemInstruction = `You are Maya, a friendly and expert financial conversational analysis assistant for the Finlo dashboard application.
+function buildInstructions(transactionsPayload: unknown[], categoryPayload: Record<string, unknown>[], today: string): string {
+  return `You are Maya, a friendly and expert financial conversational analysis assistant for the Finlo dashboard application.
 
 CRITICAL SECURITY GUARD RAILS:
 1. You are strictly allowed to answer queries related ONLY to the user's personal financial data, transactions ledger array, and dashboard app actions.
 2. If the user asks general-knowledge, trivia, coding, history, science, political, or other non-financial/non-dashboard questions, politely but firmly refuse to answer. Say: "I am Maya, your Finlo personal financial assistant. I can only assist with your transaction ledger analysis, saving advice, and financial dashboard calculations."
-3. You are fully authorized to answer financial advice questions related to the user's spending habits, such as:
-   - "How can I improve my financial habits?"
-   - "How can I save more money?"
-   - "Where should I be cautious about my spending based on my ledger?"
-   - "What are my highest expense areas?"
-   - "Suggest a monthly budget plan based on my transactions."
-   
-Use the following context to answer questions:
-- Transactions List: ${JSON.stringify(payload)}
+3. You are fully authorized to answer financial advice questions related to the user's spending habits AND to STRUCTURE RECORDING INTENT when they want to ADD or SAVE data in Finlo.
 
-Formatting rules:
+Context:
+- Today's date (ISO, user app): "${today}". When the user does not specify a date for a NEW transaction, use this date unless they imply another day explicitly.
+- Known categories — use EXACT category names below when assigning "category" on a transaction. If none fit and the user names a genuinely new grouping, propose it in categoriesToAdd first so the UI can confirm.
+- Categories catalog: ${JSON.stringify(categoryPayload)}
+- Transactions ledger (possibly partial): ${JSON.stringify(transactionsPayload)}
+
+RECORDING INTENT (transactions / categories):
+- Only when the user asks to RECORD, ADD, LOG, TRACK, SAVE, CREATE, ENTER, BOOK, or REGISTER a NEW transaction, expense, income, payout, REFUND THEY RECEIVED, or a NEW CATEGORY, fill "categoriesToAdd" and/or "transactionsToAdd". Otherwise omit them or leave them empty arrays [].
+- For ANALYSIS QUESTIONS ONLY (summaries, trends, comparisons): leave BOTH arrays EMPTY.
+- Normalize amounts as numbers without currency symbols. Prefer ₹ (Indian rupees).
+- In each transactionsToAdd row use field **txnType** with value \"expense\" or \"income\".
+- Infer sensible categories ("coffee/lunch/snacks/dinner/Zomato/Swiggy" ⇒ Food unless user specifies otherwise).
+- Payment method MUST be exactly one of "upi", "cash", or "card" (default "upi").
+- You may propose multiple NEW categories followed by transactions that reference those names — the Finlo UI applies categories first then transactions.
+
+Formatting rules for "reply":
 - Be highly accurate with sums and arithmetic.
-- Use ₹ for currency.
-- Highlight patterns, trends, or unusual spikes.
-- Keep your reply to 3-4 concise sentences max.
-- Optionally, if relevant to visualize the data, return a structured list of data coordinates under 'chartData' to render a chart!`;
+- Use ₹ in prose.
+- Keep your reply to 3-4 concise sentences max for analysis; when you suggested saved changes, briefly list what you'll add and say the user should tap "Add to Finlo" below to confirm.
+
+Optional chart ("chartData"):
+- Include only when a chart helps (comparisons, shares). Omit or use empty array if not helpful.`;
+}
+
+function pruneAssistantArtifacts(raw: Record<string, unknown>): Record<string, unknown> & {
+  categoriesToAdd: unknown[];
+  transactionsToAdd: unknown[];
+} {
+  let categoriesToAdd = Array.isArray(raw.categoriesToAdd) ? raw.categoriesToAdd.slice(0, 10) : [];
+  let transactionsToAdd = Array.isArray(raw.transactionsToAdd) ? raw.transactionsToAdd.slice(0, 20) : [];
+  categoriesToAdd = categoriesToAdd.filter((x) => x && typeof x === "object");
+  transactionsToAdd = transactionsToAdd.filter((x) => x && typeof x === "object");
+  const assistant_actions =
+    categoriesToAdd.length === 0 && transactionsToAdd.length === 0
+      ? undefined
+      : { categoriesToAdd, transactionsToAdd };
+  const next: Record<string, unknown> = { reply: raw.reply, chartData: raw.chartData };
+  if (assistant_actions !== undefined) next.assistant_actions = assistant_actions;
+  else next.assistant_actions = null;
+  return { ...next, categoriesToAdd, transactionsToAdd } as Record<string, unknown> & {
+    categoriesToAdd: unknown[];
+    transactionsToAdd: unknown[];
+  };
+}
+
+async function queryGemini(query: string, transactions: unknown[], categoryPayload: Record<string, unknown>[], today: string) {
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("GEMINI_API_KEY missing");
+
+  const payload = sanitizeTransactions(transactions);
+  const systemInstruction = buildInstructions(payload, categoryPayload, today);
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
@@ -61,16 +112,47 @@ Formatting rules:
         responseSchema: {
           type: "OBJECT",
           properties: {
-            reply: { type: "STRING", description: "Conversational financial analysis summary reply" },
+            reply: { type: "STRING", description: "Conversational reply" },
             chartData: {
               type: "ARRAY",
+              description: "Optional chart rows",
               items: {
                 type: "OBJECT",
                 properties: {
-                  label: { type: "STRING", description: "Label of the bar/category" },
-                  value: { type: "NUMBER", description: "Value of the bar/category" },
+                  label: { type: "STRING" },
+                  value: { type: "NUMBER" },
                 },
                 required: ["label", "value"],
+              },
+            },
+            categoriesToAdd: {
+              type: "ARRAY",
+              description: "New categories users asked to create; empty unless requested",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  name: { type: "STRING" },
+                  subcategories: { type: "ARRAY", items: { type: "STRING" } },
+                  type: { type: "STRING", description: "\"expense\" or \"income\"" },
+                },
+                required: ["name"],
+              },
+            },
+            transactionsToAdd: {
+              type: "ARRAY",
+              description: "transactions to persist after confirmation; empty unless user asked to add/log",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  amount: { type: "NUMBER" },
+                  category: { type: "STRING" },
+                  subcategory: { type: "STRING" },
+                  note: { type: "STRING" },
+                  date: { type: "STRING", description: "ISO yyyy-mm-dd" },
+                  txnType: { type: "STRING", description: "\"expense\" or \"income\"" },
+                  payment_method: { type: "STRING", description: "\"upi\" | \"cash\" | \"card\"" },
+                },
+                required: ["amount", "category", "date", "txnType"],
               },
             },
           },
@@ -88,43 +170,38 @@ Formatting rules:
   const resData = await response.json();
   const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Empty Gemini response.");
-  return JSON.parse(text);
+  const parsed = JSON.parse(text);
+  return pruneAssistantArtifacts(parsed as Record<string, unknown>);
 }
 
-async function queryGroq(query: string, transactions: unknown[]) {
+async function queryGroq(query: string, transactions: unknown[], categoryPayload: Record<string, unknown>[], today: string) {
   const apiKey = Deno.env.get("GROQ_API_KEY");
   if (!apiKey) throw new Error("GROQ_API_KEY missing");
 
   const payload = sanitizeTransactions(transactions);
-  const systemInstruction = `You are Maya, a friendly and expert financial conversational analysis assistant for the Finlo dashboard application.
+  const systemInstruction =
+    `${buildInstructions(payload, categoryPayload, today)}
 
-CRITICAL SECURITY GUARD RAILS:
-1. You are strictly allowed to answer queries related ONLY to the user's personal financial data, transactions ledger array, and dashboard app actions.
-2. If the user asks general-knowledge, trivia, coding, history, science, political, or other non-financial/non-dashboard questions, politely but firmly refuse to answer. Say: "I am Maya, your Finlo personal financial assistant. I can only assist with your transaction ledger analysis, saving advice, and financial dashboard calculations."
-3. You are fully authorized to answer financial advice questions related to the user's spending habits, such as:
-   - "How can I improve my financial habits?"
-   - "How can I save more money?"
-   - "Where should I be cautious about my spending based on my ledger?"
-   - "What are my highest expense areas?"
-   - "Suggest a monthly budget plan based on my transactions."
-   
-Use the following context to answer questions:
-- Transactions List: ${JSON.stringify(payload)}
+---
 
-Formatting rules:
-- Be highly accurate with sums and arithmetic.
-- Use ₹ for currency.
-- Highlight patterns, trends, or unusual spikes.
-- Keep your reply to 3-4 concise sentences max.
-- Optionally, if relevant to visualize the data, return a structured list of data coordinates under 'chartData' to render a chart!
+CRITICAL: You MUST return a JSON object with this exact shape:
 
-CRITICAL: You MUST return a JSON object with the following exact shape:
 {
-  "reply": "your analysis text here",
-  "chartData": [
-    { "label": "Category/Label", "value": 150 }
-  ]
-}`;
+  "reply": string,
+  "chartData": [{ "label": string, "value": number }]  // omit or empty array when not charting,
+  "categoriesToAdd": [{ "name": string, "subcategories"?: string[], "type"?: "expense" | "income" }]  // only when creating categories,
+  "transactionsToAdd": [{
+    "amount": number,
+    "category": string,
+    "subcategory"?: string,
+    "note"?: string,
+    "date": string,
+    "txnType": "expense" | "income",
+    "payment_method"?: "upi" | "cash" | "card"
+  }]
+}
+
+Use EMPTY ARRAYS [] for categoriesToAdd and transactionsToAdd when purely analytical replies.`;
 
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -150,7 +227,8 @@ CRITICAL: You MUST return a JSON object with the following exact shape:
   const resData = await response.json();
   const text = resData.choices?.[0]?.message?.content;
   if (!text) throw new Error("Empty Groq response.");
-  return JSON.parse(text);
+  const parsed = JSON.parse(text);
+  return pruneAssistantArtifacts(parsed as Record<string, unknown>);
 }
 
 Deno.serve(async (req) => {
@@ -206,7 +284,12 @@ Deno.serve(async (req) => {
 
     if (logErr) console.error("Failed to insert AI log:", logErr);
 
-    let body: { query?: string; transactions?: unknown[] };
+    let body: {
+      query?: string;
+      transactions?: unknown[];
+      categories?: unknown[];
+      today?: string;
+    };
     try {
       body = await req.json();
     } catch {
@@ -220,29 +303,37 @@ Deno.serve(async (req) => {
     }
 
     const transactions = body.transactions ?? [];
+    const categoryPayload = sanitizeCategoriesForPrompt(body.categories ?? []);
+    const today = typeof body.today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.today)
+      ? body.today
+      : new Date().toISOString().slice(0, 10);
 
     let result = null;
 
     try {
-      result = await queryGemini(query, transactions);
+      result = await queryGemini(query, transactions, categoryPayload, today);
     } catch (_) {
       // fall through to Groq
     }
 
     if (!result) {
       try {
-        result = await queryGroq(query, transactions);
+        result = await queryGroq(query, transactions, categoryPayload, today);
       } catch (e) {
         console.error("ask-data both providers failed:", e);
         return jsonResponse(req, { error: "AI assistants are temporarily unavailable. Try again shortly." }, 500);
       }
     }
 
-    if (!result?.reply) {
+    if (!result?.reply || typeof result.reply !== "string") {
       return jsonResponse(req, { error: "Unable to produce a reply. Try rephrasing your question." }, 500);
     }
 
-    return jsonResponse(req, result);
+    const { categoriesToAdd, transactionsToAdd, ...rest } = result;
+    void categoriesToAdd;
+    void transactionsToAdd;
+
+    return jsonResponse(req, rest);
   } catch (e) {
     console.error("ask-data error:", e);
     return jsonResponse(req, { error: "Something went wrong. Please try again." }, 500);

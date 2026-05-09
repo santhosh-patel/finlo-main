@@ -2,10 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { 
-  Sparkles, 
   Send, 
   Loader2, 
-  Bot, 
   User, 
   BarChart4, 
   Plus, 
@@ -15,13 +13,25 @@ import {
   X, 
   Menu, 
   MessageSquare,
-  RefreshCw
+  ListPlus
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { cn, vibrate } from "@/lib/utils";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
-import { getCurrencySymbol, formatINR, Expense } from "@/lib/expenses";
+import { getCurrencySymbol, formatINR, Expense, CategoryDef } from "@/lib/expenses";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import {
+  coerceAssistantActionsFromApi,
+  validateAgainstKnownCategories,
+  type MayaAssistantActions,
+} from "@/lib/mayaAssistantActions";
+
+function localTodayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 interface ChatSession {
   id: string;
@@ -36,6 +46,7 @@ interface DBMessage {
   sender: string;
   text: string;
   chart_data: Array<{ label: string; value: number }> | null;
+  assistant_actions: MayaAssistantActions | Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -44,27 +55,19 @@ interface Message {
   sender: "user" | "bot";
   text: string;
   chartData?: Array<{ label: string; value: number }>;
+  assistantActions?: MayaAssistantActions | null;
 }
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transactions: Expense[];
-}
-
-interface LooseQueryBuilder<T> {
-  select: (cols?: string) => LooseQueryBuilder<T>;
-  insert: (values: unknown) => LooseQueryBuilder<T>;
-  update: (values: unknown) => LooseQueryBuilder<T>;
-  delete: () => LooseQueryBuilder<T>;
-  eq: (col: string, val: unknown) => LooseQueryBuilder<T>;
-  order: (col: string, options?: { ascending?: boolean }) => LooseQueryBuilder<T>;
-  single: () => Promise<{ data: T | null; error: Error | null }>;
-  then: (resolve: (value: { data: T[] | null; error: Error | null }) => void) => void;
-}
-
-interface UntypedClient {
-  from: <T = Record<string, unknown>>(table: string) => LooseQueryBuilder<T>;
+  categories: CategoryDef[];
+  addExpense: (e: Omit<Expense, "id" | "created_at">) => Expense;
+  addCategory: (
+    name: string,
+    opts?: { subcategories?: string[]; type?: CategoryDef["type"]; silentToast?: boolean }
+  ) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -72,11 +75,21 @@ const QUICK_PROMPTS = [
   "What is my largest expense?",
   "How much spent on Food?",
   "Compare categories share",
+  "Log a ₹500 Coffee expense today",
 ];
 
-export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
+const MAYA_WELCOME =
+  "Hi! I'm Maya. Ask about your spending, or save entries like \"₹450 Food lunch today\". When I propose new categories or transactions, tap \"Add to Finlo\" below my reply to confirm.";
+
+export function AskDataDrawer({
+  open,
+  onOpenChange,
+  transactions,
+  categories,
+  addExpense,
+  addCategory,
+}: Props) {
   const { user } = useAuth();
-  const db = supabase as unknown as UntypedClient;
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -84,6 +97,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
   const [loading, setLoading] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [applyingActionsForId, setApplyingActionsForId] = useState<string | null>(null);
   
   // Mobile sidebar drawer trigger
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -107,7 +121,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     setSessionsLoading(true);
     try {
       const { data, error } = await supabase
-        .from("ai_chat_sessions" as "expenses")
+        .from("ai_chat_sessions")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -140,7 +154,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     setMessagesLoading(true);
     try {
       const { data, error } = await supabase
-        .from("ai_chat_messages" as "expenses")
+        .from("ai_chat_messages")
         .select("*")
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
@@ -148,12 +162,27 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const mapped: Message[] = (data as unknown as DBMessage[]).map((m) => ({
-          id: m.id,
-          sender: m.sender as "user" | "bot",
-          text: m.text,
-          chartData: m.chart_data ? m.chart_data : undefined
-        }));
+        const mapped: Message[] = (data as unknown as DBMessage[]).map((m) => {
+          const known = new Set(categories.map((c) => c.name.toLowerCase()));
+          let assistantActions =
+            coerceAssistantActionsFromApi(m.assistant_actions) ?? null;
+          if (assistantActions) {
+            assistantActions = validateAgainstKnownCategories(assistantActions, known);
+            if (
+              assistantActions.categoriesToAdd.length === 0 &&
+              assistantActions.transactionsToAdd.length === 0
+            ) {
+              assistantActions = null;
+            }
+          }
+          return {
+            id: m.id,
+            sender: m.sender as "user" | "bot",
+            text: m.text,
+            chartData: m.chart_data ? m.chart_data : undefined,
+            assistantActions,
+          };
+        });
         setMessages(mapped);
       } else {
         // Welcome text on clean sessions
@@ -161,7 +190,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
           {
             id: "welcome",
             sender: "bot",
-            text: "Hi! I'm Maya, your conversational finance assistant. Ask me anything about your recorded transactions, or try one of the suggestions below!",
+            text: MAYA_WELCOME,
           },
         ]);
       }
@@ -170,7 +199,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     } finally {
       setMessagesLoading(false);
     }
-  }, []);
+  }, [categories]);
 
   useEffect(() => {
     if (activeSessionId) {
@@ -180,7 +209,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
         {
           id: "welcome",
           sender: "bot",
-          text: "Hi! I'm Maya, your conversational finance assistant. Ask me anything about your recorded transactions, or try one of the suggestions below!",
+          text: MAYA_WELCOME,
         },
       ]);
     }
@@ -192,7 +221,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     vibrate();
     try {
       const { data, error } = await supabase
-        .from("ai_chat_sessions" as "expenses")
+        .from("ai_chat_sessions")
         .insert({
           user_id: user.id,
           title: `Conversation ${new Date().toLocaleDateString()}`
@@ -217,7 +246,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     if (!renameValue.trim()) return;
     try {
       const { error } = await supabase
-        .from("ai_chat_sessions" as "expenses")
+        .from("ai_chat_sessions")
         .update({ title: renameValue })
         .eq("id", sessionId);
         
@@ -240,7 +269,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     vibrate([60]);
     try {
       const { error } = await supabase
-        .from("ai_chat_sessions" as "expenses")
+        .from("ai_chat_sessions")
         .delete()
         .eq("id", sessionId);
         
@@ -258,7 +287,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
             {
               id: "welcome",
               sender: "bot",
-              text: "Hi! I'm Maya, your conversational finance assistant. Ask me anything about your recorded transactions, or try one of the suggestions below!",
+              text: MAYA_WELCOME,
             },
           ]);
         }
@@ -267,6 +296,67 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
       console.error("Failed to delete session:", e);
     }
   };
+
+  const BOT_MESSAGE_UUID =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  const applyMayaSuggestions = useCallback(
+    async (m: Message) => {
+      if (!m.assistantActions || !user?.id) return;
+      setApplyingActionsForId(m.id);
+      try {
+        const { categoriesToAdd, transactionsToAdd } = m.assistantActions;
+        for (const c of categoriesToAdd) {
+          addCategory(c.name, {
+            subcategories: c.subcategories,
+            type: c.type,
+            silentToast: true,
+          });
+        }
+        for (const t of transactionsToAdd) {
+          addExpense({
+            amount: t.amount,
+            category: t.category,
+            subcategory: t.subcategory ?? undefined,
+            note: t.note ?? undefined,
+            date: t.date,
+            payment_method: t.payment_method,
+            type: t.txnType,
+          });
+        }
+        if (BOT_MESSAGE_UUID.test(m.id)) {
+          const { error } = await supabase
+            .from("ai_chat_messages")
+            .update({ assistant_actions: null })
+            .eq("id", m.id);
+          if (error) console.error("Clear assistant_actions failed:", error);
+        }
+        setMessages((prev) =>
+          prev.map((x) => (x.id === m.id ? { ...x, assistantActions: null } : x)),
+        );
+        const descParts: string[] = [];
+        if (categoriesToAdd.length)
+          descParts.push(`${categoriesToAdd.length} categor${categoriesToAdd.length === 1 ? "y" : "ies"}`);
+        if (transactionsToAdd.length)
+          descParts.push(`${transactionsToAdd.length} transaction${transactionsToAdd.length === 1 ? "" : "s"}`);
+        toast({
+          title: "Saved to Finlo",
+          description: descParts.length ? `Added ${descParts.join(" and ")}.` : "Updates applied.",
+        });
+        vibrate([40, 60, 40]);
+      } catch (e) {
+        console.error(e);
+        toast({
+          title: "Could not save",
+          description: e instanceof Error ? e.message : "Try again in a moment.",
+          variant: "destructive",
+        });
+      } finally {
+        setApplyingActionsForId(null);
+      }
+    },
+    [addCategory, addExpense, user?.id],
+  );
 
   // 6. Send User / Bot completion request
   const handleSend = async (textToSend: string) => {
@@ -279,7 +369,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     if (!targetSessionId) {
       try {
         const { data, error } = await supabase
-          .from("ai_chat_sessions" as "expenses")
+          .from("ai_chat_sessions")
           .insert({
             user_id: user.id,
             title: textToSend.substring(0, 30) + "..."
@@ -315,7 +405,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
     try {
       // 1. Write user query message into DB
       await supabase
-        .from("ai_chat_messages" as "expenses")
+        .from("ai_chat_messages")
         .insert({
           session_id: targetSessionId,
           sender: "user",
@@ -333,9 +423,20 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
         type: t.type || "expense",
       }));
 
+      const categoryPayload = categories.map((c) => ({
+        name: c.name,
+        subcategories: c.subcategories.slice(0, 12),
+        ...(c.type ? { type: c.type } : {}),
+      }));
+
       // Call Rate-Limited Edge Function
       const { data, error } = await supabase.functions.invoke("ask-data", {
-        body: { query: textToSend, transactions: minimizedData },
+        body: {
+          query: textToSend,
+          transactions: minimizedData,
+          categories: categoryPayload,
+          today: localTodayISO(),
+        },
       });
 
       if (error) {
@@ -353,21 +454,43 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
       }
 
       if (data) {
-        // 2. Write AI response message to DB
-        await supabase
-          .from("ai_chat_messages" as "expenses")
+        let assistantActionsParsed =
+          coerceAssistantActionsFromApi((data as { assistant_actions?: unknown }).assistant_actions) ?? null;
+        if (assistantActionsParsed) {
+          const knownNames = new Set(categories.map((c) => c.name.toLowerCase()));
+          assistantActionsParsed = validateAgainstKnownCategories(assistantActionsParsed, knownNames);
+          if (
+            assistantActionsParsed.categoriesToAdd.length === 0 &&
+            assistantActionsParsed.transactionsToAdd.length === 0
+          ) {
+            assistantActionsParsed = null;
+          }
+        }
+
+        const persistActions = assistantActionsParsed
+          ? (JSON.parse(JSON.stringify(assistantActionsParsed)) as Record<string, unknown>)
+          : null;
+
+        const { data: insertedRow, error: botInsErr } = await supabase
+          .from("ai_chat_messages")
           .insert({
             session_id: targetSessionId,
             sender: "bot",
             text: data.reply,
             chart_data: data.chartData && data.chartData.length > 0 ? data.chartData : null,
-          });
+            assistant_actions: persistActions,
+          })
+          .select("id")
+          .single();
+
+        if (botInsErr) console.error("Failed to persist Maya reply:", botInsErr);
 
         const botMessage: Message = {
-          id: Math.random().toString(),
+          id: insertedRow?.id ?? crypto.randomUUID(),
           sender: "bot",
           text: data.reply,
           chartData: data.chartData && data.chartData.length > 0 ? data.chartData : undefined,
+          assistantActions: assistantActionsParsed,
         };
         setMessages((prev) => [...prev, botMessage]);
         vibrate([40, 60]); // Premium vibration feedback
@@ -583,6 +706,83 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
                           {m.text}
                         </div>
 
+                        {!isUser &&
+                          m.assistantActions &&
+                          (m.assistantActions.categoriesToAdd.length > 0 ||
+                            m.assistantActions.transactionsToAdd.length > 0) && (
+                          <div className="rounded-2xl border border-border bg-surface/50 px-4 py-3 space-y-3 animate-in fade-in duration-300">
+                            <div className="flex items-start gap-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                              <ListPlus className="h-3.5 w-3.5 mt-0.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              Ready to add
+                            </div>
+                            {m.assistantActions.categoriesToAdd.length > 0 && (
+                              <ul className="space-y-1 text-sm text-foreground list-disc list-inside">
+                                {m.assistantActions.categoriesToAdd.map((c) => (
+                                  <li key={`cat-${c.name}`}>
+                                    <span className="font-medium">{c.name}</span>
+                                    {c.type === "income" ? (
+                                      <span className="text-ink-muted"> · income category</span>
+                                    ) : null}
+                                    {c.subcategories?.length ? (
+                                      <span className="text-ink-muted">
+                                        {" "}
+                                        · subs: {c.subcategories.join(", ")}
+                                      </span>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {m.assistantActions.transactionsToAdd.length > 0 && (
+                              <ul className="space-y-1.5 text-sm text-foreground list-none pl-0">
+                                {m.assistantActions.transactionsToAdd.map((t, idx) => (
+                                  <li
+                                    key={`${t.date}-${t.category}-${t.amount}-${idx}`}
+                                    className="rounded-lg bg-background/50 border border-border/50 px-2.5 py-1.5"
+                                  >
+                                    <span className="font-semibold">
+                                      {getCurrencySymbol()}
+                                      {formatINR(t.amount)}
+                                    </span>
+                                    <span className="text-ink-muted">
+                                      {" "}
+                                      · {t.category}
+                                      {t.note ? (
+                                        <>
+                                          {" "}
+                                          · <span className="italic">{t.note}</span>
+                                        </>
+                                      ) : null}
+                                    </span>
+                                    <span className="text-ink-muted">
+                                      {" "}
+                                      · {t.date}
+                                    </span>
+                                    <span className="block text-[11px] text-ink-muted/80 uppercase tracking-wide mt-0.5">
+                                      {t.txnType === "income" ? "Income" : "Expense"} · {t.payment_method}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            <Button
+                              size="sm"
+                              className="w-full rounded-full font-semibold"
+                              disabled={applyingActionsForId === m.id}
+                              onClick={() => void applyMayaSuggestions(m)}
+                            >
+                              {applyingActionsForId === m.id ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                  Saving…
+                                </>
+                              ) : (
+                                "Add to Finlo"
+                              )}
+                            </Button>
+                          </div>
+                        )}
+
                         {/* Render Chart directly inside chat bubbles! */}
                         {m.chartData && (
                           <div className="rounded-2xl border border-border/40 bg-surface/40 p-4 w-full h-56 max-w-sm md:max-w-md animate-in fade-in duration-300">
@@ -676,7 +876,7 @@ export function AskDataDrawer({ open, onOpenChange, transactions }: Props) {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={loading}
-                  placeholder="Ask me anything: 'compare food to rent'..."
+                  placeholder="Ask anything, or 'Log ₹450 Food lunch today'…"
                   className="border-0 bg-transparent p-0 h-11 shadow-none focus-visible:ring-0 text-sm placeholder:text-ink-muted/50 text-foreground flex-1 pr-12 focus-visible:border-0"
                 />
                 <button

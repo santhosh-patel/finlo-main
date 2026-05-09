@@ -16,7 +16,7 @@ import { LoansSheet } from "@/components/LoansSheet";
 import { TrashSheet } from "@/components/TrashSheet";
 import { PeriodNav } from "@/components/PeriodNav";
 import { ExpenseDetailsDrawer } from "@/components/ExpenseDetailsDrawer";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
@@ -28,6 +28,7 @@ import Settings from "@/pages/Settings";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/hooks/useAuth";
 import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
+import { useExpenseAIQuickFlow } from "@/hooks/useExpenseAIQuickFlow";
 import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -80,6 +81,8 @@ const Index = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [askAIOpen, setAskAIOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
+  const [quickAddCycle, setQuickAddCycle] = useState(0);
+  const quickAddTranscriptRef = useRef<((text: string) => void) | null>(null);
 
   const today = todayISO();
   const yesterday = addDays(today, -1);
@@ -202,6 +205,23 @@ const Index = () => {
   }, [expenses, monthStart]);
 
   useBudgetAlerts(spentByCategory, budgets);
+
+  const quickDefaultDate = useMemo(
+    () => (view === "today" ? dayAnchor : today),
+    [view, dayAnchor, today]
+  );
+
+  const expenseAI = useExpenseAIQuickFlow({
+    categories,
+    defaultDate: quickDefaultDate,
+    onAdd: addExpense,
+    onParsedTranscript: (t) => quickAddTranscriptRef.current?.(t),
+    onTapAddExpense: () => {
+      setEditing(null);
+      setOpen(true);
+    },
+    onAfterExpenseLogged: () => setQuickAddCycle((c) => c + 1),
+  });
 
   if (isAdmin) return <Navigate to="/admin" replace />;
 
@@ -329,9 +349,17 @@ const Index = () => {
         <PeriodNav label={periodLabel} onPrev={onPrev} onNext={onNext} canNext={canNext} />
 
         <QuickAddBar
-          onAdd={addExpense}
+          key={quickAddCycle}
+          registerTranscriptSink={(fn) => {
+            quickAddTranscriptRef.current = fn;
+          }}
+          ai={{
+            loading: expenseAI.loading,
+            isListening: expenseAI.isListening,
+            parseQuickAddText: expenseAI.parseQuickAddText,
+          }}
           categories={categories}
-          defaultDate={view === "today" ? dayAnchor : todayISO()}
+          defaultDate={quickDefaultDate}
         />
 
         <div className="hidden sm:flex justify-center mb-12">
@@ -497,7 +525,14 @@ const Index = () => {
 
       <LoansSheet open={loansOpen} onOpenChange={setLoansOpen} userId={user?.id ?? null} />
 
-      <AskDataDrawer open={askAIOpen} onOpenChange={setAskAIOpen} transactions={expenses} />
+      <AskDataDrawer
+        open={askAIOpen}
+        onOpenChange={setAskAIOpen}
+        transactions={expenses}
+        categories={categories}
+        addExpense={addExpense}
+        addCategory={addCategory}
+      />
 
       <Settings
         open={settingsOpen} onOpenChange={setSettingsOpen}
@@ -520,6 +555,9 @@ const Index = () => {
       />
 
       <TrashSheet open={trashOpen} onOpenChange={setTrashOpen} userId={user?.id ?? null} onRestore={sync} />
+
+      {expenseAI.reviewDialog}
+      {expenseAI.voiceHud}
 
       <AlertDialog open={!!confirmDelete} onOpenChange={(v) => { if (!v) setConfirmDelete(null); }}>
         <AlertDialogContent className="bg-background border-border">
@@ -561,6 +599,12 @@ const Index = () => {
             <div className="flex justify-between items-center text-sm">
               <span className="text-foreground">Add new transaction</span>
               <kbd className="font-mono bg-surface border border-border/60 px-2 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">N</kbd>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Voice quick log</span>
+              <span className="text-xs text-ink-muted font-medium shrink-0 pl-3 text-right leading-snug">
+                Hold the <Plus className="inline h-3 w-3 align-text-bottom mx-0.5" /> button at the bottom
+              </span>
             </div>
             <div className="flex justify-between items-center text-sm">
               <span className="text-foreground">Open Search / NL Entry</span>
@@ -628,17 +672,34 @@ const Index = () => {
           <span className="text-[9px] font-medium tracking-wide">Budgets</span>
         </button>
 
-        {/* Center Elevating FAB */}
+        {/* Center FAB — lifted, fluid motion */}
         <button
-          onClick={() => {
-            setEditing(null);
-            setOpen(true);
-          }}
-          className="h-12 w-12 rounded-full bg-foreground text-background flex items-center justify-center shadow-md active:scale-95 hover:scale-105 transition-all -translate-y-3.5 border-4 border-background focus:outline-none shrink-0"
-          aria-label="Add transaction"
-          title="Add Transaction"
+          type="button"
+          {...expenseAI.fabPointerProps}
+          className={cn(
+            "relative isolate h-14 w-14 shrink-0 overflow-hidden rounded-full",
+            "flex items-center justify-center",
+            "bg-gradient-to-br from-foreground to-foreground/88",
+            "text-background",
+            "shadow-[0_12px_32px_-10px_hsl(var(--foreground)/0.5),0_4px_16px_-4px_hsl(220_30%_12%/0.12)]",
+            "dark:shadow-[0_14px_40px_-12px_hsla(40,8%,98%,0.14),0_4px_16px_-4px_hsl(220_50%_4%/0.45)]",
+            "ring-[3.5px] ring-background/95 dark:ring-background/90",
+            "touch-manipulation select-none -translate-y-4",
+            "transition-[transform,box-shadow] duration-300 ease-out",
+            "hover:scale-[1.052] hover:-translate-y-[1.075rem]",
+            "hover:shadow-[0_16px_40px_-12px_hsl(var(--foreground)/0.52),0_6px_20px_-6px_hsl(220_30%_12%/0.14)]",
+            "active:scale-[0.93] active:-translate-y-[0.925rem]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/55 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background",
+            "before:pointer-events-none before:absolute before:inset-0 before:rounded-full",
+            "before:bg-gradient-to-br before:from-white/[0.14] before:via-transparent before:to-transparent",
+            "dark:before:from-white/[0.08]",
+            expenseAI.isListening &&
+              "scale-[1.04] shadow-[0_0_0_6px_rgba(244,114,182,0.16),0_12px_32px_-10px_hsl(var(--foreground)/0.48)] ring-rose-400/45"
+          )}
+          aria-label="Add transaction. Press and hold to log by voice."
+          title="Tap to add. Hold for voice."
         >
-          <Plus className="h-5 w-5 stroke-[2.5]" />
+          <Plus className="relative z-[1] h-6 w-6 shrink-0 stroke-[2.25]" strokeLinecap="round" strokeLinejoin="round" />
         </button>
 
         <button
