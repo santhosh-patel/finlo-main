@@ -4,7 +4,6 @@ Finlo is a personal expense tracker with a mobile-first web app (installable PWA
 
 ## Features
 
-
 - **Ledger** — Today / week / month views, quick add, detailed expense editing, search, and filters.
 - **Categories & budgets** — Custom categories, subcategories, and per-category budgets.
 - **Loans & recurring** — Track loans and recurring expenses.
