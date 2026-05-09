@@ -1,4 +1,7 @@
-// One-shot seed: Edge Function secrets `SEED_ADMINS` = JSON array of { email, password, name, role }.
+// One-shot seed: Edge Function secrets `SEED_ADMINS` = JSON array of { email, password, name, role: "admin" }.
+//
+// This function ONLY seeds the admin role. Regular users must be added via Admin → Add user;
+// non-admin entries in SEED_ADMINS are rejected.
 //
 // Two ways to invoke:
 // 1) Logged-in user with JWT + `role=admin`.
@@ -8,7 +11,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
-type SeedRole = "admin" | "user";
+type SeedRole = "admin";
 
 interface SeedEntry {
   email: string;
@@ -17,11 +20,14 @@ interface SeedEntry {
   role: SeedRole;
 }
 
+/** Minimal auth user shape from `auth.admin.listUsers` (explicit type so `[]` is not inferred as `never[]`). */
+type ListedAuthUser = { id: string; email?: string | null };
+
 async function runSeedAdmins(
   supabase: SupabaseClient,
   ADMINS: SeedEntry[],
 ): Promise<Array<{ email: string; role: string; user_id?: string; status?: string; error?: string }>> {
-  const users = [];
+  const users: ListedAuthUser[] = [];
   for (let page = 1; page <= 20; page += 1) {
     const { data: list, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw new Error("Failed to list users");
@@ -36,6 +42,14 @@ async function runSeedAdmins(
         email: String(a.email ?? "?"),
         role: String(a.role ?? "?"),
         error: "Missing email, password, name, or role",
+      });
+      continue;
+    }
+    if (a.role !== "admin") {
+      results.push({
+        email: a.email,
+        role: String(a.role),
+        error: "seed-admin only seeds admin role — add regular users via Admin → Add user",
       });
       continue;
     }
@@ -88,7 +102,7 @@ async function runSeedAdmins(
     await supabase.from("user_roles").delete().eq("user_id", userId);
     await supabase.from("user_roles").insert({
       user_id: userId,
-      role: a.role === "admin" ? "admin" : "user",
+      role: "admin",
     });
     results.push({
       email: a.email,

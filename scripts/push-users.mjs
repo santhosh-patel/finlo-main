@@ -15,10 +15,9 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 
-// ─── Users to create ───
+// ─── Users to create (admin only) ───
 const USERS = [
-  { email: "admin@finlo.ai", password: "Test@1234", name: "Admin", role: "admin" },
-  { email: "santhosh@finlo.ai", password: "Test@1234", name: "Santhosh", role: "user" },
+  { email: "admin@finlo.ai", password: "Chinni@2003", name: "Admin", role: "admin" },
 ];
 
 // ─── Load .env ───

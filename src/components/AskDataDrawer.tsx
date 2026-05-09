@@ -27,6 +27,7 @@ import {
   validateAgainstKnownCategories,
   type MayaAssistantActions,
 } from "@/lib/mayaAssistantActions";
+import type { Json } from "@/integrations/supabase/types";
 
 function localTodayISO() {
   const d = new Date();
@@ -467,8 +468,8 @@ export function AskDataDrawer({
           }
         }
 
-        const persistActions = assistantActionsParsed
-          ? (JSON.parse(JSON.stringify(assistantActionsParsed)) as Record<string, unknown>)
+        const persistActions: Json | null = assistantActionsParsed
+          ? (JSON.parse(JSON.stringify(assistantActionsParsed)) as Json)
           : null;
 
         const { data: insertedRow, error: botInsErr } = await supabase

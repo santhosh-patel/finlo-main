@@ -55,7 +55,7 @@ RECORDING INTENT (transactions / categories):
 - Only when the user asks to RECORD, ADD, LOG, TRACK, SAVE, CREATE, ENTER, BOOK, or REGISTER a NEW transaction, expense, income, payout, REFUND THEY RECEIVED, or a NEW CATEGORY, fill "categoriesToAdd" and/or "transactionsToAdd". Otherwise omit them or leave them empty arrays [].
 - For ANALYSIS QUESTIONS ONLY (summaries, trends, comparisons): leave BOTH arrays EMPTY.
 - Normalize amounts as numbers without currency symbols. Prefer ₹ (Indian rupees).
-- In each transactionsToAdd row use field **txnType** with value \"expense\" or \"income\".
+- In each transactionsToAdd row use field **txnType** with value "expense" or "income".
 - Infer sensible categories ("coffee/lunch/snacks/dinner/Zomato/Swiggy" ⇒ Food unless user specifies otherwise).
 - Payment method MUST be exactly one of "upi", "cash", or "card" (default "upi").
 - You may propose multiple NEW categories followed by transactions that reference those names — the Finlo UI applies categories first then transactions.

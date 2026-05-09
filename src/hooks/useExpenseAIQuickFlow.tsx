@@ -114,7 +114,7 @@ export function useExpenseAIQuickFlow({
   const speechTranscriptRef = useRef("");
 
   const fabModeRef = useRef<FabHoldMode>("idle");
-  const fabHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fabHoldTimerRef = useRef<number | null>(null);
   const fabSuppressClickRef = useRef(false);
   const fabOriginRef = useRef<{ x: number; y: number } | null>(null);
 

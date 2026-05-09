@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Loader2, Plus, RefreshCcw, Search, ShieldCheck, Trash2, Pencil, KeyRound,
   ShieldOff, LogOut, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  History, Eye, EyeOff,
+  History, Eye, EyeOff, Moon, Sun, Monitor, UserX, UserCheck, Copy, Download,
 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,12 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { validatePassword } from "@/lib/passwordPolicy";
 import { cn } from "@/lib/utils";
+import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from "@supabase/supabase-js";
 
 interface AppUser {
   user_id: string;
@@ -30,6 +32,8 @@ interface AppUser {
   display_name: string;
   created_at: string;
   roles: string[];
+  disabled?: boolean;
+  banned_until?: string | null;
 }
 
 interface AuditEntry {
@@ -44,19 +48,42 @@ interface AuditEntry {
 type SortKey = "display_name" | "email" | "created_at" | "role";
 type SortDir = "asc" | "desc";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 10; // UI rows per page (separate from server page size)
 
 async function callFn(name: string, body?: unknown) {
   const { data, error } = await supabase.functions.invoke(name, { body });
-  if (error) throw new Error(error.message);
+  if (error) throw error;
   if (data?.error) throw new Error(data.error);
   return data;
 }
 
+function formatFnError(name: string, err: unknown): string {
+  if (err instanceof FunctionsFetchError) {
+    return `Network error calling ${name}. If this is a 404 in the network tab, deploy it: npx supabase functions deploy ${name}`;
+  }
+  if (err instanceof FunctionsRelayError) return `Supabase relay error calling ${name}: ${err.message}`;
+  if (err instanceof FunctionsHttpError) {
+    const status = (err.context as Response | undefined)?.status;
+    if (status === 404) return `Function ${name} is not deployed. Run: npx supabase functions deploy ${name}`;
+    if (status === 401) return `Unauthorized calling ${name}. Sign in again.`;
+    if (status === 403) return `Forbidden calling ${name}. Ensure your user has admin role.`;
+    return `Edge Function ${name} returned HTTP ${status ?? "error"}.`;
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 export default function Admin() {
   const { isAdmin, loading, user, logout } = useAuth();
+  const { theme, update: updateTheme } = useTheme();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [auditQuery, setAuditQuery] = useState("");
+  const [auditAction, setAuditAction] = useState("");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditHasMore, setAuditHasMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
@@ -80,30 +107,74 @@ export default function Admin() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [makeAdmin, setMakeAdmin] = useState(false);
 
-  const refresh = async () => {
+  const [serverPage, setServerPage] = useState(1);
+  const [serverHasMore, setServerHasMore] = useState(false);
+
+  const exportCsv = () => {
+    const esc = (v: unknown) => `"${String(v ?? "").split('"').join('""')}"`;
+    const rows = [
+      ["user_id", "email", "display_name", "created_at", "roles", "disabled", "banned_until"],
+      ...users.map((u) => [
+        u.user_id,
+        u.email,
+        u.display_name,
+        u.created_at,
+        u.roles.join("|"),
+        u.disabled ? "true" : "false",
+        u.banned_until ?? "",
+      ]),
+    ];
+    const csv = rows.map((r) => r.map(esc).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `finlo-users-page-${serverPage}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const refresh = async (p = serverPage) => {
     setBusy(true);
     try {
-      const data = await callFn("admin-list-users");
+      const data = await callFn("admin-list-users", { page: p, perPage: 50 });
       setUsers(data.users ?? []);
+      setServerPage(data.page ?? p);
+      setServerHasMore(!!data.hasMore);
     } catch (e) {
-      toast({ title: "Failed to load users", description: String(e), variant: "destructive" });
+      toast({ title: "Failed to load users", description: formatFnError("admin-list-users", e), variant: "destructive" });
     } finally { setBusy(false); }
   };
 
-  const loadAudit = async () => {
-    const { data, error } = await supabase
+  const loadAudit = async (p = auditPage) => {
+    const pageSize = 30;
+    let q = supabase
       .from("admin_audit_log")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(50);
+      .range((p - 1) * pageSize, p * pageSize);
+
+    const text = auditQuery.trim();
+    if (text) {
+      // Search across actor email + target email (OR)
+      q = q.or(`actor_email.ilike.%${text}%,target_email.ilike.%${text}%`);
+    }
+    const action = auditAction.trim();
+    if (action) q = q.ilike("action", `%${action}%`);
+    if (auditFrom) q = q.gte("created_at", `${auditFrom}T00:00:00`);
+    if (auditTo) q = q.lte("created_at", `${auditTo}T23:59:59`);
+
+    const { data, error } = await q;
     if (error) {
       toast({ title: "Failed to load audit log", description: error.message, variant: "destructive" });
       return;
     }
     setAudit((data ?? []) as AuditEntry[]);
+    setAuditPage(p);
+    setAuditHasMore((data ?? []).length > pageSize);
   };
 
-  useEffect(() => { if (isAdmin) { refresh(); loadAudit(); } }, [isAdmin]);
+  useEffect(() => { if (isAdmin) { refresh(1); loadAudit(); } }, [isAdmin]);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -228,7 +299,43 @@ export default function Admin() {
       });
       toast({ title: isA ? "Admin removed" : "Admin granted" });
       await refresh(); await loadAudit();
-    } catch (e) { toast({ title: "Failed", description: String(e), variant: "destructive" }); }
+    } catch (e) { toast({ title: "Failed", description: formatFnError("admin-update-user", e), variant: "destructive" }); }
+  };
+
+  const toggleDisabled = async (u: AppUser) => {
+    const isMe = u.user_id === user?.id;
+    if (isMe) {
+      toast({ title: "Not allowed", description: "You cannot disable your own account.", variant: "destructive" });
+      return;
+    }
+    try {
+      await callFn("admin-update-user", { action: "set_disabled", user_id: u.user_id, enabled: u.disabled });
+      toast({ title: u.disabled ? "User enabled" : "User disabled" });
+      await refresh(); await loadAudit();
+    } catch (e) { toast({ title: "Failed", description: formatFnError("admin-update-user", e), variant: "destructive" }); }
+  };
+
+  const generateRecoveryLink = async (u: AppUser) => {
+    try {
+      const data = await callFn("admin-update-user", { action: "generate_link", user_id: u.user_id, link_type: "recovery" });
+      const link = data?.link as string | null;
+      if (!link) {
+        toast({ title: "No link returned", description: "Supabase did not return a recovery link.", variant: "destructive" });
+        return;
+      }
+      try { await navigator.clipboard.writeText(link); } catch { /* ignore */ }
+      toast({ title: "Password reset link generated", description: "Copied to clipboard." });
+      await loadAudit();
+    } catch (e) { toast({ title: "Failed", description: formatFnError("admin-update-user", e), variant: "destructive" }); }
+  };
+
+  const copyText = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast({ title: `Copied ${label}` });
+    } catch {
+      toast({ title: "Copy failed", description: value, variant: "destructive" });
+    }
   };
 
   const handleDelete = async (u: AppUser) => {
@@ -236,7 +343,7 @@ export default function Admin() {
       await callFn("admin-update-user", { action: "delete", user_id: u.user_id });
       toast({ title: "User deleted" });
       await refresh(); await loadAudit();
-    } catch (e) { toast({ title: "Failed", description: String(e), variant: "destructive" }); }
+    } catch (e) { toast({ title: "Failed", description: formatFnError("admin-update-user", e), variant: "destructive" }); }
   };
 
   return (
@@ -252,6 +359,24 @@ export default function Admin() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateTheme({ mode: theme.mode === "dark" ? "light" : "dark" })}
+              className="rounded-full h-9 border-border/60"
+              title="Toggle theme"
+            >
+              {theme.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateTheme({ mode: "system" })}
+              className={cn("rounded-full h-9 border-border/60", theme.mode === "system" && "bg-surface")}
+              title="System theme"
+            >
+              <Monitor className="h-3.5 w-3.5" />
+            </Button>
             <Button
               variant="outline" size="sm" onClick={() => { setAuditOpen(true); loadAudit(); }}
               className="rounded-full h-9 border-border/60"
@@ -293,6 +418,16 @@ export default function Admin() {
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportCsv()}
+            disabled={busy || users.length === 0}
+            className="rounded-full h-10 px-4 border-border/60"
+            title="Export current list to CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </Button>
+          <Button
             size="sm" onClick={() => setAddOpen(true)}
             className="rounded-full h-10 px-5 bg-foreground text-background hover:bg-foreground/90"
           >
@@ -331,15 +466,22 @@ export default function Admin() {
                     </TableCell>
                     <TableCell className="text-xs text-ink-muted">{u.email}</TableCell>
                     <TableCell>
-                      {isA ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] tracking-wider uppercase text-accent-foreground bg-accent px-2.5 py-1 rounded-full">
-                          <ShieldCheck className="h-3 w-3" /> Admin
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center text-[10px] tracking-wider uppercase text-ink-muted bg-surface px-2.5 py-1 rounded-full border border-border/40">
-                          User
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 justify-end sm:justify-start">
+                        {isA ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] tracking-wider uppercase text-accent-foreground bg-accent px-2.5 py-1 rounded-full">
+                            <ShieldCheck className="h-3 w-3" /> Admin
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-[10px] tracking-wider uppercase text-ink-muted bg-surface px-2.5 py-1 rounded-full border border-border/40">
+                            User
+                          </span>
+                        )}
+                        {u.disabled && (
+                          <span className="inline-flex items-center gap-1 text-[10px] tracking-wider uppercase text-destructive bg-destructive/10 px-2.5 py-1 rounded-full border border-destructive/20">
+                            Disabled
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-xs text-ink-muted">
                       {new Date(u.created_at).toLocaleDateString()}
@@ -347,6 +489,18 @@ export default function Admin() {
                     <TableCell className="text-right">
                       <div className="inline-flex items-center gap-1">
                         <IconBtn label="Edit" onClick={() => openEdit(u)}><Pencil className="h-3.5 w-3.5" /></IconBtn>
+                        <IconBtn label={u.disabled ? "Enable user" : "Disable user"} onClick={() => toggleDisabled(u)} disabled={isMe} danger={!!u.disabled}>
+                          {u.disabled ? <UserCheck className="h-3.5 w-3.5" /> : <UserX className="h-3.5 w-3.5" />}
+                        </IconBtn>
+                        <IconBtn label="Generate password reset link" onClick={() => generateRecoveryLink(u)}>
+                          <KeyRound className="h-3.5 w-3.5" />
+                        </IconBtn>
+                        <IconBtn label="Copy email" onClick={() => copyText("email", u.email)}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </IconBtn>
+                        <IconBtn label="Copy user id" onClick={() => copyText("user id", u.user_id)}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </IconBtn>
                         <IconBtn
                           label={isA ? "Revoke admin" : "Make admin"}
                           onClick={() => toggleAdmin(u)} disabled={isMe}
@@ -373,13 +527,19 @@ export default function Admin() {
             </TableBody>
           </Table>
 
-          {/* Pagination */}
+          {/* Pagination (client-side for current server page) */}
           {filteredSorted.length > 0 && (
             <div className="flex items-center justify-between px-5 py-3 border-t border-border/30 text-xs text-ink-muted">
-              <span>
-                {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredSorted.length)} of {filteredSorted.length}
-              </span>
+              <span>Server page {serverPage}{serverHasMore ? "+" : ""} · {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredSorted.length)} of {filteredSorted.length}</span>
               <div className="inline-flex items-center gap-1">
+                <button
+                  onClick={() => refresh(Math.max(1, serverPage - 1))}
+                  disabled={busy || serverPage === 1}
+                  className="h-7 px-2 inline-flex items-center justify-center rounded-full hover:bg-surface disabled:opacity-30"
+                  aria-label="Previous server page"
+                >
+                  Server prev
+                </button>
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={safePage === 1}
@@ -397,6 +557,14 @@ export default function Admin() {
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
+                <button
+                  onClick={() => refresh(serverPage + 1)}
+                  disabled={busy || !serverHasMore}
+                  className="h-7 px-2 inline-flex items-center justify-center rounded-full hover:bg-surface disabled:opacity-30"
+                  aria-label="Next server page"
+                >
+                  Server next
+                </button>
               </div>
             </div>
           )}
@@ -406,9 +574,42 @@ export default function Admin() {
         <section className="mt-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-serif text-2xl font-light">Activity log</h2>
-            <Button variant="outline" size="sm" onClick={loadAudit} className="rounded-full h-8 px-3 border-border/60 text-xs">
-              <RefreshCcw className="h-3 w-3 mr-1.5" /> Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Input
+                value={auditQuery}
+                onChange={(e) => setAuditQuery(e.target.value)}
+                placeholder="Search actor/target…"
+                className="hidden sm:block w-52 rounded-full bg-surface border-border/60 h-8 text-xs"
+              />
+              <Input
+                value={auditAction}
+                onChange={(e) => setAuditAction(e.target.value)}
+                placeholder="Action…"
+                className="hidden sm:block w-36 rounded-full bg-surface border-border/60 h-8 text-xs"
+              />
+              <Input
+                type="date"
+                value={auditFrom}
+                onChange={(e) => setAuditFrom(e.target.value)}
+                className="hidden md:block w-36 rounded-full bg-surface border-border/60 h-8 text-xs"
+                title="From date"
+              />
+              <Input
+                type="date"
+                value={auditTo}
+                onChange={(e) => setAuditTo(e.target.value)}
+                className="hidden md:block w-36 rounded-full bg-surface border-border/60 h-8 text-xs"
+                title="To date"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => loadAudit(1)}
+                className="rounded-full h-8 px-3 border-border/60 text-xs"
+              >
+                <RefreshCcw className="h-3 w-3 mr-1.5" /> Apply
+              </Button>
+            </div>
           </div>
           <div className="border border-border/50 rounded-3xl overflow-hidden bg-card/40">
             {audit.length === 0 ? (
@@ -425,13 +626,37 @@ export default function Admin() {
                       <span className="text-foreground/70">{a.actor_email ?? "—"}</span>
                       {a.target_email && <> → <span className="text-foreground/70">{a.target_email}</span></>}
                       {a.details && Object.keys(a.details).length > 0 && (
-                        <> · <span className="font-mono text-ink-muted/80">{JSON.stringify(a.details)}</span></>
+                        <>
+                          <span className="mx-2 text-border/60">•</span>
+                          <span className="font-mono text-ink-muted/80 break-all">{JSON.stringify(a.details)}</span>
+                        </>
                       )}
                     </p>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-3 text-xs text-ink-muted">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full h-8 px-3 border-border/60 text-xs"
+              onClick={() => loadAudit(Math.max(1, auditPage - 1))}
+              disabled={auditPage === 1}
+            >
+              Prev
+            </Button>
+            <span className="px-1">Page {auditPage}{auditHasMore ? "+" : ""}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full h-8 px-3 border-border/60 text-xs"
+              onClick={() => loadAudit(auditPage + 1)}
+              disabled={!auditHasMore}
+            >
+              Next
+            </Button>
           </div>
         </section>
       </div>

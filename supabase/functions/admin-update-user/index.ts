@@ -4,12 +4,15 @@ import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { validatePasswordServer } from "../_shared/password.ts";
 
 interface Body {
-  action: "update" | "delete" | "set_role";
+  action: "update" | "delete" | "set_role" | "set_disabled" | "generate_link";
   user_id: string;
   display_name?: string;
   password?: string;
   role?: "admin" | "user";
   enabled?: boolean;
+  /** For generate_link */
+  link_type?: "recovery" | "invite" | "magiclink";
+  redirectTo?: string;
 }
 
 Deno.serve(async (req) => {
@@ -91,6 +94,41 @@ Deno.serve(async (req) => {
     }
     await logAudit(body.enabled ? "grant_role" : "revoke_role", { role });
     return jsonResponse(req, { ok: true });
+  }
+
+  if (body.action === "set_disabled") {
+    if (body.user_id === userResp.user.id && body.enabled === false) {
+      return jsonResponse(req, { error: "Cannot disable yourself" }, 400);
+    }
+    // GoTrue supports `ban_duration` (e.g. "24h"). "none" removes ban.
+    const disable = body.enabled === false;
+    const updates: Record<string, unknown> = disable
+      ? { ban_duration: "876000h" } // ~100 years
+      : { ban_duration: "none" };
+    const { error } = await admin.auth.admin.updateUserById(body.user_id, updates);
+    if (error) return jsonResponse(req, { error: error.message }, 400);
+    await logAudit(disable ? "disable_user" : "enable_user");
+    return jsonResponse(req, { ok: true });
+  }
+
+  if (body.action === "generate_link") {
+    const linkType = body.link_type === "invite" || body.link_type === "magiclink" ? body.link_type : "recovery";
+    const { data: tProf } = await admin
+      .from("profiles").select("email").eq("user_id", body.user_id).maybeSingle();
+    const email = (tProf?.email ?? "").trim();
+    if (!email) return jsonResponse(req, { error: "Target email not found" }, 400);
+
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: linkType,
+      email,
+      options: body.redirectTo ? { redirectTo: body.redirectTo } : undefined,
+    } as unknown as Record<string, unknown>);
+    if (error) return jsonResponse(req, { error: error.message }, 400);
+
+    const props = (data as unknown as { properties?: Record<string, unknown> | null })?.properties ?? null;
+    const link = props && typeof props.action_link === "string" ? props.action_link : null;
+    await logAudit("generate_link", { type: linkType });
+    return jsonResponse(req, { ok: true, email, link, properties: props });
   }
 
   return jsonResponse(req, { error: "Unknown action" }, 400);

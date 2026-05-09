@@ -51,7 +51,7 @@ export function coerceAssistantActionsFromApi(raw: unknown): MayaAssistantAction
       if (!Number.isFinite(amt) || amt <= 0 || amt > 999_999_999) continue;
       const category = typeof r.category === "string" ? r.category.trim() : "";
       if (!category || category.length > 120) continue;
-      let date = typeof r.date === "string" ? r.date.trim() : "";
+      const date = typeof r.date === "string" ? r.date.trim() : "";
       if (!DATE_RX.test(date)) continue;
       const sub =
         typeof r.subcategory === "string" && r.subcategory.trim()
@@ -92,7 +92,7 @@ export function validateAgainstKnownCategories(
   actions: MayaAssistantActions,
   knownCategoryNamesLower: Set<string>,
 ): MayaAssistantActions {
-  let names = new Set(knownCategoryNamesLower);
+  const names = new Set(knownCategoryNamesLower);
   for (const c of actions.categoriesToAdd) {
     names.add(c.name.toLowerCase());
   }

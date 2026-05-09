@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "paths": {
+      "https://esm.sh/@supabase/supabase-js@2.45.0": ["../../node_modules/@supabase/supabase-js"]
+    }
+  },
+  "include": ["./**/*.ts", "./deno-ambient.d.ts"]
+}
