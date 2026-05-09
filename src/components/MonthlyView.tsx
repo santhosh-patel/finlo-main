@@ -40,9 +40,44 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
     [expenses, from, to]
   );
 
+  const monthIncomes = useMemo(
+    () => expenses.filter((e) => e.date >= from && e.date <= to && e.type === "income"),
+    [expenses, from, to]
+  );
+
+  const monthAllTransactions = useMemo(
+    () => expenses.filter((e) => e.date >= from && e.date <= to),
+    [expenses, from, to]
+  );
+
   const total = monthExpenses.reduce((a, b) => a + baseAmountOf(b), 0);
+  const totalIncome = monthIncomes.reduce((a, b) => a + baseAmountOf(b), 0);
+  const netAmount = totalIncome - total;
   const count = monthExpenses.length;
   const avg = count > 0 ? total / count : 0;
+
+  // Month-over-Month calculation
+  const lastMonthExpenses = useMemo(() => {
+    const parts = from.split("-");
+    let year = parseInt(parts[0]);
+    let month = parseInt(parts[1]) - 1;
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+    const prevFrom = `${year}-${String(month).padStart(2, "0")}-01`;
+    const prevTo = `${year}-${String(month).padStart(2, "0")}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
+    return expenses.filter((e) => e.date >= prevFrom && e.date <= prevTo && (e.type ?? "expense") === "expense");
+  }, [expenses, from]);
+
+  const lastMonthTotal = useMemo(() => {
+    return lastMonthExpenses.reduce((a, b) => a + baseAmountOf(b), 0);
+  }, [lastMonthExpenses]);
+
+  const momDelta = useMemo(() => {
+    if (lastMonthTotal === 0) return null;
+    return ((total - lastMonthTotal) / lastMonthTotal) * 100;
+  }, [total, lastMonthTotal]);
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
@@ -85,7 +120,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   const budgetEntries = useMemo(() => {
     return Object.entries(budgets).map(([category, limit]) => {
       const spent =
-        byCategory.find((b) => b.category === category)?.amount || 0;
+          byCategory.find((b) => b.category === category)?.amount || 0;
       const remaining = limit - spent;
       const pct = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
       return { category, limit, spent, remaining, pct };
@@ -95,13 +130,13 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   // Group by day for transactions list
   const byDay = useMemo(() => {
     const map = new Map<string, Expense[]>();
-    monthExpenses.forEach((e) => {
+    monthAllTransactions.forEach((e) => {
       const list = map.get(e.date) || [];
       list.push(e);
       map.set(e.date, list);
     });
     return map;
-  }, [monthExpenses]);
+  }, [monthAllTransactions]);
 
   const trendData = useMemo(() => {
     const daysInMonth = new Date(new Date(from).getFullYear(), new Date(from).getMonth() + 1, 0).getDate();
@@ -125,13 +160,43 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
 
   return (
     <section className="mt-8">
-      <div className="flex items-baseline justify-between mb-8">
-        <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted">
+      <div className="flex items-start justify-between mb-8">
+        <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted mt-1">
           {label}
         </h3>
-        <span className="font-serif text-xl text-foreground tabular-nums">
-          {getCurrencySymbol()}{formatINR(total)}
-        </span>
+        <div className="text-right space-y-1">
+          <div className="font-serif text-xl text-foreground tabular-nums flex items-baseline justify-end gap-1">
+            <span className="text-xs font-sans text-ink-muted">Out:</span>
+            <span>{getCurrencySymbol()}{formatINR(total)}</span>
+          </div>
+          {momDelta !== null && (
+            <div className="text-[10px] flex items-baseline justify-end gap-1.5 mt-0.5">
+              <span className="text-ink-muted">MoM:</span>
+              <span className={cn(
+                "font-semibold flex items-center",
+                momDelta > 0 ? "text-amber-500" : "text-emerald-500"
+              )}>
+                {momDelta > 0 ? "+" : ""}{momDelta.toFixed(1)}%
+              </span>
+              <span className="text-[9px] text-ink-muted/70">({getCurrencySymbol()}{formatINR(lastMonthTotal)} prev)</span>
+            </div>
+          )}
+          {totalIncome > 0 && (
+            <>
+              <div className="font-serif text-sm text-emerald-600 dark:text-emerald-400 tabular-nums flex items-baseline justify-end gap-1">
+                <span className="text-[10px] font-sans text-ink-muted">In:</span>
+                <span>+{getCurrencySymbol()}{formatINR(totalIncome)}</span>
+              </div>
+              <div className={cn(
+                "font-serif text-sm tabular-nums flex items-baseline justify-end gap-1 font-medium",
+                netAmount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
+              )}>
+                <span className="text-[10px] font-sans text-ink-muted">Net:</span>
+                <span>{netAmount >= 0 ? "+" : "−"}{getCurrencySymbol()}{formatINR(Math.abs(netAmount))}</span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {byCategory.length === 0 ? (
@@ -470,10 +535,14 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
             <div className="space-y-2">
               {sortedDays.map((d) => {
                 const items = byDay.get(d) || [];
-                const dayTotal = items.reduce((a, b) => a + b.amount, 0);
+                const itemsExp = items.filter((e) => (e.type ?? "expense") === "expense");
+                const itemsInc = items.filter((e) => e.type === "income");
+                const dayExpensesSum = itemsExp.reduce((a, b) => a + baseAmountOf(b), 0);
+                const dayIncomeSum = itemsInc.reduce((a, b) => a + baseAmountOf(b), 0);
                 const isOpen = openDay === d;
                 return (
                   <Collapsible
+                    id={`day-section-${d}`}
                     key={d}
                     open={isOpen}
                     onOpenChange={(v) => setOpenDay(v ? d : null)}
@@ -493,8 +562,13 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                         })}
                         <span className="text-ink-muted text-xs">({items.length})</span>
                       </span>
-                      <span className="font-serif text-base text-foreground tabular-nums">
-                        {getCurrencySymbol()}{formatINR(dayTotal)}
+                      <span className="font-serif text-base text-foreground tabular-nums flex items-baseline gap-2 shrink-0">
+                        {dayIncomeSum > 0 && (
+                          <span className="text-xs font-sans text-emerald-600 dark:text-emerald-400">
+                            +{getCurrencySymbol()}{formatINR(dayIncomeSum)}
+                          </span>
+                        )}
+                        <span>{getCurrencySymbol()}{formatINR(dayExpensesSum)}</span>
                       </span>
                     </CollapsibleTrigger>
                     <CollapsibleContent>

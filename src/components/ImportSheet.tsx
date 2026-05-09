@@ -10,14 +10,14 @@ type Row = Omit<Expense, "id" | "created_at">;
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onImport: (rows: Row[]) => number;
+  onImport: (rows: Row[]) => { imported: number; skippedDuplicates: number };
 }
 
 function normalizeKey(k: string): string {
   return k.toLowerCase().replace(/[^a-z]/g, "");
 }
 
-function parseDate(v: any): string | null {
+function parseDate(v: unknown): string | null {
   if (!v && v !== 0) return null;
   if (v instanceof Date) {
     const y = v.getFullYear();
@@ -31,18 +31,26 @@ function parseDate(v: any): string | null {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function parseAmount(v: any): number | null {
+function parseAmount(v: unknown): number | null {
   if (v === undefined || v === null || v === "") return null;
-  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^\d.\-]/g, ""));
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^\d.-]/g, ""));
   if (!Number.isFinite(n) || n <= 0) return null;
   return n;
 }
 
-function parsePayment(v: any): PaymentMethod {
+function parsePayment(v: unknown): PaymentMethod {
   const s = String(v ?? "").trim().toLowerCase();
   if (s === "cash") return "cash";
   if (s === "card") return "card";
   return "upi";
+}
+
+async function computeHash(date: string, amount: number, category: string, note?: string): Promise<string> {
+  const message = `${date}|${amount.toFixed(2)}|${category.toLowerCase()}|${(note || "").toLowerCase()}`;
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function ImportSheet({ open, onOpenChange, onImport }: Props) {
@@ -51,24 +59,29 @@ export function ImportSheet({ open, onOpenChange, onImport }: Props) {
   const [skipped, setSkipped] = useState(0);
   const [filename, setFilename] = useState("");
   const [imported, setImported] = useState(0);
+  const [duplicates, setDuplicates] = useState(0);
 
   const handleFile = async (file: File) => {
     setImported(0);
+    setDuplicates(0);
     setFilename(file.name);
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: "array", cellDates: true });
     const sheet = wb.Sheets[wb.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
     const parsed: Row[] = [];
     let bad = 0;
-    json.forEach((raw) => {
-      const map: Record<string, any> = {};
+    
+    const jobs = json.map(async (raw) => {
+      const map: Record<string, unknown> = {};
       Object.entries(raw).forEach(([k, v]) => { map[normalizeKey(k)] = v; });
       const date = parseDate(map.date);
       const amount = parseAmount(map.amount);
       const category = String(map.category ?? "").trim();
       if (!date || !amount || !category) { bad++; return; }
+      
+      const hash = await computeHash(date, amount, category, String(map.note ?? "").trim());
       parsed.push({
         date,
         amount,
@@ -76,15 +89,19 @@ export function ImportSheet({ open, onOpenChange, onImport }: Props) {
         subcategory: String(map.subcategory ?? "").trim() || undefined,
         note: String(map.note ?? "").trim() || undefined,
         payment_method: parsePayment(map.payment ?? map.paymentmethod),
+        import_hash: hash,
       });
     });
+
+    await Promise.all(jobs);
     setRows(parsed);
     setSkipped(bad);
   };
 
   const doImport = () => {
-    const n = onImport(rows);
-    setImported(n);
+    const res = onImport(rows);
+    setImported(res.imported);
+    setDuplicates(res.skippedDuplicates);
     setRows([]);
     setSkipped(0);
     if (inputRef.current) inputRef.current.value = "";
@@ -124,10 +141,23 @@ export function ImportSheet({ open, onOpenChange, onImport }: Props) {
             </div>
           </label>
 
-          {imported > 0 && (
-            <div className="rounded-2xl border border-border/40 bg-wash-sage/40 p-4 flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5 text-foreground" />
-              <p className="text-sm text-foreground">Imported {imported} expense{imported === 1 ? "" : "s"}.</p>
+          {(imported > 0 || duplicates > 0) && (
+            <div className="rounded-2xl border border-border/40 bg-wash-sage/30 p-4 flex flex-col gap-1">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 text-foreground shrink-0" />
+                <div>
+                  {imported > 0 && (
+                    <p className="text-sm font-semibold text-foreground">
+                      Successfully imported {imported} transaction{imported === 1 ? "" : "s"}.
+                    </p>
+                  )}
+                  {duplicates > 0 && (
+                    <p className="text-xs text-ink-muted mt-0.5">
+                      Skipped {duplicates} duplicate transaction{duplicates === 1 ? "" : "s"} silently.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

@@ -40,9 +40,11 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
   // Per day: { total, segments: [{ category, amount }] }
   const dayStats = days.map((d) => {
     const items = byDay.get(d) || [];
-    const total = items.reduce((a, b) => a + baseAmountOf(b), 0);
+    // Only sum up expenses for segments and stats
+    const itemsExp = items.filter((e) => (e.type ?? "expense") === "expense");
+    const total = itemsExp.reduce((a, b) => a + baseAmountOf(b), 0);
     const m: Record<string, number> = {};
-    items.forEach((e) => { m[e.category] = (m[e.category] || 0) + baseAmountOf(e); });
+    itemsExp.forEach((e) => { m[e.category] = (m[e.category] || 0) + baseAmountOf(e); });
     const segments = Object.entries(m)
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount);
@@ -51,6 +53,14 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
 
   const maxTotal = Math.max(...dayStats.map((d) => d.total), 1);
   const weekTotal = dayStats.reduce((a, b) => a + b.total, 0);
+
+  const weekIncome = useMemo(() => {
+    return expenses
+      .filter((e) => e.date >= from && e.date <= to && e.type === "income")
+      .reduce((sum, e) => sum + baseAmountOf(e), 0);
+  }, [expenses, from, to]);
+
+  const weekNet = weekIncome - weekTotal;
 
   // Legend: top categories of the week
   const weekTotals: Record<string, number> = {};
@@ -64,9 +74,29 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
 
   return (
     <section className="mt-8">
-      <div className="flex items-baseline justify-between mb-6">
-        <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted">{label}</h3>
-        <span className="font-serif text-xl text-foreground tabular-nums">{getCurrencySymbol()}{formatINR(weekTotal)}</span>
+      <div className="flex items-start justify-between mb-6">
+        <h3 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted mt-1">{label}</h3>
+        <div className="text-right space-y-1">
+          <div className="font-serif text-xl text-foreground tabular-nums flex items-baseline justify-end gap-1">
+            <span className="text-xs font-sans text-ink-muted">Out:</span>
+            <span>{getCurrencySymbol()}{formatINR(weekTotal)}</span>
+          </div>
+          {weekIncome > 0 && (
+            <>
+              <div className="font-serif text-sm text-emerald-600 dark:text-emerald-400 tabular-nums flex items-baseline justify-end gap-1">
+                <span className="text-[10px] font-sans text-ink-muted">In:</span>
+                <span>+{getCurrencySymbol()}{formatINR(weekIncome)}</span>
+              </div>
+              <div className={cn(
+                "font-serif text-sm tabular-nums flex items-baseline justify-end gap-1 font-medium",
+                weekNet >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
+              )}>
+                <span className="text-[10px] font-sans text-ink-muted">Net:</span>
+                <span>{weekNet >= 0 ? "+" : "−"}{getCurrencySymbol()}{formatINR(Math.abs(weekNet))}</span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {legend.length > 0 && (
@@ -133,7 +163,11 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
         {days.map((d) => {
           const items = byDay.get(d) || [];
           if (items.length === 0) return null;
-          const dayTotal = items.reduce((a, b) => a + b.amount, 0);
+          const itemsExp = items.filter((e) => (e.type ?? "expense") === "expense");
+          const itemsInc = items.filter((e) => e.type === "income");
+          const dayExpensesSum = itemsExp.reduce((a, b) => a + baseAmountOf(b), 0);
+          const dayIncomeSum = itemsInc.reduce((a, b) => a + baseAmountOf(b), 0);
+          
           const isOpen = openDay === d;
           return (
             <Collapsible key={d} open={isOpen} onOpenChange={(v) => setOpenDay(v ? d : null)}>
@@ -143,7 +177,14 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
                   {new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
                   <span className="text-ink-muted text-xs">({items.length})</span>
                 </span>
-                <span className="font-serif text-base text-foreground tabular-nums">{getCurrencySymbol()}{formatINR(dayTotal)}</span>
+                <span className="font-serif text-base text-foreground tabular-nums flex items-baseline gap-2 shrink-0">
+                  {dayIncomeSum > 0 && (
+                    <span className="text-xs font-sans text-emerald-600 dark:text-emerald-400">
+                      +{getCurrencySymbol()}{formatINR(dayIncomeSum)}
+                    </span>
+                  )}
+                  <span>{getCurrencySymbol()}{formatINR(dayExpensesSum)}</span>
+                </span>
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
@@ -155,7 +196,7 @@ export function WeeklyView({ expenses, categories, anchor, onSelect }: Props) {
             </Collapsible>
           );
         })}
-        {weekTotal === 0 && (
+        {weekTotal === 0 && weekIncome === 0 && (
           <p className="text-center text-ink-muted text-sm py-6">No expenses logged for this week.</p>
         )}
       </div>

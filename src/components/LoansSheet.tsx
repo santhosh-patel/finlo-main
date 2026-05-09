@@ -3,12 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { formatINR, getCurrencySymbol, todayISO } from "@/lib/expenses";
 import { ArrowDownLeft, ArrowUpRight, Check, Loader2, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RollingDatePicker } from "./RollingDatePicker";
 
 export interface Loan {
   id: string;
@@ -41,7 +42,7 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
     note: "",
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     const { data, error } = await supabase
@@ -53,9 +54,9 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
     setLoading(false);
     if (error) { toast({ title: "Failed to load", description: error.message, variant: "destructive" }); return; }
     setLoans((data ?? []) as Loan[]);
-  };
+  }, [userId]);
 
-  useEffect(() => { if (open) load(); /* eslint-disable-next-line */ }, [open, userId]);
+  useEffect(() => { if (open) load(); }, [open, load]);
 
   const reset = () => setDraft({ counterparty: "", amount: "", direction: "lent", date: todayISO(), due_date: "", note: "" });
 
@@ -153,16 +154,22 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
               </div>
               <div>
                 <Label className="text-[10px] uppercase tracking-wider text-ink-muted">Date</Label>
-                <Input type="date" value={draft.date} max={todayISO()}
-                  onChange={(e) => setDraft((s) => ({ ...s, date: e.target.value }))}
-                  className="mt-1 rounded-full bg-background" />
+                <RollingDatePicker
+                  value={draft.date}
+                  max={todayISO()}
+                  onChange={(val) => setDraft((s) => ({ ...s, date: val }))}
+                  className="mt-1"
+                />
               </div>
             </div>
             <div>
               <Label className="text-[10px] uppercase tracking-wider text-ink-muted">Due date (optional)</Label>
-              <Input type="date" value={draft.due_date}
-                onChange={(e) => setDraft((s) => ({ ...s, due_date: e.target.value }))}
-                className="mt-1 rounded-full bg-background" />
+              <RollingDatePicker
+                value={draft.due_date || ""}
+                onChange={(val) => setDraft((s) => ({ ...s, due_date: val || null }))}
+                className="mt-1"
+                placeholder="Select due date"
+              />
             </div>
             <div>
               <Label className="text-[10px] uppercase tracking-wider text-ink-muted">Note</Label>

@@ -20,6 +20,7 @@ export default function Login({ onLogin }: Props) {
     if (!email.trim()) return setError("Email is required.");
     if (!password) return setError("Password is required.");
     setLoading(true);
+    setError(null);
     const err = await onLogin(email, password);
     setLoading(false);
     setError(err);
@@ -76,7 +77,7 @@ export default function Login({ onLogin }: Props) {
           </div>
 
           {error && (
-            <p className="text-xs text-destructive" role="alert">{error}</p>
+            <p className="text-xs text-destructive text-center leading-relaxed" role="alert">{error}</p>
           )}
 
           <Button

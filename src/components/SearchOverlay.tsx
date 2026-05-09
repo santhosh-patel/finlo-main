@@ -33,16 +33,21 @@ export function SearchOverlay({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const filtered = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
+    const isReimbursableQuery = q.includes("/reimbursable");
+    const cleanQ = q.replace("/reimbursable", "").trim();
+
     return expenses.filter((e) => {
       if (filters.category && e.category !== filters.category) return false;
       if (filters.from && e.date < filters.from) return false;
       if (filters.to && e.date > filters.to) return false;
-      if (q) {
+      if (filters.reimbursableOnly && !e.is_reimbursable) return false;
+      if (isReimbursableQuery && !e.is_reimbursable) return false;
+      if (cleanQ) {
         const hay = [e.note, e.category, e.subcategory, e.payment_method]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
-        if (!hay.includes(q)) return false;
+        if (!hay.includes(cleanQ)) return false;
       }
       return true;
     });

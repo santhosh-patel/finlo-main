@@ -3,6 +3,7 @@ import { CURRENCY_SYMBOLS, getBaseCurrency } from "@/lib/fx";
 import { Trash2 } from "lucide-react";
 import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
 import type { CategoryDef } from "@/lib/expenses";
+import { cn } from "@/lib/utils";
 
 interface Props {
   expense: Expense;
@@ -22,11 +23,13 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }
     hour12: false,
   });
 
+  const isIncome = expense.type === "income";
+
   const meta = [expense.category, expense.subcategory, expense.payment_method.toUpperCase()]
     .filter(Boolean)
     .join(" · ");
 
-  const Wrapper: any = onSelect ? "button" : "div";
+  const Wrapper: "button" | "div" = onSelect ? "button" : "div";
 
   return (
     <Wrapper
@@ -69,8 +72,11 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <div className="flex flex-col items-end">
-          <span className="font-serif text-2xl text-foreground tabular-nums">
-            {getCurrencySymbol()}{formatINR(baseAmountOf(expense))}
+          <span className={cn(
+            "font-serif text-2xl tabular-nums",
+            isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"
+          )}>
+            {isIncome ? "+" : ""}{getCurrencySymbol()}{formatINR(baseAmountOf(expense))}
           </span>
           {expense.currency && expense.currency !== getBaseCurrency() && (
             <span className="text-[10px] text-ink-muted tabular-nums">

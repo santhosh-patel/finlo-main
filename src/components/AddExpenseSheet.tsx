@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,9 @@ import {
 } from "@/lib/expenses";
 import { SUPPORTED_CURRENCIES, CURRENCY_SYMBOLS, getBaseCurrency, getFxRateSync, refreshFxRates } from "@/lib/fx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, AlertCircle } from "lucide-react";
+import { Plus, AlertCircle, Camera, Loader2, Sparkles } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { RollingDatePicker } from "./RollingDatePicker";
 
 interface Props {
   open: boolean;
@@ -55,7 +57,22 @@ export function AddExpenseSheet({
   const [submitted, setSubmitted] = useState(false);
   const [subSearch, setSubSearch] = useState("");
 
-  const activeCategories = txnType === "income" ? INCOME_CATEGORIES : categories;
+  const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
+  const [isSuggestingCategory, setIsSuggestingCategory] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState("");
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isIncomeCategory = useCallback((catName: string) => 
+    ["salary", "freelance", "refund", "other income"].includes(catName.toLowerCase()) || catName.toLowerCase().includes("income"), []);
+
+  const activeCategories = useMemo(() => {
+    if (txnType === "income") {
+      return categories.filter(c => c.type === "income" || isIncomeCategory(c.name));
+    } else {
+      return categories.filter(c => c.type !== "income" && !isIncomeCategory(c.name));
+    }
+  }, [categories, txnType, isIncomeCategory]);
   const amountRef = useRef<HTMLInputElement>(null);
   
   const budgetLimit = budgets[category] || 0;
@@ -94,6 +111,7 @@ export function AddExpenseSheet({
         setPayment(editing.payment_method);
         setCurrency(editing.currency ?? baseCurrency);
         setReimbursable(!!editing.is_reimbursable);
+        setReceiptUrl(editing.receipt_url ?? "");
       } else {
         setTxnType("expense");
         setAmount("");
@@ -104,6 +122,7 @@ export function AddExpenseSheet({
         setPayment("upi");
         setCurrency(baseCurrency);
         setReimbursable(false);
+        setReceiptUrl("");
       }
       // Refresh today's FX rates in background
       refreshFxRates(baseCurrency);
@@ -159,6 +178,7 @@ export function AddExpenseSheet({
       fx_rate: fxRate,
       base_amount: num * fxRate,
       is_reimbursable: txnType === "expense" ? reimbursable : false,
+      receipt_url: receiptUrl || undefined,
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);
@@ -168,6 +188,98 @@ export function AddExpenseSheet({
       vibrate([30, 50, 30]); // Success vibration
     }
     onOpenChange(false);
+  };
+
+  const handleReceiptUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingReceipt(true);
+    vibrate(); // Gentle tactile tap
+
+    try {
+      // 1. Convert to Base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = (reader.result as string).split(",")[1];
+        
+        try {
+          // Upload to Supabase Storage
+          const fileExt = file.name.split(".").pop();
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+          
+          supabase.storage
+            .from("receipts")
+            .upload(fileName, file)
+            .then(({ data: uploadData, error: uploadError }) => {
+              if (!uploadError && uploadData) {
+                const { data: publicData } = supabase.storage
+                  .from("receipts")
+                  .getPublicUrl(uploadData.path);
+                if (publicData?.publicUrl) {
+                  setReceiptUrl(publicData.publicUrl);
+                }
+              }
+            })
+            .catch(err => console.error("Optional upload storage err:", err));
+
+          const { data, error } = await supabase.functions.invoke("parse-receipt", {
+            body: { imageBase64: base64String, contentType: file.type }
+          });
+
+          if (error) throw error;
+
+          if (data) {
+            if (data.amount) setAmount(String(data.amount));
+            if (data.merchant) setNote(data.merchant);
+            if (data.date) setDate(data.date);
+            if (data.category_guess) {
+              const matched = categories.find(c => c.name.toLowerCase() === data.category_guess.toLowerCase());
+              if (matched) {
+                setCategory(matched.name);
+              } else {
+                // If mismatch, set to Other or first matching
+                setCategory(categories[0]?.name ?? "Food");
+              }
+            }
+            vibrate([40, 60]); // Successful double vibration
+          }
+        } catch (err) {
+          console.error("AI receipt parser failed:", err);
+        } finally {
+          setIsProcessingReceipt(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("File parsing error:", err);
+      setIsProcessingReceipt(false);
+    }
+  };
+
+  const handleNoteBlur = async () => {
+    if (!note.trim() || txnType !== "expense") return;
+    setIsSuggestingCategory(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("suggest-category", {
+        body: { note, categories: categories.map(c => c.name) }
+      });
+      if (!error && data?.category) {
+        const matched = categories.find(c => c.name.toLowerCase() === data.category.toLowerCase());
+        if (matched) {
+          setCategory(matched.name);
+          vibrate(); // Gentle touch signal
+        }
+      }
+    } catch (err) {
+      console.error("Auto recommendation category failed:", err);
+    } finally {
+      setIsSuggestingCategory(false);
+    }
   };
 
 
@@ -193,7 +305,9 @@ export function AddExpenseSheet({
                 onClick={() => {
                   if (t === txnType) return;
                   setTxnType(t);
-                  const list = t === "income" ? INCOME_CATEGORIES : categories;
+                  const list = t === "income"
+                    ? categories.filter(c => c.type === "income" || ["salary", "freelance", "refund", "other income"].includes(c.name.toLowerCase()))
+                    : categories.filter(c => c.type !== "income" && !["salary", "freelance", "refund", "other income"].includes(c.name.toLowerCase()));
                   setCategory(list[0]?.name ?? "");
                   setSubcategory("");
                 }}
@@ -233,18 +347,37 @@ export function AddExpenseSheet({
                 aria-describedby={errors.amount ? "amount-error" : undefined}
                 className="font-serif text-5xl h-16 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 placeholder:text-ink-muted/30 text-foreground flex-1 min-w-0"
               />
-              <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger className="h-9 w-[88px] rounded-full border-border bg-background/60 text-xs font-medium uppercase tracking-wider shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  {SUPPORTED_CURRENCIES.map((c) => (
-                    <SelectItem key={c} value={c} className="text-xs">
-                      {CURRENCY_SYMBOLS[c]} {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleReceiptUploadClick}
+                  className="h-9 w-9 rounded-full border border-border/80 bg-surface/80 flex items-center justify-center hover:bg-surface text-ink-muted hover:text-foreground active:scale-95 transition-all"
+                  title="Scan Receipt with AI"
+                >
+                  <Camera className="h-4 w-4" />
+                </button>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  capture="environment"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                />
+                
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger className="h-9 w-[88px] rounded-full border-border bg-background/60 text-xs font-medium uppercase tracking-wider">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {SUPPORTED_CURRENCIES.map((c) => (
+                      <SelectItem key={c} value={c} className="text-xs">
+                        {CURRENCY_SYMBOLS[c]} {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             {currency !== baseCurrency && parseFloat(amount) > 0 && (
               <p className="text-[11px] text-ink-muted mt-2">
@@ -275,14 +408,22 @@ export function AddExpenseSheet({
               </div>
             )}
 
-            <Input
-              type="text"
-              maxLength={120}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Add a note…"
-              className="mt-4 border-0 border-b border-border rounded-none bg-transparent px-0 text-base text-foreground placeholder:text-ink-muted shadow-none focus-visible:ring-0 focus-visible:border-foreground"
-            />
+            <div className="relative mt-4">
+              <Input
+                type="text"
+                maxLength={120}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                onBlur={handleNoteBlur}
+                placeholder="Add a note…"
+                className="border-0 border-b border-border rounded-none bg-transparent px-0 pr-6 text-base text-foreground placeholder:text-ink-muted shadow-none focus-visible:ring-0 focus-visible:border-foreground"
+              />
+              {isSuggestingCategory && (
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center animate-pulse">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500 animate-spin" style={{ animationDuration: '3s' }} />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Categories */}
@@ -451,14 +592,11 @@ export function AddExpenseSheet({
               <Label htmlFor="date" className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">
                 Date
               </Label>
-              <Input
-                id="date"
-                type="date"
+              <RollingDatePicker
                 value={date}
                 max={todayISO()}
-                onChange={(e) => setDate(e.target.value)}
-                aria-invalid={!!errors.date}
-                className="rounded-full bg-transparent border-border text-foreground"
+                onChange={(val) => setDate(val)}
+                className={errors.date ? "border-destructive focus-visible:ring-destructive" : ""}
               />
               {errors.date && (
                 <p className="text-xs text-destructive" role="alert">{errors.date}</p>
@@ -495,6 +633,19 @@ export function AddExpenseSheet({
             {isEdit ? "Save changes" : "Save entry"}
           </Button>
         </form>
+
+        {isProcessingReceipt && (
+          <div className="absolute inset-0 bg-background/85 backdrop-blur-md z-50 flex flex-col items-center justify-center space-y-4 rounded-t-[32px] p-6 animate-in fade-in duration-300">
+            <div className="h-14 w-14 rounded-2xl bg-surface flex items-center justify-center border border-border/40 shadow-sm relative">
+              <Loader2 className="h-7 w-7 text-foreground animate-spin" />
+              <Camera className="h-4 w-4 text-foreground/50 absolute bottom-1.5 right-1.5" />
+            </div>
+            <div className="text-center space-y-1.5 max-w-[280px]">
+              <p className="font-serif text-lg font-medium text-foreground">Analyzing receipt…</p>
+              <p className="text-xs text-ink-muted leading-relaxed">Gemini is extracting the merchant, amount, date, and category guess from your image.</p>
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

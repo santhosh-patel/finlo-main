@@ -5,10 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { getCurrencySymbol, CategoryDef, formatINR, todayISO } from "@/lib/expenses";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Plus, Trash2, Loader2, Repeat } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { RollingDatePicker } from "./RollingDatePicker";
 
 interface Rule {
   id: string;
@@ -31,13 +33,17 @@ interface Props {
   userId: string | null;
 }
 
+const isIncomeCategory = (catName: string) => 
+  ["salary", "freelance", "refund", "other income"].includes(catName.toLowerCase()) || catName.toLowerCase().includes("income");
+
 export function RecurringSheet({ open, onOpenChange, categories, userId }: Props) {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState({
+    type: "expense" as "expense" | "income",
     amount: "",
-    category: categories[0]?.name ?? "Bills",
+    category: "",
     subcategory: "",
     note: "",
     payment_method: "upi",
@@ -46,7 +52,18 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
     next_due_date: todayISO(),
   });
 
-  const load = async () => {
+  // Automatically seed the first valid category based on active transaction type
+  useEffect(() => {
+    if (open) {
+      const isInc = draft.type === "income";
+      const list = isInc
+        ? categories.filter(c => c.type === "income" || isIncomeCategory(c.name))
+        : categories.filter(c => c.type !== "income" && !isIncomeCategory(c.name));
+      setDraft((d) => ({ ...d, category: list[0]?.name ?? (isInc ? "Salary" : "Bills") }));
+    }
+  }, [open, draft.type, categories]);
+
+  const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     const { data, error } = await supabase
@@ -57,9 +74,9 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
     setLoading(false);
     if (error) { toast({ title: "Failed to load", description: error.message, variant: "destructive" }); return; }
     setRules((data ?? []) as Rule[]);
-  };
+  }, [userId]);
 
-  useEffect(() => { if (open) load(); /* eslint-disable-next-line */ }, [open, userId]);
+  useEffect(() => { if (open) load(); }, [open, load]);
 
   const create = async () => {
     if (!userId) return;
@@ -110,9 +127,9 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
       <SheetContent side="bottom" className="bg-background border-border rounded-t-[32px] max-h-[88vh] overflow-y-auto">
         <SheetHeader className="text-left">
           <SheetTitle className="font-serif text-3xl font-normal text-foreground flex items-center gap-2">
-            <Repeat className="h-5 w-5" /> Recurring expenses
+            <Repeat className="h-5 w-5" /> Recurring transactions
           </SheetTitle>
-          <p className="text-xs text-ink-muted">Auto-create monthly bills like rent or subscriptions.</p>
+          <p className="text-xs text-ink-muted">Auto-create recurring monthly bills or repeating income streams.</p>
         </SheetHeader>
 
         <div className="mt-4 flex gap-2">
@@ -126,6 +143,22 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
 
         {showForm && (
           <div className="mt-4 rounded-2xl border border-border/40 bg-surface/40 p-4 space-y-3">
+            {/* Segment controller for transaction type */}
+            <div className="flex gap-1 p-1 bg-surface/50 rounded-full text-xs">
+              {(["expense", "income"] as const).map((t) => (
+                <button
+                  key={t} type="button"
+                  onClick={() => setDraft((d) => ({ ...d, type: t }))}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-full capitalize font-semibold transition-all",
+                    draft.type === t ? "bg-background text-foreground shadow-sm font-bold" : "text-ink-muted hover:text-foreground"
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Amount</Label>
@@ -137,7 +170,12 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
                 <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Category</Label>
                 <Select value={draft.category} onValueChange={(v) => setDraft({ ...draft, category: v })}>
                   <SelectTrigger className="rounded-full bg-background border-border"><SelectValue /></SelectTrigger>
-                  <SelectContent>{categories.map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    {(draft.type === "income"
+                      ? categories.filter(c => c.type === "income" || isIncomeCategory(c.name))
+                      : categories.filter(c => c.type !== "income" && !isIncomeCategory(c.name))
+                    ).map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
               <div>
@@ -152,9 +190,10 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
               </div>
               <div>
                 <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Next due</Label>
-                <Input type="date" value={draft.next_due_date}
-                  onChange={(e) => setDraft({ ...draft, next_due_date: e.target.value })}
-                  className="rounded-full bg-background border-border" />
+                <RollingDatePicker
+                  value={draft.next_due_date}
+                  onChange={(val) => setDraft({ ...draft, next_due_date: val })}
+                />
               </div>
             </div>
             <div>
@@ -176,7 +215,12 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
             <div key={r.id} className="rounded-2xl border border-border/40 bg-surface/30 p-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-serif text-lg text-foreground tabular-nums">{getCurrencySymbol()}{formatINR(r.amount)}</span>
+                  <span className={cn(
+                    "font-serif text-lg tabular-nums font-medium",
+                    isIncomeCategory(r.category) ? "text-emerald-600 dark:text-emerald-500" : "text-foreground"
+                  )}>
+                    {isIncomeCategory(r.category) ? "+" : ""}{getCurrencySymbol()}{formatINR(r.amount)}
+                  </span>
                   <span className="text-xs text-foreground">{r.category}</span>
                 </div>
                 <p className="text-[11px] text-ink-muted truncate">

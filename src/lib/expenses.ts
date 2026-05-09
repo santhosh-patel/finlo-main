@@ -15,6 +15,11 @@ export interface Expense {
   fx_rate?: number; // rate from `currency` to user base at time of entry
   base_amount?: number; // amount * fx_rate, in user base currency
   is_reimbursable?: boolean;
+  reimbursed_at?: string | null;
+  client_updated_at?: string;
+  import_hash?: string;
+  receipt_url?: string;
+  deleted_at?: string;
 }
 
 /** Returns the amount of the expense converted to the user's base currency. */
@@ -31,27 +36,29 @@ export interface CategoryDef {
   custom?: boolean;
   color?: string; // hex like #D1D8CA
   icon?: string;  // key from CATEGORY_ICONS
+  type?: "expense" | "income";
 }
 
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
-  { name: "Food", subcategories: ["dining", "delivery", "snacks"], icon: "Utensils", color: "#E3D3C2" },
-  { name: "Groceries", subcategories: ["fruits", "staples", "household"], icon: "ShoppingBasket", color: "#D1D8CA" },
-  { name: "Travel", subcategories: ["fuel", "metro", "cab", "flights"], icon: "Car", color: "#C8D6E5" },
-  { name: "Bills", subcategories: ["electricity", "water", "wifi", "phone"], icon: "Plug", color: "#F1D6B7" },
-  { name: "Shopping", subcategories: ["clothing", "electronics", "gifts"], icon: "ShoppingBag", color: "#E8C9D6" },
-  { name: "Rent", subcategories: [], icon: "Home", color: "#D6CFE8" },
-  { name: "Misc", subcategories: [], icon: "Wallet", color: "#E0DDD5" },
-  { name: "Salon", subcategories: ["haircut", "spa"], icon: "Heart", color: "#F4C2C2" },
-  { name: "Lending", subcategories: ["friends", "family"], icon: "PiggyBank", color: "#B8D8BA" },
-  { name: "Hehe", subcategories: [], icon: "Film", color: "#FFD6A5" },
+  { name: "Food", subcategories: ["dining", "delivery", "snacks"], icon: "Utensils", color: "#E3D3C2", type: "expense" },
+  { name: "Groceries", subcategories: ["fruits", "staples", "household"], icon: "ShoppingBasket", color: "#D1D8CA", type: "expense" },
+  { name: "Travel", subcategories: ["fuel", "metro", "cab", "flights"], icon: "Car", color: "#C8D6E5", type: "expense" },
+  { name: "Bills", subcategories: ["electricity", "water", "wifi", "phone"], icon: "Plug", color: "#F1D6B7", type: "expense" },
+  { name: "Shopping", subcategories: ["clothing", "electronics", "gifts"], icon: "ShoppingBag", color: "#E8C9D6", type: "expense" },
+  { name: "Rent", subcategories: [], icon: "Home", color: "#D6CFE8", type: "expense" },
+  { name: "Misc", subcategories: [], icon: "Wallet", color: "#E0DDD5", type: "expense" },
+  { name: "Salon", subcategories: ["haircut", "spa"], icon: "Heart", color: "#F4C2C2", type: "expense" },
+  { name: "Lending", subcategories: ["friends", "family"], icon: "PiggyBank", color: "#B8D8BA", type: "expense" },
+  { name: "Hehe", subcategories: [], icon: "Film", color: "#FFD6A5", type: "expense" },
+  
+  // Income categories
+  { name: "Salary", subcategories: [], icon: "PiggyBank", color: "#B8D8BA", type: "income" },
+  { name: "Freelance", subcategories: [], icon: "Wallet", color: "#C8D6E5", type: "income" },
+  { name: "Refund", subcategories: [], icon: "ShoppingBag", color: "#E8C9D6", type: "income" },
+  { name: "Other Income", subcategories: [], icon: "Heart", color: "#FFD6A5", type: "income" },
 ];
 
-export const INCOME_CATEGORIES: CategoryDef[] = [
-  { name: "Salary", subcategories: [], icon: "PiggyBank", color: "#B8D8BA" },
-  { name: "Freelance", subcategories: [], icon: "Wallet", color: "#C8D6E5" },
-  { name: "Refund", subcategories: [], icon: "ShoppingBag", color: "#E8C9D6" },
-  { name: "Other Income", subcategories: [], icon: "Heart", color: "#FFD6A5" },
-];
+export const INCOME_CATEGORIES: CategoryDef[] = DEFAULT_CATEGORIES.filter(c => c.type === "income");
 
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "upi", label: "UPI" },
@@ -66,7 +73,9 @@ export function getCurrencySymbol(): string {
       const theme = JSON.parse(raw);
       if (theme.currencySymbol) return theme.currencySymbol;
     }
-  } catch {}
+  } catch (err) {
+    // Fallback to default symbol on error or missing config
+  }
   return "₹";
 }
 
@@ -80,7 +89,9 @@ export function formatINR(n: number): string {
       else if (theme.currency === "EUR") locale = "de-DE";
       else if (theme.currency === "GBP") locale = "en-GB";
     }
-  } catch {}
+  } catch (err) {
+    // Fallback to default locale on error
+  }
   return new Intl.NumberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

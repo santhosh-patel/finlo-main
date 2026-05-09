@@ -33,6 +33,24 @@ function writeJSON(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
+interface DBExpenseRow {
+  id: string;
+  amount: number;
+  category: string;
+  subcategory: string | null;
+  note: string | null;
+  date: string;
+  payment_method: string | null;
+  created_at: string;
+  type: string | null;
+  currency: string | null;
+  fx_rate: number | null;
+  base_amount: number | null;
+  is_reimbursable: boolean | null;
+  import_hash: string | null;
+  receipt_url: string | null;
+}
+
 export function useExpenses(userId: string | null) {
   const [expenses, setExpenses] = useState<Expense[]>(() => readJSON<Expense[]>(EXP_KEY, []));
   const [categories, setCategories] = useState<CategoryDef[]>(() =>
@@ -108,12 +126,12 @@ export function useExpenses(userId: string | null) {
   const pullFromServer = useCallback(async () => {
     if (!userId) return;
     const [{ data: exp }, { data: cat }, { data: bud }] = await Promise.all([
-      supabase.from("expenses").select("*").eq("user_id", userId).order("date", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("expenses").select("*").eq("user_id", userId).is("deleted_at", null).order("date", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("categories").select("*").eq("user_id", userId),
       supabase.from("budgets").select("*").eq("user_id", userId),
     ]);
     if (exp) {
-      setExpenses(exp.map((r: any) => ({
+      setExpenses((exp as unknown as DBExpenseRow[]).map((r) => ({
         id: r.id,
         amount: Number(r.amount),
         category: r.category,
@@ -127,6 +145,8 @@ export function useExpenses(userId: string | null) {
         fx_rate: r.fx_rate != null ? Number(r.fx_rate) : 1,
         base_amount: r.base_amount != null ? Number(r.base_amount) : undefined,
         is_reimbursable: !!r.is_reimbursable,
+        import_hash: r.import_hash ?? undefined,
+        receipt_url: r.receipt_url ?? undefined,
       })));
     }
     if (cat) {
@@ -202,18 +222,70 @@ export function useExpenses(userId: string | null) {
       if (pullTimer) clearTimeout(pullTimer);
       pullTimer = setTimeout(() => { if (!cancelled) pullFromServer(); }, 400);
     };
-    sync();
+    const hasLocalExpenses = expenses && expenses.length > 0;
+    const hasPendingChanges = pendingRef.current && pendingRef.current.length > 0;
+    if (!hasLocalExpenses || hasPendingChanges) {
+      sync();
+    }
     const ch = supabase
       .channel(`expenses-${userId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "expenses", filter: `user_id=eq.${userId}` },
-        () => {
+        (payload) => {
           if (skipNextRealtimePullRef.current) {
             skipNextRealtimePullRef.current = false;
             return;
           }
-          debouncedPull();
+          const eventType = payload.eventType;
+          if (eventType === "INSERT") {
+            const row = payload.new;
+            setExpenses((prev) => {
+              if (prev.some((e) => e.id === row.id)) return prev;
+              const mapped: Expense = {
+                id: row.id,
+                amount: Number(row.amount),
+                category: row.category,
+                subcategory: row.subcategory ?? undefined,
+                note: row.note ?? undefined,
+                date: row.date,
+                payment_method: (row.payment_method as Expense["payment_method"]) ?? "upi",
+                created_at: row.created_at,
+                type: (row.type as Expense["type"]) ?? "expense",
+                currency: row.currency ?? "INR",
+                fx_rate: row.fx_rate != null ? Number(row.fx_rate) : 1,
+                base_amount: row.base_amount != null ? Number(row.base_amount) : undefined,
+                is_reimbursable: !!row.is_reimbursable,
+                reimbursed_at: row.reimbursed_at ?? null,
+                client_updated_at: row.client_updated_at ?? undefined,
+              };
+              return [mapped, ...prev].sort((a, b) => b.date.localeCompare(a.date));
+            });
+          } else if (eventType === "UPDATE") {
+            const row = payload.new;
+            setExpenses((prev) => prev.map((e) => {
+              if (e.id !== row.id) return e;
+              return {
+                ...e,
+                amount: Number(row.amount),
+                category: row.category,
+                subcategory: row.subcategory ?? undefined,
+                note: row.note ?? undefined,
+                date: row.date,
+                payment_method: (row.payment_method as Expense["payment_method"]) ?? "upi",
+                type: (row.type as Expense["type"]) ?? "expense",
+                currency: row.currency ?? "INR",
+                fx_rate: row.fx_rate != null ? Number(row.fx_rate) : 1,
+                base_amount: row.base_amount != null ? Number(row.base_amount) : undefined,
+                is_reimbursable: !!row.is_reimbursable,
+                reimbursed_at: row.reimbursed_at ?? null,
+                client_updated_at: row.client_updated_at ?? undefined,
+              };
+            }));
+          } else if (eventType === "DELETE") {
+            const oldId = payload.old.id;
+            setExpenses((prev) => prev.filter((e) => e.id !== oldId));
+          }
         },
       )
       .subscribe();
@@ -247,44 +319,152 @@ export function useExpenses(userId: string | null) {
         currency: newE.currency ?? "INR",
         fx_rate: fx,
         is_reimbursable: newE.is_reimbursable ?? false,
-      }).then(({ error }) => { if (error) queue({ kind: "insert", row: newE }); });
+        receipt_url: newE.receipt_url ?? null,
+      }).then(({ error }) => { 
+        if (error) queue({ kind: "insert", row: newE }); 
+        else if (newE.category.toLowerCase() === "lending") {
+          const counterparty = newE.note?.trim() || "Someone";
+          const direction = newE.type === "income" ? "borrowed" : "lent";
+          supabase.from("loans").insert({
+            user_id: userId,
+            counterparty,
+            amount: newE.amount,
+            direction,
+            date: newE.date,
+            note: newE.note ? `Auto-created from transaction: ${newE.note}` : "Auto-created from transaction",
+            expense_id: newE.id,
+            status: "open",
+          }).then(({ error: loanErr }) => {
+            if (loanErr) console.error("Failed to auto-create loan:", loanErr);
+            else {
+              toast({ title: "Loan tracker updated", description: `Added ${direction === "lent" ? "lent to" : "borrowed from"} ${counterparty}.` });
+            }
+          });
+        }
+      });
     } else {
       queue({ kind: "insert", row: newE });
     }
     return newE;
   }, [userId]);
 
-  const updateExpense = useCallback((id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => {
-    setExpenses((prev) => prev.map((x) => {
-      if (x.id !== id) return x;
-      const merged = { ...x, ...patch };
-      const fx = merged.fx_rate ?? 1;
-      merged.fx_rate = fx;
-      merged.base_amount = Number(merged.amount) * fx;
-      return merged;
-    }));
+  const showConflictToast = useCallback((id: string, patch: Partial<Expense>, serverRow: Record<string, unknown>) => {
+    toast({
+      title: "Sync Conflict Detected",
+      description: `Transaction "${serverRow.note || serverRow.category}" has a newer update on the server.`,
+      variant: "destructive",
+      action: (
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              const forcedTime = new Date().toISOString();
+              await supabase.from("expenses").update({
+                ...patch,
+                client_updated_at: forcedTime,
+              }).eq("id", id);
+              setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, ...patch, client_updated_at: forcedTime } : e));
+              toast({ title: "Resolved: Kept Your Changes" });
+            }}
+            className="bg-background text-foreground text-[10px] px-2.5 py-1.5 rounded-full font-semibold shadow hover:bg-background/90 shrink-0"
+          >
+            Keep Mine
+          </button>
+          <button
+            onClick={() => {
+              setExpenses((prev) => prev.map((e) => e.id === id ? {
+                ...e,
+                amount: Number(serverRow.amount),
+                category: String(serverRow.category),
+                subcategory: (serverRow.subcategory as string) ?? undefined,
+                note: (serverRow.note as string) ?? undefined,
+                date: String(serverRow.date),
+                payment_method: (serverRow.payment_method as Expense["payment_method"]) ?? "upi",
+                type: (serverRow.type as Expense["type"]) ?? "expense",
+                currency: (serverRow.currency as string) ?? "INR",
+                fx_rate: serverRow.fx_rate != null ? Number(serverRow.fx_rate) : 1,
+                base_amount: serverRow.base_amount != null ? Number(serverRow.base_amount) : undefined,
+                is_reimbursable: !!serverRow.is_reimbursable,
+                reimbursed_at: (serverRow.reimbursed_at as string) ?? null,
+                client_updated_at: (serverRow.client_updated_at as string) ?? undefined,
+                receipt_url: (serverRow.receipt_url as string) ?? undefined,
+              } : e));
+              toast({ title: "Resolved: Accepted Server Version" });
+            }}
+            className="bg-foreground text-background text-[10px] px-2.5 py-1.5 rounded-full font-semibold shadow hover:bg-background/90 shrink-0"
+          >
+            Accept Theirs
+          </button>
+        </div>
+      ),
+    });
+  }, [setExpenses]);
+
+  const updateExpense = useCallback(async (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => {
+    const clientUpdatedAt = new Date().toISOString();
+    let localRow: Expense | undefined;
+
+    setExpenses((prev) => {
+      localRow = prev.find((e) => e.id === id);
+      return prev.map((x) => {
+        if (x.id !== id) return x;
+        const merged = { ...x, ...patch, client_updated_at: clientUpdatedAt };
+        const fx = merged.fx_rate ?? 1;
+        merged.fx_rate = fx;
+        merged.base_amount = Number(merged.amount) * fx;
+        return merged;
+      });
+    });
+
     if (userId) {
-      supabase.from("expenses").update({
-        ...(patch.amount !== undefined && { amount: patch.amount }),
-        ...(patch.category !== undefined && { category: patch.category }),
-        ...(patch.subcategory !== undefined && { subcategory: patch.subcategory ?? null }),
-        ...(patch.note !== undefined && { note: patch.note ?? null }),
-        ...(patch.date !== undefined && { date: patch.date }),
-        ...(patch.payment_method !== undefined && { payment_method: patch.payment_method }),
-        ...(patch.type !== undefined && { type: patch.type }),
-        ...(patch.currency !== undefined && { currency: patch.currency }),
-        ...(patch.fx_rate !== undefined && { fx_rate: patch.fx_rate }),
-        ...(patch.is_reimbursable !== undefined && { is_reimbursable: patch.is_reimbursable }),
-      }).eq("id", id).then(({ error }) => { if (error) queue({ kind: "update", id, patch }); });
+      try {
+        const { data: serverRow } = await supabase
+          .from("expenses")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (serverRow && serverRow.client_updated_at) {
+          const serverTime = new Date(serverRow.client_updated_at).getTime();
+          const localLastTime = localRow?.client_updated_at 
+            ? new Date(localRow.client_updated_at).getTime() 
+            : 0;
+
+          if (serverTime > localLastTime) {
+            showConflictToast(id, patch, serverRow);
+            return;
+          }
+        }
+
+        const { error } = await supabase.from("expenses").update({
+          ...(patch.amount !== undefined && { amount: patch.amount }),
+          ...(patch.category !== undefined && { category: patch.category }),
+          ...(patch.subcategory !== undefined && { subcategory: patch.subcategory ?? null }),
+          ...(patch.note !== undefined && { note: patch.note ?? null }),
+          ...(patch.date !== undefined && { date: patch.date }),
+          ...(patch.payment_method !== undefined && { payment_method: patch.payment_method }),
+          ...(patch.type !== undefined && { type: patch.type }),
+          ...(patch.currency !== undefined && { currency: patch.currency }),
+          ...(patch.fx_rate !== undefined && { fx_rate: patch.fx_rate }),
+          ...(patch.is_reimbursable !== undefined && { is_reimbursable: patch.is_reimbursable }),
+          ...(patch.receipt_url !== undefined && { receipt_url: patch.receipt_url ?? null }),
+          client_updated_at: clientUpdatedAt,
+        }).eq("id", id);
+
+        if (error) {
+          queue({ kind: "update", id, patch: { ...patch, client_updated_at: clientUpdatedAt } });
+        }
+      } catch (err) {
+        queue({ kind: "update", id, patch: { ...patch, client_updated_at: clientUpdatedAt } });
+      }
     } else {
-      queue({ kind: "update", id, patch });
+      queue({ kind: "update", id, patch: { ...patch, client_updated_at: clientUpdatedAt } });
     }
-  }, [userId]);
+  }, [userId, showConflictToast]);
 
   const deleteExpense = useCallback((id: string) => {
     setExpenses((prev) => prev.filter((x) => x.id !== id));
     if (userId) {
-      supabase.from("expenses").delete().eq("id", id).then(({ error }) => {
+      supabase.from("expenses").update({ deleted_at: new Date().toISOString() }).eq("id", id).then(({ error }) => {
         if (error) queue({ kind: "delete", id });
       });
     } else {
@@ -293,7 +473,7 @@ export function useExpenses(userId: string | null) {
   }, [userId]);
 
   // ---- categories (cloud-backed) ----
-  const upsertCategoryRow = async (c: CategoryDef) => {
+  const upsertCategoryRow = useCallback(async (c: CategoryDef) => {
     if (!userId) return;
     const { error } = await supabase.from("categories").upsert({
       user_id: userId, name: c.name,
@@ -305,7 +485,7 @@ export function useExpenses(userId: string | null) {
       console.error("Failed to sync category:", error);
       toast({ title: "Sync Error", description: `Couldn't save category "${c.name}" to cloud.`, variant: "destructive" });
     }
-  };
+  }, [userId]);
 
   const addCategory = useCallback((name: string) => {
     const trimmed = name.trim();
@@ -318,7 +498,7 @@ export function useExpenses(userId: string | null) {
       });
       return [...prev, next];
     });
-  }, [userId]);
+  }, [upsertCategoryRow]);
 
   const renameCategory = useCallback((oldName: string, newName: string) => {
     const trimmed = newName.trim();
@@ -365,7 +545,7 @@ export function useExpenses(userId: string | null) {
       upsertCategoryRow(next);
       return next;
     }));
-  }, [userId]);
+  }, [upsertCategoryRow]);
 
   const addSubcategory = useCallback((category: string, sub: string) => {
     const s = sub.trim().toLowerCase();
@@ -379,7 +559,7 @@ export function useExpenses(userId: string | null) {
       });
       return next;
     }));
-  }, [userId]);
+  }, [upsertCategoryRow]);
 
   const deleteSubcategory = useCallback((category: string, sub: string) => {
     setCategories((prev) => prev.map((c) => {
@@ -388,18 +568,38 @@ export function useExpenses(userId: string | null) {
       upsertCategoryRow(next);
       return next;
     }));
-  }, [userId]);
+  }, [upsertCategoryRow]);
 
   const importExpenses = useCallback((rows: Omit<Expense, "id" | "created_at">[]) => {
+    const existingHashes = new Set(expenses.map((e) => e.import_hash).filter(Boolean));
+    const toImport: Expense[] = [];
+    let skippedDuplicates = 0;
+
     const now = Date.now();
-    const newOnes: Expense[] = rows.map((r, i) => ({
-      ...r, id: crypto.randomUUID(), created_at: new Date(now - i).toISOString(),
-    }));
-    setExpenses((prev) => [...newOnes, ...prev]);
+    rows.forEach((r, i) => {
+      if (r.import_hash && existingHashes.has(r.import_hash)) {
+        skippedDuplicates++;
+        return;
+      }
+      if (r.import_hash) {
+        existingHashes.add(r.import_hash);
+      }
+      toImport.push({
+        ...r,
+        id: crypto.randomUUID(),
+        created_at: new Date(now - i).toISOString(),
+      });
+    });
+
+    if (toImport.length === 0) {
+      return { imported: 0, skippedDuplicates };
+    }
+
+    setExpenses((prev) => [...toImport, ...prev]);
     setCategories((prev) => {
       const existing = new Set(prev.map((c) => c.name.toLowerCase()));
       const adds: CategoryDef[] = [];
-      rows.forEach((r) => {
+      toImport.forEach((r) => {
         const k = r.category.trim();
         if (k && !existing.has(k.toLowerCase())) {
           existing.add(k.toLowerCase());
@@ -410,13 +610,19 @@ export function useExpenses(userId: string | null) {
       });
       return adds.length ? [...prev, ...adds] : prev;
     });
+
     if (userId) {
-      const insertRows = newOnes.map((r) => ({
-        id: r.id, user_id: userId, amount: r.amount, category: r.category,
-        subcategory: r.subcategory ?? null, note: r.note ?? null,
-        date: r.date, payment_method: r.payment_method,
+      const insertRows = toImport.map((r) => ({
+        id: r.id,
+        user_id: userId,
+        amount: r.amount,
+        category: r.category,
+        subcategory: r.subcategory ?? null,
+        note: r.note ?? null,
+        date: r.date,
+        payment_method: r.payment_method,
+        import_hash: r.import_hash ?? null,
       }));
-      // chunk to be safe
       const chunkSize = 200;
       (async () => {
         for (let i = 0; i < insertRows.length; i += chunkSize) {
@@ -424,10 +630,11 @@ export function useExpenses(userId: string | null) {
         }
       })();
     } else {
-      newOnes.forEach((row) => queue({ kind: "insert", row }));
+      toImport.forEach((row) => queue({ kind: "insert", row }));
     }
-    return newOnes.length;
-  }, [userId]);
+
+    return { imported: toImport.length, skippedDuplicates };
+  }, [userId, expenses, upsertCategoryRow]);
 
   const setBudget = useCallback((category: string, amount: number | null) => {
     setBudgets((prev) => {

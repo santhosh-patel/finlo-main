@@ -21,7 +21,13 @@ interface FXCache { date: string; base: string; rates: Record<string, number> }
 function readCache(): FXCache | null {
   try { const raw = localStorage.getItem(FX_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
-function writeCache(c: FXCache) { try { localStorage.setItem(FX_KEY, JSON.stringify(c)); } catch {} }
+function writeCache(c: FXCache) {
+  try {
+    localStorage.setItem(FX_KEY, JSON.stringify(c));
+  } catch (err) {
+    // Ignore write failure
+  }
+}
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 

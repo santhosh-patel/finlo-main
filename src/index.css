@@ -121,6 +121,8 @@
   html {
     color-scheme: light dark;
     -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
   }
 
   body {
@@ -128,6 +130,18 @@
     font-feature-settings: "ss01", "cv11";
     transition: background-color var(--duration-base) var(--ease-out),
                 color var(--duration-base) var(--ease-out);
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    overflow-x: hidden;
+  }
+
+  /* Enable input selection */
+  input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   button, a, input, [role="button"] {
@@ -166,4 +180,13 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--ink-muted));
   }
+}
+
+/* Utility to hide scrollbars for iOS roller wheels */
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+}
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }

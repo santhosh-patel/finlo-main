@@ -1,6 +1,10 @@
 // Processes recurring expense rules: creates expenses for rules due today
 // and advances next_due_date. Idempotent per (rule, date).
+// @ts-expect-error: Deno remote URL module imports are unresolved in local Node compilation context
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const Deno: any;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +33,7 @@ function advance(current: string, frequency: string, dayOfMonth?: number | null)
   return isoDate(d);
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const supabase = createClient(
@@ -59,8 +63,8 @@ Deno.serve(async (req) => {
     let localCreated = 0;
     // Catch up if behind (e.g. cron didn't run for several days)
     while (next <= today) {
-      // Skip if already created on this date for this rule
       if (last !== next) {
+        const isIncome = ["salary", "freelance", "refund", "other income"].includes(rule.category.toLowerCase()) || rule.category.toLowerCase().includes("income");
         const { error: insErr } = await supabase.from("expenses").insert({
           user_id: rule.user_id,
           amount: rule.amount,
@@ -69,6 +73,7 @@ Deno.serve(async (req) => {
           note: rule.note ? `${rule.note} (recurring)` : "Recurring",
           date: next,
           payment_method: rule.payment_method,
+          type: isIncome ? "income" : "expense",
         });
         if (!insErr) { created += 1; localCreated += 1; last = next; }
       }

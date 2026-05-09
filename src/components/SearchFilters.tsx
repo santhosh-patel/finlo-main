@@ -5,11 +5,14 @@ import { CategoryDef, startOfMonthISO, startOfWeekISO, todayISO } from "@/lib/ex
 import { Download, RotateCcw, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+import { RollingDatePicker } from "./RollingDatePicker";
+
 export interface FilterState {
   query: string;
   category: string; // "" = all
   from: string;
   to: string;
+  reimbursableOnly?: boolean;
 }
 
 interface Props {
@@ -22,7 +25,7 @@ interface Props {
 
 export function SearchFilters({ value, onChange, categories, resultsCount, onExport }: Props) {
   const set = (patch: Partial<FilterState>) => onChange({ ...value, ...patch });
-  const hasFilters = value.query || value.category || value.from || value.to;
+  const hasFilters = value.query || value.category || value.from || value.to || value.reimbursableOnly;
 
   const today = todayISO();
   const weekStart = startOfWeekISO();
@@ -34,18 +37,23 @@ export function SearchFilters({ value, onChange, categories, resultsCount, onExp
   const quickChips: { label: string; active: boolean; apply: () => void }[] = [
     {
       label: "Today",
-      active: isRange(today, today) && !value.category,
-      apply: () => set({ from: today, to: today, category: "" }),
+      active: isRange(today, today) && !value.category && !value.reimbursableOnly,
+      apply: () => set({ from: today, to: today, category: "", reimbursableOnly: false }),
     },
     {
       label: "This week",
-      active: isRange(weekStart, today) && !value.category,
-      apply: () => set({ from: weekStart, to: today, category: "" }),
+      active: isRange(weekStart, today) && !value.category && !value.reimbursableOnly,
+      apply: () => set({ from: weekStart, to: today, category: "", reimbursableOnly: false }),
     },
     {
       label: "This month",
-      active: isRange(monthStart, today) && !value.category,
-      apply: () => set({ from: monthStart, to: today, category: "" }),
+      active: isRange(monthStart, today) && !value.category && !value.reimbursableOnly,
+      apply: () => set({ from: monthStart, to: today, category: "", reimbursableOnly: false }),
+    },
+    {
+      label: "Reimbursable",
+      active: !!value.reimbursableOnly,
+      apply: () => set({ reimbursableOnly: !value.reimbursableOnly }),
     },
     {
       label: "Food",
@@ -98,10 +106,10 @@ export function SearchFilters({ value, onChange, categories, resultsCount, onExp
             {c.label}
           </button>
         ))}
-        {(value.category || value.from || value.to) && (
+        {(value.category || value.from || value.to || value.reimbursableOnly) && (
           <button
             type="button"
-            onClick={() => set({ category: "", from: "", to: "" })}
+            onClick={() => set({ category: "", from: "", to: "", reimbursableOnly: false })}
             className="px-3 py-1.5 rounded-full text-xs border border-dashed border-border text-ink-muted hover:bg-surface inline-flex items-center gap-1"
             aria-label="Reset chips and date range"
           >
@@ -145,22 +153,18 @@ export function SearchFilters({ value, onChange, categories, resultsCount, onExp
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="from" className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">From</Label>
-          <Input
-            id="from"
-            type="date"
+          <RollingDatePicker
             value={value.from}
-            onChange={(e) => set({ from: e.target.value })}
-            className="rounded-full bg-transparent border-border text-foreground text-sm"
+            onChange={(val) => set({ from: val })}
+            placeholder="Start date"
           />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="to" className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">To</Label>
-          <Input
-            id="to"
-            type="date"
+          <RollingDatePicker
             value={value.to}
-            onChange={(e) => set({ to: e.target.value })}
-            className="rounded-full bg-transparent border-border text-foreground text-sm"
+            onChange={(val) => set({ to: val })}
+            placeholder="End date"
           />
         </div>
       </div>

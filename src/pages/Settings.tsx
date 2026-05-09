@@ -21,6 +21,7 @@ import {
 import type { Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
 import { toast } from "@/hooks/use-toast";
+import { RollingDatePicker } from "@/components/RollingDatePicker";
 
 interface Props {
   open: boolean;
@@ -37,6 +38,7 @@ interface Props {
   onOpenSearch: () => void;
   onOpenRecurring: () => void;
   onOpenLoans: () => void;
+  onOpenTrash: () => void;
   profile: Profile;
   onUpdateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
   theme: ThemeSettings;
@@ -58,36 +60,42 @@ export default function Settings(props: Props) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="bg-background border-border w-full sm:max-w-[560px] overflow-y-auto p-6"
+        className="bg-background border-border w-full sm:max-w-[560px] p-0 flex flex-col h-full"
       >
-        <SheetHeader className="text-left mb-6">
-          <SheetTitle className="font-serif text-3xl font-normal text-foreground">Settings</SheetTitle>
-        </SheetHeader>
+        {/* Fixed Header & Navigation Container */}
+        <div className="p-6 pb-4 border-b border-border/10 bg-background/90 backdrop-blur-md shrink-0">
+          <SheetHeader className="text-left mb-5">
+            <SheetTitle className="font-serif text-3xl font-normal text-foreground">Settings</SheetTitle>
+          </SheetHeader>
 
-        <nav className="flex gap-1 bg-surface/60 rounded-full p-1 text-xs mb-8">
-          {(["profile", "categories", "appearance", "data"] as const).map((s) => (
-            <button
-              key={s} onClick={() => setSection(s)}
-              className={cn(
-                "flex-1 px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors capitalize",
-                section === s ? "bg-background text-foreground shadow-sm" : "text-ink-muted hover:text-foreground"
-              )}
-            >{s}</button>
-          ))}
-        </nav>
+          <nav className="flex gap-1 bg-surface/60 rounded-full p-1 text-xs">
+            {(["profile", "categories", "appearance", "data"] as const).map((s) => (
+              <button
+                key={s} onClick={() => setSection(s)}
+                className={cn(
+                  "flex-1 px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors capitalize",
+                  section === s ? "bg-background text-foreground shadow-sm" : "text-ink-muted hover:text-foreground"
+                )}
+              >{s}</button>
+            ))}
+          </nav>
+        </div>
 
-        {section === "profile" && <ProfileSection {...props} />}
-        {section === "categories" && <CategoriesSection {...props} />}
-        {section === "appearance" && <AppearanceSection {...props} />}
-        {section === "data" && <DataSection {...props} />}
+        {/* Scrollable Contents Container */}
+        <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-6 scrollbar-none">
+          {section === "profile" && <ProfileSection {...props} />}
+          {section === "categories" && <CategoriesSection {...props} />}
+          {section === "appearance" && <AppearanceSection {...props} />}
+          {section === "data" && <DataSection {...props} />}
 
-        <Button
-          type="button" variant="ghost"
-          onClick={() => { props.onLogout(); onOpenChange(false); }}
-          className="mt-4 w-full rounded-full text-destructive hover:text-destructive hover:bg-destructive/10"
-        >
-          <LogOut className="h-4 w-4 mr-2" /> Sign out
-        </Button>
+          <Button
+            type="button" variant="ghost"
+            onClick={() => { props.onLogout(); onOpenChange(false); }}
+            className="mt-6 w-full rounded-full text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            <LogOut className="h-4 w-4 mr-2" /> Sign out
+          </Button>
+        </div>
       </SheetContent>
     </Sheet>
   );
@@ -96,13 +104,25 @@ export default function Settings(props: Props) {
 function ProfileSection({ profile, onUpdateProfile }: Props) {
   const [name, setName] = useState(profile.name);
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [show, setShow] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
     const patch: { name?: string; password?: string } = {};
     if (name.trim() !== profile.name) patch.name = name.trim();
-    if (newPassword) patch.password = newPassword;
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        toast({ title: "Validation Error", description: "Password must be at least 6 characters.", variant: "destructive" });
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast({ title: "Validation Error", description: "Passwords do not match.", variant: "destructive" });
+        return;
+      }
+      patch.password = newPassword;
+    }
     if (Object.keys(patch).length === 0) {
       toast({ title: "No changes" });
       return;
@@ -111,7 +131,11 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
     const err = await onUpdateProfile(patch);
     setBusy(false);
     if (err) toast({ title: "Error", description: err, variant: "destructive" });
-    else { toast({ title: "Saved" }); setNewPassword(""); }
+    else {
+      toast({ title: "Saved" });
+      setNewPassword("");
+      setConfirmPassword("");
+    }
   };
 
   return (
@@ -126,13 +150,23 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
       </div>
       <div className="pt-2 border-t border-border/40 space-y-3">
         <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Change password</p>
-        <div className="relative">
-          <Input type={show ? "text" : "password"} placeholder="New password (min 6 chars)"
-            value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-            className="rounded-full bg-background border-border text-foreground pr-10" />
-          <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-foreground p-1" aria-label="Toggle password">
-            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
+        <div className="space-y-2.5">
+          <div className="relative">
+            <Input type={show ? "text" : "password"} placeholder="New password (min 6 chars)"
+              value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+              className="rounded-full bg-background border-border text-foreground pr-10" />
+            <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-foreground p-1" aria-label="Toggle password">
+              {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          <div className="relative">
+            <Input type={showConfirm ? "text" : "password"} placeholder="Confirm new password"
+              value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              className="rounded-full bg-background border-border text-foreground pr-10" />
+            <button type="button" onClick={() => setShowConfirm((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-foreground p-1" aria-label="Toggle confirm password">
+              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
       </div>
       <Button type="button" onClick={save} disabled={busy}
@@ -369,7 +403,7 @@ function AppearanceSection({ theme, onUpdateTheme }: Props) {
 }
 
 function DataSection({
-  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenLoans, onOpenChange,
+  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenLoans, onOpenTrash, onOpenChange,
   onSync, syncing, lastSync, onExportData, onRestoreData, profile,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -453,6 +487,7 @@ function DataSection({
       {item("Monthly budgets", "Set per-category limits & alerts", () => { onOpenBudgets(); onOpenChange(false); })}
       {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
       {item("Lending", "Track money you've lent or borrowed", () => { onOpenLoans(); onOpenChange(false); }, <HandCoins className="h-4 w-4" />)}
+      {item("Trash bin", "Restore soft-deleted items within 30 days", () => { onOpenTrash(); onOpenChange(false); }, <Trash2 className="h-4 w-4 text-destructive/80" />)}
       {item("Import CSV / Excel", "Upload spreadsheet of expenses", () => { onOpenImport(); onOpenChange(false); })}
 
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">
@@ -462,13 +497,11 @@ function DataSection({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">From</Label>
-              <Input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)}
-                className="rounded-full bg-background border-border h-9 text-xs" />
+              <RollingDatePicker value={exportFrom} onChange={(val) => setExportFrom(val)} placeholder="Start date" />
             </div>
             <div>
               <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">To</Label>
-              <Input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)}
-                className="rounded-full bg-background border-border h-9 text-xs" />
+              <RollingDatePicker value={exportTo} onChange={(val) => setExportTo(val)} placeholder="End date" />
             </div>
           </div>
           <p className="text-[11px] text-ink-muted">Leave both blank to export everything.</p>

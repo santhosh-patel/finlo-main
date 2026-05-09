@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Loader2, Home, Wallet, ArrowLeftRight, Sparkles } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
@@ -8,13 +7,16 @@ import { WeeklyView } from "@/components/WeeklyView";
 import { MonthlyView } from "@/components/MonthlyView";
 import { FilterState } from "@/components/SearchFilters";
 import { SearchOverlay } from "@/components/SearchOverlay";
-import { ExpenseDetailsDrawer } from "@/components/ExpenseDetailsDrawer";
-import { BudgetsSheet } from "@/components/BudgetsSheet";
+import { QuickAddBar } from "@/components/QuickAddBar";
+import { AskDataDrawer } from "@/components/AskDataDrawer";
 import { ImportSheet } from "@/components/ImportSheet";
+import { BudgetsSheet } from "@/components/BudgetsSheet";
 import { RecurringSheet } from "@/components/RecurringSheet";
 import { LoansSheet } from "@/components/LoansSheet";
+import { TrashSheet } from "@/components/TrashSheet";
 import { PeriodNav } from "@/components/PeriodNav";
-import Settings from "@/pages/Settings";
+import { ExpenseDetailsDrawer } from "@/components/ExpenseDetailsDrawer";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
@@ -23,10 +25,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import Login from "@/pages/Login";
+import Settings from "@/pages/Settings";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/hooks/useAuth";
 import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
 import { useTheme } from "@/hooks/useTheme";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Expense, addDays, formatINR, fullDateLabel, getCurrencySymbol,
   monthRangeOf, shiftMonth, shiftWeek, startOfMonthISO, todayISO, weekRangeOf,
@@ -72,7 +76,10 @@ const Index = () => {
   const [importOpen, setImportOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [loansOpen, setLoansOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [askAIOpen, setAskAIOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
 
   const today = todayISO();
@@ -84,9 +91,85 @@ const Index = () => {
   const [weekAnchor, setWeekAnchor] = useState(today);
   const [monthAnchor, setMonthAnchor] = useState(today);
 
+  interface Loan {
+    id: string;
+    user_id: string;
+    counterparty: string;
+    amount: number;
+    direction: "lent" | "borrowed";
+    date: string;
+    note?: string | null;
+    expense_id?: string | null;
+    status: "open" | "closed";
+  }
+
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const loadLoans = useCallback(async () => {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from("loans")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "open");
+    setLoans((data as unknown as Loan[]) ?? []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (user?.id) {
+      loadLoans();
+    }
+  }, [user?.id, expenses, loadLoans]);
+
+  const openLoans = loans.filter((l) => l.status === "open");
+  const owedToMeSum = openLoans.filter((l) => l.direction === "lent").reduce((a, b) => a + Number(b.amount), 0);
+  const iOweSum = openLoans.filter((l) => l.direction === "borrowed").reduce((a, b) => a + Number(b.amount), 0);
+
   useEffect(() => {
     try { localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)); } catch { /* ignore */ }
   }, [filters]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        document.activeElement?.tagName === "INPUT" ||
+        document.activeElement?.tagName === "TEXTAREA" ||
+        document.activeElement?.getAttribute("contenteditable") === "true"
+      ) {
+        return;
+      }
+
+      if (e.key === "n" || e.key === "N" || e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        setOpen(true);
+      } else if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        setSettingsOpen(true);
+      } else if (e.key === "t" || e.key === "T") {
+        e.preventDefault();
+        setView("today");
+      } else if (e.key === "w" || e.key === "W") {
+        e.preventDefault();
+        setView("week");
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        setView("month");
+      } else if (e.key === "?" || e.key === "/") {
+        if (e.key === "?") {
+          e.preventDefault();
+          setShortcutsHelpOpen(true);
+        }
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setSearchOpen(true);
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+        e.preventDefault();
+        setAskAIOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!details) return;
@@ -192,8 +275,8 @@ const Index = () => {
 
   return (
     <main className="min-h-dvh bg-background text-foreground font-sans">
-      <div className="w-full max-w-[520px] mx-auto px-6 pt-12 pb-32">
-        <header className="flex items-center justify-between mb-10 gap-2">
+      <div className="w-full max-w-[520px] mx-auto px-6 pt-0 pb-32">
+        <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md -mx-6 px-6 pt-6 pb-4 mb-8 border-b border-border/10 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <img src="/finlo-logo.png" alt="Finlo" className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl object-contain shrink-0" />
             <div className="min-w-0">
@@ -213,13 +296,13 @@ const Index = () => {
                 >{v}</button>
               ))}
             </nav>
+            <button onClick={() => setAskAIOpen(true)} aria-label="Ask Maya" title="Ask Maya"
+              className="text-ink-muted hover:text-foreground p-1 rounded-full hover:bg-surface transition-transform hover:scale-105 active:scale-95 shrink-0 flex items-center justify-center">
+              <img src="/maya.png" alt="Maya" className="h-6 w-6 rounded-full object-cover border border-purple-500/20" />
+            </button>
             <button onClick={() => setSearchOpen(true)} aria-label="Search" title="Search"
               className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
               <Search className="h-4 w-4" />
-            </button>
-            <button onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings"
-              className="text-ink-muted hover:text-foreground p-2 rounded-full hover:bg-surface">
-              <SettingsIcon className="h-4 w-4" />
             </button>
           </div>
         </header>
@@ -228,9 +311,9 @@ const Index = () => {
           <span className="text-ink-muted text-[10px] tracking-[0.25em] uppercase font-medium">
             {heroLabel}
           </span>
-          <div className="font-serif text-7xl md:text-8xl font-normal tracking-tight text-foreground flex items-start">
-            <span className="text-ink-muted/40 text-4xl mt-3 mr-1">{getCurrencySymbol()}</span>
-            {formatINR(heroTotal)}
+          <div className="font-serif text-5xl xs:text-6xl md:text-8xl font-normal tracking-tight text-foreground flex items-start justify-center max-w-full px-4">
+            <span className="text-ink-muted/40 text-2xl md:text-4xl mt-1.5 md:mt-3 mr-1 shrink-0">{getCurrencySymbol()}</span>
+            <span className="truncate">{formatINR(heroTotal)}</span>
           </div>
           {(heroIncome > 0 || heroNet !== -heroTotal) && (
             <div className="flex items-center gap-4 text-xs">
@@ -250,14 +333,57 @@ const Index = () => {
 
         <PeriodNav label={periodLabel} onPrev={onPrev} onNext={onNext} canNext={canNext} />
 
-        <div className="flex justify-center mb-12">
+        <QuickAddBar
+          onAdd={addExpense}
+          categories={categories}
+          defaultDate={view === "today" ? dayAnchor : todayISO()}
+        />
+
+        <div className="hidden sm:flex justify-center mb-12">
           <Button
             onClick={() => { setEditing(null); setOpen(true); }}
             className="rounded-full bg-foreground text-background hover:bg-foreground/90 px-7 h-12 text-sm font-medium shadow-md"
           >
-            <Plus className="h-4 w-4 mr-1" /> Add expense
+            <Plus className="h-4 w-4 mr-1" /> Add transaction
           </Button>
         </div>
+
+        {/* Lending Tracker Summary Widget */}
+        {(owedToMeSum > 0 || iOweSum > 0) && (
+          <div 
+            role="button"
+            tabIndex={0}
+            onClick={() => setLoansOpen(true)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setLoansOpen(true); }}
+            className="mb-8 p-4 rounded-2xl border border-border/40 bg-surface/30 backdrop-blur-md flex items-center justify-between cursor-pointer hover:bg-surface/50 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <span className="h-8 w-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-serif text-lg font-semibold shrink-0">₹</span>
+              <div className="min-w-0">
+                <h4 className="text-xs font-semibold text-foreground">Lending & Debt</h4>
+                <p className="text-[10px] text-ink-muted truncate">Active balances from loans</p>
+              </div>
+            </div>
+            <div className="flex gap-4 text-right shrink-0">
+              {owedToMeSum > 0 && (
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-ink-muted">Owed to me</p>
+                  <p className="font-serif text-sm text-emerald-600 dark:text-emerald-400 tabular-nums font-semibold mt-0.5">
+                    +{getCurrencySymbol()}{formatINR(owedToMeSum)}
+                  </p>
+                </div>
+              )}
+              {iOweSum > 0 && (
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-ink-muted">I owe</p>
+                  <p className="font-serif text-sm text-destructive tabular-nums font-semibold mt-0.5">
+                    −{getCurrencySymbol()}{formatINR(iOweSum)}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {view === "today" && (
           <section>
@@ -271,7 +397,7 @@ const Index = () => {
                 </div>
                 <p className="text-center text-foreground text-sm font-medium">No entries for this day</p>
                 <p className="text-center text-ink-muted text-xs mt-1 max-w-[200px]">
-                  Tap <span className="text-foreground font-medium">Add expense</span> to start tracking your spending.
+                  Tap <span className="text-foreground font-medium">Add transaction</span> to start tracking your cash flow.
                 </p>
               </div>
             ) : (
@@ -360,6 +486,7 @@ const Index = () => {
         onOpenChange={(v) => { if (!v) setDetails(null); }}
         onUpdate={updateExpense} onDelete={deleteExpense}
         onAddSubcategory={addSubcategory}
+        userId={user?.id ?? null}
       />
 
       <BudgetsSheet
@@ -375,6 +502,8 @@ const Index = () => {
 
       <LoansSheet open={loansOpen} onOpenChange={setLoansOpen} userId={user?.id ?? null} />
 
+      <AskDataDrawer open={askAIOpen} onOpenChange={setAskAIOpen} transactions={expenses} />
+
       <Settings
         open={settingsOpen} onOpenChange={setSettingsOpen}
         categories={categories}
@@ -386,6 +515,7 @@ const Index = () => {
         onOpenSearch={() => setSearchOpen(true)}
         onOpenRecurring={() => setRecurringOpen(true)}
         onOpenLoans={() => setLoansOpen(true)}
+        onOpenTrash={() => setTrashOpen(true)}
         profile={profile} onUpdateProfile={updateProfile}
         theme={theme} onUpdateTheme={updateTheme}
         onLogout={logout}
@@ -393,6 +523,8 @@ const Index = () => {
         onExportData={exportData} onRestoreData={restoreData}
         isAdmin={isAdmin}
       />
+
+      <TrashSheet open={trashOpen} onOpenChange={setTrashOpen} userId={user?.id ?? null} onRestore={sync} />
 
       <AlertDialog open={!!confirmDelete} onOpenChange={(v) => { if (!v) setConfirmDelete(null); }}>
         <AlertDialogContent className="bg-background border-border">
@@ -418,6 +550,117 @@ const Index = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={shortcutsHelpOpen} onOpenChange={setShortcutsHelpOpen}>
+        <AlertDialogContent className="bg-background border-border max-w-sm rounded-[24px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif text-2xl font-normal flex items-center gap-2">
+              Keyboard Shortcuts
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-ink-muted">
+              Speed track your transactions with quick desktop hotkeys.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="py-4 space-y-3.5">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Add new transaction</span>
+              <kbd className="font-mono bg-surface border border-border/60 px-2 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">N</kbd>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Open Search / NL Entry</span>
+              <div className="flex gap-1.5">
+                <kbd className="font-mono bg-surface border border-border/60 px-1.5 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">⌘</kbd>
+                <kbd className="font-mono bg-surface border border-border/60 px-1.5 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">K</kbd>
+              </div>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Ask Finlo AI Chat</span>
+              <div className="flex gap-1.5">
+                <kbd className="font-mono bg-surface border border-border/60 px-1.5 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">⌘</kbd>
+                <kbd className="font-mono bg-surface border border-border/60 px-1.5 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">J</kbd>
+              </div>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Open Settings</span>
+              <kbd className="font-mono bg-surface border border-border/60 px-2 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">S</kbd>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Switch to Daily Ledger</span>
+              <kbd className="font-mono bg-surface border border-border/60 px-2 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">T</kbd>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Switch to Weekly Ledger</span>
+              <kbd className="font-mono bg-surface border border-border/60 px-2 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">W</kbd>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Switch to Monthly Ledger</span>
+              <kbd className="font-mono bg-surface border border-border/60 px-2 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">M</kbd>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Show Keyboard Shortcuts</span>
+              <kbd className="font-mono bg-surface border border-border/60 px-2 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">?</kbd>
+            </div>
+          </div>
+          
+          <AlertDialogFooter>
+            <AlertDialogCancel className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 border-0 h-10 font-medium">Got it</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Premium Glassmorphic Bottom Navigation Bar for Mobile */}
+      <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border/40 z-40 flex items-center justify-around md:hidden px-4 shadow-lg" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)", paddingTop: "6px", height: "auto" }}>
+        <button
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          title="Home"
+        >
+          <Home className="h-5 w-5" />
+          <span className="text-[9px] font-medium tracking-wide">Home</span>
+        </button>
+
+        <button
+          onClick={() => setBudgetsOpen(true)}
+          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          title="Budgets"
+        >
+          <Wallet className="h-5 w-5" />
+          <span className="text-[9px] font-medium tracking-wide">Budgets</span>
+        </button>
+
+        {/* Center Elevating FAB */}
+        <button
+          onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}
+          className="h-12 w-12 rounded-full bg-foreground text-background flex items-center justify-center shadow-md active:scale-95 hover:scale-105 transition-all -translate-y-3.5 border-4 border-background focus:outline-none shrink-0"
+          title="Add Transaction"
+        >
+          <Plus className="h-5 w-5 stroke-[2.5]" />
+        </button>
+
+        <button
+          onClick={() => setLoansOpen(true)}
+          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          title="Loans"
+        >
+          <ArrowLeftRight className="h-5 w-5" />
+          <span className="text-[9px] font-medium tracking-wide">Loans</span>
+        </button>
+
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          title="Settings"
+        >
+          <SettingsIcon className="h-5 w-5" />
+          <span className="text-[9px] font-medium tracking-wide">Settings</span>
+        </button>
+      </div>
     </main>
   );
 };
