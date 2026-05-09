@@ -1,14 +1,29 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const MAX_QUERY_LENGTH = 500;
+
+function redactPII(text: string): string {
+  return text
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[EMAIL]")
+    .replace(/\b\d{10,}\b/g, "[PHONE]");
+}
+
+function sanitizeTransactions(transactions: unknown): unknown[] {
+  if (!Array.isArray(transactions)) return [];
+  return transactions.map((t) => {
+    if (t && typeof t === "object" && "note" in t && typeof (t as { note: unknown }).note === "string") {
+      return { ...(t as Record<string, unknown>), note: redactPII((t as { note: string }).note) };
+    }
+    return t;
+  });
+}
 
 async function queryGemini(query: string, transactions: unknown[]) {
   const apiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured on your Supabase Secrets");
+  if (!apiKey) throw new Error("GEMINI_API_KEY missing");
 
+  const payload = sanitizeTransactions(transactions);
   const systemInstruction = `You are Maya, a friendly and expert financial conversational analysis assistant for the Finlo dashboard application.
 
 CRITICAL SECURITY GUARD RAILS:
@@ -22,7 +37,7 @@ CRITICAL SECURITY GUARD RAILS:
    - "Suggest a monthly budget plan based on my transactions."
    
 Use the following context to answer questions:
-- Transactions List: ${JSON.stringify(transactions)}
+- Transactions List: ${JSON.stringify(payload)}
 
 Formatting rules:
 - Be highly accurate with sums and arithmetic.
@@ -37,15 +52,10 @@ Formatting rules:
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: systemInstruction },
-            { text: query }
-          ]
-        }
-      ],
+      contents: [{
+        role: "user",
+        parts: [{ text: systemInstruction }, { text: redactPII(query) }],
+      }],
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -58,33 +68,34 @@ Formatting rules:
                 type: "OBJECT",
                 properties: {
                   label: { type: "STRING", description: "Label of the bar/category" },
-                  value: { type: "NUMBER", description: "Value of the bar/category" }
+                  value: { type: "NUMBER", description: "Value of the bar/category" },
                 },
-                required: ["label", "value"]
-              }
-            }
+                required: ["label", "value"],
+              },
+            },
           },
-          required: ["reply"]
-        }
-      }
-    })
+          required: ["reply"],
+        },
+      },
+    }),
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API returned status ${response.status}: ${errText}`);
+    await response.text();
+    throw new Error("Gemini failed");
   }
 
   const resData = await response.json();
   const text = resData.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Empty response from Gemini.");
+  if (!text) throw new Error("Empty Gemini response.");
   return JSON.parse(text);
 }
 
 async function queryGroq(query: string, transactions: unknown[]) {
   const apiKey = Deno.env.get("GROQ_API_KEY");
-  if (!apiKey) throw new Error("GROQ_API_KEY is not configured on your Supabase Secrets");
+  if (!apiKey) throw new Error("GROQ_API_KEY missing");
 
+  const payload = sanitizeTransactions(transactions);
   const systemInstruction = `You are Maya, a friendly and expert financial conversational analysis assistant for the Finlo dashboard application.
 
 CRITICAL SECURITY GUARD RAILS:
@@ -98,7 +109,7 @@ CRITICAL SECURITY GUARD RAILS:
    - "Suggest a monthly budget plan based on my transactions."
    
 Use the following context to answer questions:
-- Transactions List: ${JSON.stringify(transactions)}
+- Transactions List: ${JSON.stringify(payload)}
 
 Formatting rules:
 - Be highly accurate with sums and arithmetic.
@@ -119,65 +130,48 @@ CRITICAL: You MUST return a JSON object with the following exact shape:
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: "llama-3.1-8b-instant",
       messages: [
         { role: "system", content: systemInstruction },
-        { role: "user", content: query }
+        { role: "user", content: redactPII(query) },
       ],
-      response_format: { type: "json_object" }
-    })
+      response_format: { type: "json_object" },
+    }),
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API returned status ${response.status}: ${errText}`);
+    await response.text();
+    throw new Error("Groq failed");
   }
 
   const resData = await response.json();
   const text = resData.choices?.[0]?.message?.content;
-  if (!text) throw new Error("Empty response from Groq.");
+  if (!text) throw new Error("Empty Groq response.");
   return JSON.parse(text);
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { headers: getCorsHeaders(req) });
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing Authorization header" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    }
+    if (!authHeader) return jsonResponse(req, { error: "Missing Authorization header" }, 401);
 
-    // 1. Authenticate user using their own session JWT
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      {
-        global: {
-          headers: { Authorization: authHeader }
-        }
-      }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
+
+    const supabaseClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized user session" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    }
+    if (authError || !user) return jsonResponse(req, { error: "Unauthorized user session" }, 401);
 
     const userId = user.id;
 
-    // 2. Rate Limiting Enforcements using db-backed logs
-
-    // Enforce rate limit (3 messages per minute)
     const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
     const { count: minuteCount, error: minErr } = await supabaseClient
       .from("ai_message_logs")
@@ -189,13 +183,9 @@ Deno.serve(async (req) => {
     if (minErr) {
       console.error("Rate limit min count error:", minErr);
     } else if (minuteCount !== null && minuteCount >= 3) {
-      return new Response(
-        JSON.stringify({ error: "Rate limit exceeded: Max 3 queries per minute. Please wait." }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse(req, { error: "Rate limit exceeded: Max 3 queries per minute. Please wait." }, 429);
     }
 
-    // Enforce daily limit (100 messages per 24 hours)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { count: dailyCount, error: dailyErr } = await supabaseClient
       .from("ai_message_logs")
@@ -207,62 +197,54 @@ Deno.serve(async (req) => {
     if (dailyErr) {
       console.error("Rate limit daily count error:", dailyErr);
     } else if (dailyCount !== null && dailyCount >= 100) {
-      return new Response(
-        JSON.stringify({ error: "Daily limit reached: Max 100 queries per day. Resume tomorrow." }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse(req, { error: "Daily limit reached: Max 100 queries per day. Resume tomorrow." }, 429);
     }
 
-    // 3. Insert new request log with log_type = 'chat'
     const { error: logErr } = await supabaseClient
       .from("ai_message_logs")
       .insert({ user_id: userId, log_type: "chat" });
 
-    if (logErr) {
-      console.error("Failed to insert AI log:", logErr);
+    if (logErr) console.error("Failed to insert AI log:", logErr);
+
+    let body: { query?: string; transactions?: unknown[] };
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse(req, { error: "Invalid JSON" }, 400);
     }
 
-    // 4. Extract query and transaction details
-    const { query, transactions = [] } = await req.json();
-    if (!query) throw new Error("query is required");
+    const query = (body.query ?? "").trim();
+    if (!query) return jsonResponse(req, { error: "query is required" }, 400);
+    if (query.length > MAX_QUERY_LENGTH) {
+      return jsonResponse(req, { error: `Query too long. Max ${MAX_QUERY_LENGTH} characters.` }, 400);
+    }
+
+    const transactions = body.transactions ?? [];
 
     let result = null;
-    let usedFallback = false;
 
-    // Try Gemini 2.5 Flash
     try {
-      console.log("[Ask-Data] Querying Gemini 2.5 Flash...");
       result = await queryGemini(query, transactions);
-    } catch (geminiErr) {
-      console.warn("[Ask-Data] Gemini failed, falling back to Groq:", geminiErr);
-      usedFallback = true;
+    } catch (_) {
+      // fall through to Groq
     }
 
-    // Fallback to Groq llama-3.1-8b-instant
     if (!result) {
       try {
-        console.log("[Ask-Data] Querying Groq Llama 3.1...");
         result = await queryGroq(query, transactions);
-      } catch (groqErr) {
-        console.error("[Ask-Data] Both Gemini and Groq failed:", groqErr);
-        throw new Error(`AI providers exhausted: ${groqErr.message}`);
+      } catch (e) {
+        console.error("ask-data both providers failed:", e);
+        return jsonResponse(req, { error: "AI assistants are temporarily unavailable. Try again shortly." }, 500);
       }
     }
 
-    if (!result || !result.reply) {
-      throw new Error("Failed to produce conversational output.");
+    if (!result?.reply) {
+      return jsonResponse(req, { error: "Unable to produce a reply. Try rephrasing your question." }, 500);
     }
 
-    console.log(`[Ask-Data] Success (Fallback used: ${usedFallback})`);
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-
+    return jsonResponse(req, result);
   } catch (e) {
-    console.error("ask-data final error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error("ask-data error:", e);
+    return jsonResponse(req, { error: "Something went wrong. Please try again." }, 500);
   }
 });

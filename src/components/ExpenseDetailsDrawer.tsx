@@ -22,7 +22,7 @@ import {
   todayISO,
 } from "@/lib/expenses";
 import { Check, Pencil, Trash2, X, Tag, GitMerge, Plus, AlertCircle, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RollingDatePicker } from "./RollingDatePicker";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,10 +86,9 @@ export function ExpenseDetailsDrawer({
   const open = !!expense;
   const subs = categories.find((c) => c.name === category)?.subcategories ?? [];
 
-  const loadTagsAndSplits = async () => {
+  const loadTagsAndSplits = useCallback(async () => {
     if (!expense || !userId) return;
     try {
-      // 1. Load active expense tags
       const { data: extags } = await supabase
         .from("expense_tags")
         .select("tag_id, tags(id, name, color)")
@@ -102,14 +101,12 @@ export function ExpenseDetailsDrawer({
         );
       }
 
-      // 2. Load all available user tags
       const { data: utags } = await supabase
         .from("tags")
         .select("*")
         .eq("user_id", userId);
       setAllTags(utags ?? []);
 
-      // 3. Load active splits
       const { data: dSplits } = await supabase
         .from("expense_splits")
         .select("*")
@@ -118,18 +115,17 @@ export function ExpenseDetailsDrawer({
     } catch (e) {
       console.error("Failed to load details extensions:", e);
     }
-  };
+  }, [expense, userId]);
 
   useEffect(() => {
     if (open && userId) {
-      loadTagsAndSplits();
+      void loadTagsAndSplits();
     } else {
       setTags([]);
       setSplits([]);
       setIsSplitting(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expense, open, userId]);
+  }, [open, userId, loadTagsAndSplits]);
 
   useEffect(() => {
     if (expense) {

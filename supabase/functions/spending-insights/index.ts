@@ -1,17 +1,19 @@
-import { serve } from "std/http/server.ts";
+import { requireAuthUser } from "../_shared/auth.ts";
+import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: getCorsHeaders(req) });
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const authResult = await requireAuthUser(req);
+  if (!authResult.ok) return authResult.response;
 
   try {
-    const { summary } = await req.json();
+    const { summary } = await req.json() as { summary?: string };
+    if (!summary || typeof summary !== "string") return jsonResponse(req, { error: "summary is required" }, 400);
+    const trimmed = summary.trim().slice(0, 8000);
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!LOVABLE_API_KEY) return jsonResponse(req, { error: "Insights service unavailable" }, 503);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -30,67 +32,46 @@ serve(async (req) => {
 - Simple saving tips based on the data
 Keep each insight to 1-2 sentences. Use ₹ for currency. Be friendly and direct. DO NOT use emojis. Return as a JSON array of objects with a "text" key.`,
           },
-          {
-            role: "user",
-            content: summary,
-          },
+          { role: "user", content: trimmed },
         ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "return_insights",
-              description: "Return spending insights as structured data",
-              parameters: {
-                type: "object",
-                properties: {
-                  insights: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        text: { type: "string" },
-                      },
-                      required: ["text"],
-                      additionalProperties: false,
-                    },
+        tools: [{
+          type: "function",
+          function: {
+            name: "return_insights",
+            description: "Return spending insights as structured data",
+            parameters: {
+              type: "object",
+              properties: {
+                insights: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: { text: { type: "string" } },
+                    required: ["text"],
+                    additionalProperties: false,
                   },
                 },
-                required: ["insights"],
-                additionalProperties: false,
               },
+              required: ["insights"],
+              additionalProperties: false,
             },
           },
-        ],
+        }],
         tool_choice: { type: "function", function: { name: "return_insights" } },
       }),
     });
 
     if (!response.ok) {
       const status = response.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited, please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "Credits exhausted." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", status, t);
-      return new Response(JSON.stringify({ error: "AI service unavailable" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (status === 429) return jsonResponse(req, { error: "Rate limited, please try again later." }, 429);
+      if (status === 402) return jsonResponse(req, { error: "Credits exhausted." }, 402);
+      await response.text();
+      return jsonResponse(req, { error: "AI service unavailable" }, 500);
     }
 
     const data = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    let insights = [];
+    let insights: { text?: string }[] = [];
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
@@ -100,14 +81,9 @@ Keep each insight to 1-2 sentences. Use ₹ for currency. Be friendly and direct
       }
     }
 
-    return new Response(JSON.stringify({ insights }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    console.error("spending-insights error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse(req, { insights });
+  } catch {
+    console.error("spending-insights error");
+    return jsonResponse(req, { error: "Something went wrong. Please try again." }, 500);
   }
 });

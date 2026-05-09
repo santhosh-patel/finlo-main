@@ -1,15 +1,6 @@
-// Processes recurring expense rules: creates expenses for rules due today
-// and advances next_due_date. Idempotent per (rule, date).
-// @ts-expect-error: Deno remote URL module imports are unresolved in local Node compilation context
+// Creates expenses for recurring rules due today. Either: (a) CRON_SECRET in x-cron-header for full run, or (b) user JWT processes that user's rules only.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const Deno: any;
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
 function isoDate(d: Date): string {
   const y = d.getFullYear();
@@ -23,48 +14,33 @@ function advance(current: string, frequency: string, dayOfMonth?: number | null)
   if (frequency === "weekly") {
     d.setDate(d.getDate() + 7);
   } else {
-    // monthly
     const target = dayOfMonth ?? d.getDate();
     d.setMonth(d.getMonth() + 1);
-    // clamp day to last day of month
     const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
     d.setDate(Math.min(target, lastDay));
   }
   return isoDate(d);
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-
+async function processRules(
+  supabase: ReturnType<typeof createClient>,
+  rules: Record<string, unknown>[],
+): Promise<{ created: number; results: Array<{ id: string; created: number; next: string }> }> {
   const today = isoDate(new Date());
-  const { data: due, error } = await supabase
-    .from("recurring_expenses")
-    .select("*")
-    .eq("active", true)
-    .lte("next_due_date", today);
-
-  if (error) {
-    return new Response(JSON.stringify({ ok: false, error: error.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
   let created = 0;
   const results: Array<{ id: string; created: number; next: string }> = [];
 
-  for (const rule of due ?? []) {
+  for (const rule of rules) {
+    const id = rule.id as string;
     let next = rule.next_due_date as string;
     let last = rule.last_run_date as string | null;
     let localCreated = 0;
-    // Catch up if behind (e.g. cron didn't run for several days)
     while (next <= today) {
       if (last !== next) {
-        const isIncome = ["salary", "freelance", "refund", "other income"].includes(rule.category.toLowerCase()) || rule.category.toLowerCase().includes("income");
+        const category = String(rule.category ?? "");
+        const isIncome =
+          ["salary", "freelance", "refund", "other income"].includes(category.toLowerCase()) ||
+          category.toLowerCase().includes("income");
         const { error: insErr } = await supabase.from("expenses").insert({
           user_id: rule.user_id,
           amount: rule.amount,
@@ -77,18 +53,60 @@ Deno.serve(async (req: Request) => {
         });
         if (!insErr) { created += 1; localCreated += 1; last = next; }
       }
-      next = advance(next, rule.frequency, rule.day_of_month);
-      // safety: avoid runaway loops
+      next = advance(next, rule.frequency as string, rule.day_of_month as number | null | undefined);
       if (localCreated > 60) break;
     }
     await supabase.from("recurring_expenses").update({
       next_due_date: next,
       last_run_date: last,
-    }).eq("id", rule.id);
-    results.push({ id: rule.id, created: localCreated, next });
+    }).eq("id", id);
+    results.push({ id, created: localCreated, next });
   }
 
-  return new Response(JSON.stringify({ ok: true, created, results }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return { created, results };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: getCorsHeaders(req) });
+
+  const url = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseAdmin = createClient(url, serviceKey);
+
+  const expectedCron = Deno.env.get("CRON_SECRET");
+  const cronHeader = req.headers.get("x-cron-secret");
+  const cronOk = Boolean(expectedCron && cronHeader && cronHeader === expectedCron);
+
+  if (!cronOk) {
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
+    const auth = req.headers.get("Authorization") ?? "";
+    const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) return jsonResponse(req, { error: "Unauthorized" }, 401);
+
+    const today = isoDate(new Date());
+    const { data: due, error } = await supabaseAdmin
+      .from("recurring_expenses")
+      .select("*")
+      .eq("active", true)
+      .eq("user_id", user.id)
+      .lte("next_due_date", today);
+
+    if (error) return jsonResponse(req, { ok: false, error: "Query failed" }, 500);
+
+    const { created, results } = await processRules(supabaseAdmin, (due ?? []) as Record<string, unknown>[]);
+    return jsonResponse(req, { ok: true, created, results });
+  }
+
+  const today = isoDate(new Date());
+  const { data: due, error } = await supabaseAdmin
+    .from("recurring_expenses")
+    .select("*")
+    .eq("active", true)
+    .lte("next_due_date", today);
+
+  if (error) return jsonResponse(req, { ok: false, error: "Query failed" }, 500);
+
+  const { created, results } = await processRules(supabaseAdmin, (due ?? []) as Record<string, unknown>[]);
+  return jsonResponse(req, { ok: true, created, results });
 });

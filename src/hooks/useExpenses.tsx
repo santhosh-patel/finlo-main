@@ -30,7 +30,11 @@ function readJSON<T>(key: string, fallback: T): T {
   }
 }
 function writeJSON(key: string, value: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn(`localStorage setItem failed (${key})`, e);
+  }
 }
 
 interface DBExpenseRow {
@@ -63,6 +67,9 @@ export function useExpenses(userId: string | null) {
   );
   const [pendingCount, setPendingCount] = useState(() => readJSON<PendingOp[]>(PENDING_KEY, []).length);
   const pendingRef = useRef<PendingOp[]>(readJSON<PendingOp[]>(PENDING_KEY, []));
+  const expensesRef = useRef<Expense[]>(readJSON<Expense[]>(EXP_KEY, []));
+  expensesRef.current = expenses;
+
   const syncInFlightRef = useRef(false);
   const didInitialSyncRef = useRef<string | null>(null);
   const skipNextRealtimePullRef = useRef(false);
@@ -81,10 +88,12 @@ export function useExpenses(userId: string | null) {
     if (!userId || !navigator.onLine) return;
     const ops = [...pendingRef.current];
     if (ops.length === 0) return;
+
+    const remaining: PendingOp[] = [];
     for (const op of ops) {
       try {
         if (op.kind === "insert") {
-          await supabase.from("expenses").insert({
+          const { error } = await supabase.from("expenses").insert({
             id: op.row.id,
             user_id: userId,
             amount: op.row.amount,
@@ -98,8 +107,9 @@ export function useExpenses(userId: string | null) {
             fx_rate: op.row.fx_rate ?? 1,
             is_reimbursable: op.row.is_reimbursable ?? false,
           });
+          if (error) remaining.push(op);
         } else if (op.kind === "update") {
-          await supabase.from("expenses").update({
+          const { error } = await supabase.from("expenses").update({
             ...(op.patch.amount !== undefined && { amount: op.patch.amount }),
             ...(op.patch.category !== undefined && { category: op.patch.category }),
             ...(op.patch.subcategory !== undefined && { subcategory: op.patch.subcategory ?? null }),
@@ -111,16 +121,18 @@ export function useExpenses(userId: string | null) {
             ...(op.patch.fx_rate !== undefined && { fx_rate: op.patch.fx_rate }),
             ...(op.patch.is_reimbursable !== undefined && { is_reimbursable: op.patch.is_reimbursable }),
           }).eq("id", op.id);
+          if (error) remaining.push(op);
         } else if (op.kind === "delete") {
-          await supabase.from("expenses").delete().eq("id", op.id);
+          const { error } = await supabase.from("expenses").delete().eq("id", op.id);
+          if (error) remaining.push(op);
         }
-      } catch (e) {
-        console.error("sync op failed", e);
+      } catch {
+        remaining.push(op);
       }
     }
-    pendingRef.current = [];
-    writeJSON(PENDING_KEY, []);
-    setPendingCount(0);
+    pendingRef.current = remaining;
+    writeJSON(PENDING_KEY, remaining);
+    setPendingCount(remaining.length);
   }, [userId]);
 
   const pullFromServer = useCallback(async () => {
@@ -208,6 +220,9 @@ export function useExpenses(userId: string | null) {
     }
   }, [userId, flushPending, pullFromServer]);
 
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
+
   // Initial sync + realtime
   useEffect(() => {
     if (!userId) {
@@ -217,15 +232,11 @@ export function useExpenses(userId: string | null) {
     if (didInitialSyncRef.current === userId) return;
     didInitialSyncRef.current = userId;
     let cancelled = false;
-    let pullTimer: ReturnType<typeof setTimeout> | null = null;
-    const debouncedPull = () => {
-      if (pullTimer) clearTimeout(pullTimer);
-      pullTimer = setTimeout(() => { if (!cancelled) pullFromServer(); }, 400);
-    };
-    const hasLocalExpenses = expenses && expenses.length > 0;
+
+    const hasLocalExpenses = expensesRef.current.length > 0;
     const hasPendingChanges = pendingRef.current && pendingRef.current.length > 0;
     if (!hasLocalExpenses || hasPendingChanges) {
-      sync();
+      void syncRef.current();
     }
     const ch = supabase
       .channel(`expenses-${userId}`)
@@ -289,15 +300,14 @@ export function useExpenses(userId: string | null) {
         },
       )
       .subscribe();
-    const onOnline = () => { if (!cancelled) sync(); };
+    const onOnline = () => { if (!cancelled) void syncRef.current(); };
     window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
-      if (pullTimer) clearTimeout(pullTimer);
       supabase.removeChannel(ch);
       window.removeEventListener("online", onOnline);
     };
-  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, pullFromServer]);
 
   // ------- mutators (optimistic local + queue/server) -------
   const addExpense = useCallback((e: Omit<Expense, "id" | "created_at">) => {

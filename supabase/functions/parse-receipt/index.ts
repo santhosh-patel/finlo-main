@@ -1,19 +1,28 @@
-import { serve } from "std/http/server.ts";
+import { requireAuthUser } from "../_shared/auth.ts";
+import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+const MAX_IMAGE_BASE64_CHARS = 2_400_000;
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: getCorsHeaders(req) });
+
+  const authResult = await requireAuthUser(req);
+  if (!authResult.ok) return authResult.response;
 
   try {
-    const { imageBase64, contentType = "image/jpeg" } = await req.json();
-    if (!imageBase64) throw new Error("imageBase64 is required");
+    const body = await req.json() as { imageBase64?: string; contentType?: string };
+    const imageBase64 = body.imageBase64;
+    const contentType = typeof body.contentType === "string" ? body.contentType : "image/jpeg";
+
+    if (!imageBase64 || typeof imageBase64 !== "string") {
+      return jsonResponse(req, { error: "imageBase64 is required" }, 400);
+    }
+    if (imageBase64.length > MAX_IMAGE_BASE64_CHARS) {
+      return jsonResponse(req, { error: "Image payload too large." }, 413);
+    }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!LOVABLE_API_KEY) return jsonResponse(req, { error: "Receipt service unavailable" }, 503);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -26,74 +35,49 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert receipt parsing assistant. Extract details from the uploaded receipt image.
-Analyze the image and return the structured receipt details:
-- amount: total amount as a number (float)
-- merchant: name of the store or merchant (string)
-- date: transaction date in YYYY-MM-DD format (string)
-- category_guess: one of these exact categories: Food, Transport, Utilities, Entertainment, Housing, Medical, Shopping, Tax, Other (string)
-- items: array of items on the receipt, each with a "name" (string) and "price" (number). If items cannot be extracted, return an empty array.
-
-Be extremely precise with amounts and prices. Return only JSON matching the schema.`,
+            content: `Extract receipt fields: amount (number), merchant (string), date (YYYY-MM-DD), category_guess (Food|Transport|Utilities|Entertainment|Housing|Medical|Shopping|Tax|Other), items[{name, price}].
+Return structured data via tool only.`,
           },
           {
             role: "user",
             content: [
-              {
-                type: "text",
-                text: "Extract the details of this receipt."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${contentType};base64,${imageBase64}`
-                }
-              }
-            ]
-          }
+              { type: "text", text: "Extract the details of this receipt." },
+              { type: "image_url", image_url: { url: `data:${contentType};base64,${imageBase64}` } },
+            ],
+          },
         ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "return_receipt_data",
-              description: "Return extracted receipt data",
-              parameters: {
-                type: "object",
-                properties: {
-                  amount: { type: "number" },
-                  merchant: { type: "string" },
-                  date: { type: "string" },
-                  category_guess: { type: "string" },
+        tools: [{
+          type: "function",
+          function: {
+            name: "return_receipt_data",
+            description: "Return extracted receipt data",
+            parameters: {
+              type: "object",
+              properties: {
+                amount: { type: "number" },
+                merchant: { type: "string" },
+                date: { type: "string" },
+                category_guess: { type: "string" },
+                items: {
+                  type: "array",
                   items: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        price: { type: "number" }
-                      },
-                      required: ["name", "price"]
-                    }
-                  }
+                    type: "object",
+                    properties: { name: { type: "string" }, price: { type: "number" } },
+                    required: ["name", "price"],
+                  },
                 },
-                required: ["amount", "merchant", "date", "category_guess", "items"]
-              }
-            }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "return_receipt_data" } }
-      })
+              },
+              required: ["amount", "merchant", "date", "category_guess", "items"],
+            },
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "return_receipt_data" } },
+      }),
     });
 
     if (!response.ok) {
-      const status = response.status;
-      const errorText = await response.text();
-      console.error("AI Gateway parse error:", status, errorText);
-      return new Response(JSON.stringify({ error: `AI Gateway returned error ${status}` }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
+      await response.text();
+      return jsonResponse(req, { error: "Could not read receipt. Try again." }, 500);
     }
 
     const data = await response.json();
@@ -103,22 +87,15 @@ Be extremely precise with amounts and prices. Return only JSON matching the sche
       try {
         receiptData = JSON.parse(toolCall.function.arguments);
       } catch {
-        throw new Error("Unable to parse receipt details.");
+        return jsonResponse(req, { error: "Receipt parse failed" }, 500);
       }
     }
 
-    if (!receiptData) {
-      throw new Error("AI did not return structured receipt details.");
-    }
+    if (!receiptData) return jsonResponse(req, { error: "No receipt details returned." }, 500);
 
-    return new Response(JSON.stringify(receiptData), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-  } catch (e) {
-    console.error("parse-receipt error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse(req, receiptData);
+  } catch {
+    console.error("parse-receipt error");
+    return jsonResponse(req, { error: "Something went wrong. Try again." }, 500);
   }
 });

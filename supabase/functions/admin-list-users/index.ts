@@ -1,9 +1,9 @@
 // Admin-only: list all users with profile + roles.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
+import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: getCorsHeaders(req) });
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -12,11 +12,11 @@ Deno.serve(async (req) => {
   const auth = req.headers.get("Authorization") ?? "";
   const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } });
   const { data: userResp, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !userResp.user) return json({ error: "Unauthorized" }, 401);
+  if (userErr || !userResp.user) return jsonResponse(req, { error: "Unauthorized" }, 401);
 
   const admin = createClient(url, serviceKey);
   const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userResp.user.id, _role: "admin" });
-  if (!isAdmin) return json({ error: "Forbidden" }, 403);
+  if (!isAdmin) return jsonResponse(req, { error: "Forbidden" }, 403);
 
   const { data: authUsers } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const { data: profiles } = await admin.from("profiles").select("user_id, email, display_name, created_at");
@@ -40,12 +40,5 @@ Deno.serve(async (req) => {
     };
   }).filter((u) => u.email);
 
-  return json({ users: out });
+  return jsonResponse(req, { users: out });
 });
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}

@@ -1,9 +1,5 @@
-import { serve } from "std/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { requireAuthUser } from "../_shared/auth.ts";
+import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
 const STATIC_MATCHES: Record<string, string> = {
   uber: "Transport",
@@ -50,27 +46,26 @@ const STATIC_MATCHES: Record<string, string> = {
   shoes: "Shopping",
 };
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: getCorsHeaders(req) });
+
+  const authResult = await requireAuthUser(req);
+  if (!authResult.ok) return authResult.response;
 
   try {
-    const { note, categories = [] } = await req.json();
-    if (!note) throw new Error("note is required");
+    const { note, categories = [] } = await req.json() as { note?: string; categories?: string[] };
+    if (!note || typeof note !== "string") return jsonResponse(req, { error: "note is required" }, 400);
 
-    const cleanNote = note.toLowerCase().trim();
+    const cleanNote = note.toLowerCase().trim().slice(0, 500);
 
-    // 1. Static fast matching
     for (const [kw, cat] of Object.entries(STATIC_MATCHES)) {
       if (cleanNote.includes(kw)) {
-        return new Response(JSON.stringify({ category: cat, source: "static" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
+        return jsonResponse(req, { category: cat, source: "static" });
       }
     }
 
-    // 2. Fallback to Gemini
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!LOVABLE_API_KEY) return jsonResponse(req, { category: "Other", error: "Category service unavailable" }, 503);
 
     const categoryNames = categories.length > 0 ? categories : ["Food", "Transport", "Utilities", "Entertainment", "Housing", "Medical", "Shopping", "Tax", "Other"];
 
@@ -85,37 +80,32 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert category suggestions assistant. Given a short transaction description/note and a list of available categories, choose the single most relevant category.
-If no specific category fits well, default to "Other". Only return JSON with a "category" key matching one of the categories.`,
+            content: `You are an expert category suggestions assistant. Given a short transaction note and available categories, pick the single most relevant category.`,
           },
           {
             role: "user",
-            content: `Transaction: "${note}"
+            content: `Transaction: "${cleanNote.slice(0, 200)}"
 Categories: ${JSON.stringify(categoryNames)}`,
-          }
+          },
         ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "suggest_category",
-              description: "Return suggested category details",
-              parameters: {
-                type: "object",
-                properties: {
-                  category: { type: "string" }
-                },
-                required: ["category"]
-              }
-            }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "suggest_category" } }
-      })
+        tools: [{
+          type: "function",
+          function: {
+            name: "suggest_category",
+            description: "Return suggested category",
+            parameters: {
+              type: "object",
+              properties: { category: { type: "string" } },
+              required: ["category"],
+            },
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "suggest_category" } },
+      }),
     });
 
     if (!response.ok) {
-      throw new Error(`AI Gateway error: ${response.status}`);
+      return jsonResponse(req, { category: "Other" }, 200);
     }
 
     const data = await response.json();
@@ -130,14 +120,9 @@ Categories: ${JSON.stringify(categoryNames)}`,
       }
     }
 
-    return new Response(JSON.stringify({ category, source: "gemini" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-  } catch (e) {
-    console.error("suggest-category error:", e);
-    return new Response(
-      JSON.stringify({ category: "Other", error: e instanceof Error ? e.message : "Unknown error" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse(req, { category, source: "gemini" });
+  } catch {
+    console.error("suggest-category error");
+    return jsonResponse(req, { category: "Other" }, 200);
   }
 });

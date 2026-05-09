@@ -1,4 +1,4 @@
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Loader2, Home, Wallet, ArrowLeftRight, Sparkles } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
@@ -24,7 +24,6 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import Login from "@/pages/Login";
 import Settings from "@/pages/Settings";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,10 +51,10 @@ function readFilters(): FilterState {
 }
 
 const Index = () => {
-  const { isAuthed, loading, login, logout, profile, updateProfile, isAdmin, user } = useAuth();
+  const { logout, profile, updateProfile, isAdmin, user } = useAuth();
   const { theme, update: updateTheme } = useTheme();
   // Admins never use the consumer app — skip data subscriptions for them.
-  const expenseUserId = !loading && !isAdmin ? user?.id ?? null : null;
+  const expenseUserId = !isAdmin ? user?.id ?? null : null;
   const {
     expenses, categories, budgets,
     syncing, lastSync, sync,
@@ -204,14 +203,6 @@ const Index = () => {
 
   useBudgetAlerts(spentByCategory, budgets);
 
-  if (loading) {
-    return (
-      <main className="min-h-dvh flex items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-ink-muted" />
-      </main>
-    );
-  }
-  if (!isAuthed) return <Login onLogin={login} />;
   if (isAdmin) return <Navigate to="/admin" replace />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
@@ -285,10 +276,14 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1">
+            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1" role="tablist" aria-label="Ledger view">
               {(["today", "week", "month"] as View[]).map((v) => (
                 <button
-                  key={v} onClick={() => setView(v)}
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v)}
                   className={cn(
                     "px-2.5 sm:px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors",
                     view === v ? "bg-background text-foreground shadow-sm" : "text-ink-muted hover:text-foreground"
@@ -616,6 +611,7 @@ const Index = () => {
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
           className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          aria-label="Home"
           title="Home"
         >
           <Home className="h-5 w-5" />
@@ -625,6 +621,7 @@ const Index = () => {
         <button
           onClick={() => setBudgetsOpen(true)}
           className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          aria-label="Budgets"
           title="Budgets"
         >
           <Wallet className="h-5 w-5" />
@@ -638,6 +635,7 @@ const Index = () => {
             setOpen(true);
           }}
           className="h-12 w-12 rounded-full bg-foreground text-background flex items-center justify-center shadow-md active:scale-95 hover:scale-105 transition-all -translate-y-3.5 border-4 border-background focus:outline-none shrink-0"
+          aria-label="Add transaction"
           title="Add Transaction"
         >
           <Plus className="h-5 w-5 stroke-[2.5]" />
@@ -646,6 +644,7 @@ const Index = () => {
         <button
           onClick={() => setLoansOpen(true)}
           className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          aria-label="Loans"
           title="Loans"
         >
           <ArrowLeftRight className="h-5 w-5" />
@@ -655,6 +654,7 @@ const Index = () => {
         <button
           onClick={() => setSettingsOpen(true)}
           className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
+          aria-label="Settings"
           title="Settings"
         >
           <SettingsIcon className="h-5 w-5" />

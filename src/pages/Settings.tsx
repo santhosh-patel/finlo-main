@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
+import { validatePassword } from "@/lib/passwordPolicy";
 import { toast } from "@/hooks/use-toast";
 import { RollingDatePicker } from "@/components/RollingDatePicker";
 
@@ -113,8 +114,9 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
     const patch: { name?: string; password?: string } = {};
     if (name.trim() !== profile.name) patch.name = name.trim();
     if (newPassword) {
-      if (newPassword.length < 6) {
-        toast({ title: "Validation Error", description: "Password must be at least 6 characters.", variant: "destructive" });
+      const pwdErr = validatePassword(newPassword);
+      if (pwdErr) {
+        toast({ title: "Validation Error", description: pwdErr, variant: "destructive" });
         return;
       }
       if (newPassword !== confirmPassword) {
@@ -152,7 +154,7 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
         <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Change password</p>
         <div className="space-y-2.5">
           <div className="relative">
-            <Input type={show ? "text" : "password"} placeholder="New password (min 6 chars)"
+            <Input type={show ? "text" : "password"} placeholder="New password (8+ chars: upper, lower, number, symbol)"
               value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
               className="rounded-full bg-background border-border text-foreground pr-10" />
             <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-foreground p-1" aria-label="Toggle password">

@@ -21,6 +21,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { validatePassword } from "@/lib/passwordPolicy";
 import { cn } from "@/lib/utils";
 
 interface AppUser {
@@ -185,8 +186,13 @@ export default function Admin() {
   };
 
   const handleAdd = async () => {
-    if (!email.trim() || !password || password.length < 6) {
-      toast({ title: "Invalid input", description: "Email + password (min 6 chars) required.", variant: "destructive" });
+    if (!email.trim() || !password) {
+      toast({ title: "Invalid input", description: "Email and password required.", variant: "destructive" });
+      return;
+    }
+    const pwdErr = validatePassword(password);
+    if (pwdErr) {
+      toast({ title: "Weak password", description: pwdErr, variant: "destructive" });
       return;
     }
     setBusy(true);
@@ -212,7 +218,8 @@ export default function Admin() {
     const patch: Record<string, unknown> = { action: "update", user_id: editing.user_id };
     if (editName.trim() !== (editing.display_name ?? "")) patch.display_name = editName.trim();
     if (editPassword) {
-      if (editPassword.length < 6) { toast({ title: "Password too short", variant: "destructive" }); return; }
+      const pwdErr = validatePassword(editPassword);
+      if (pwdErr) { toast({ title: "Weak password", description: pwdErr, variant: "destructive" }); return; }
       patch.password = editPassword;
     }
     if (Object.keys(patch).length === 2) { setEditing(null); return; }
@@ -438,7 +445,7 @@ export default function Admin() {
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="rounded-full bg-surface border-border/60" />
             </Field>
             <Field label="Password">
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-full bg-surface border-border/60" placeholder="Min 6 chars" />
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-full bg-surface border-border/60" placeholder="Strong password required" />
             </Field>
             <label className="text-xs text-ink-muted inline-flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 cursor-pointer">
               <input type="checkbox" checked={makeAdmin} onChange={(e) => setMakeAdmin(e.target.checked)} />

@@ -98,45 +98,7 @@ export function AddExpenseSheet({
     return subs.filter(s => s.toLowerCase().includes(subSearch.toLowerCase()));
   }, [subs, subSearch]);
 
-  useEffect(() => {
-    if (open) {
-      setSubSearch("");
-      if (editing) {
-        setTxnType(editing.type ?? "expense");
-        setAmount(String(editing.amount));
-        setCategory(editing.category);
-        setSubcategory(editing.subcategory ?? "");
-        setNote(editing.note ?? "");
-        setDate(editing.date);
-        setPayment(editing.payment_method);
-        setCurrency(editing.currency ?? baseCurrency);
-        setReimbursable(!!editing.is_reimbursable);
-        setReceiptUrl(editing.receipt_url ?? "");
-      } else {
-        setTxnType("expense");
-        setAmount("");
-        setCategory(categories[0]?.name ?? "Food");
-        setSubcategory("");
-        setNote("");
-        setDate(todayISO());
-        setPayment("upi");
-        setCurrency(baseCurrency);
-        setReimbursable(false);
-        setReceiptUrl("");
-      }
-      // Refresh today's FX rates in background
-      refreshFxRates(baseCurrency);
-      setShowAddCat(false);
-      setNewCat("");
-      setErrors({});
-      setSubmitted(false);
-      // focus amount on open
-      setTimeout(() => amountRef.current?.focus(), 80);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editing]);
-
-  const validate = (): typeof errors => {
+  const validate = useCallback((): typeof errors => {
     const errs: typeof errors = {};
     const num = parseFloat(amount);
     if (!amount.trim()) errs.amount = "Amount is required.";
@@ -147,13 +109,47 @@ export function AddExpenseSheet({
     if (!date) errs.date = "Date is required.";
     else if (date > todayISO()) errs.date = "Date can't be in the future.";
     return errs;
-  };
+  }, [amount, category, date]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setSubSearch("");
+    if (editing) {
+      setTxnType(editing.type ?? "expense");
+      setAmount(String(editing.amount));
+      setCategory(editing.category);
+      setSubcategory(editing.subcategory ?? "");
+      setNote(editing.note ?? "");
+      setDate(editing.date);
+      setPayment(editing.payment_method);
+      setCurrency(editing.currency ?? baseCurrency);
+      setReimbursable(!!editing.is_reimbursable);
+      setReceiptUrl(editing.receipt_url ?? "");
+    } else {
+      setTxnType("expense");
+      setAmount("");
+      setCategory(categories[0]?.name ?? "Food");
+      setSubcategory("");
+      setNote("");
+      setDate(todayISO());
+      setPayment("upi");
+      setCurrency(baseCurrency);
+      setReimbursable(false);
+      setReceiptUrl("");
+    }
+    refreshFxRates(baseCurrency);
+    setShowAddCat(false);
+    setNewCat("");
+    setErrors({});
+    setSubmitted(false);
+    const focusTimer = window.setTimeout(() => amountRef.current?.focus(), 80);
+    return () => window.clearTimeout(focusTimer);
+  }, [open, editing, categories, baseCurrency]);
 
   // Live revalidation after first submit attempt
   useEffect(() => {
     if (submitted) setErrors(validate());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, category, date, submitted]);
+  }, [amount, category, date, submitted, validate]);
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();

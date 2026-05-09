@@ -1,29 +1,38 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
-interface Props {
-  onLogin: (email: string, password: string) => Promise<string | null>;
-}
-
-export default function Login({ onLogin }: Props) {
+export default function Login() {
+  const navigate = useNavigate();
+  const { login, isAuthed, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!loading && isAuthed) navigate("/", { replace: true });
+  }, [loading, isAuthed, navigate]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return setError("Email is required.");
     if (!password) return setError("Password is required.");
-    setLoading(true);
+    setSubmitting(true);
     setError(null);
-    const err = await onLogin(email, password);
-    setLoading(false);
-    setError(err);
+
+    const err = await login(email, password);
+    setSubmitting(false);
+    if (err) {
+      setError(err);
+      return;
+    }
+    navigate("/", { replace: true });
   };
 
   return (
@@ -81,10 +90,10 @@ export default function Login({ onLogin }: Props) {
           )}
 
           <Button
-            type="submit" size="lg" disabled={loading}
+            type="submit" size="lg" disabled={submitting || loading}
             className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-12 text-base font-medium"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in"}
+            {submitting || loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in"}
           </Button>
         </form>
 
