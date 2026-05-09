@@ -56,10 +56,25 @@ function useProvideAuth(): AuthState {
       setIsAdmin((roleData ?? []).some((r) => r.role === "admin"));
     };
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (profileTimeoutRef.current !== null) {
         window.clearTimeout(profileTimeoutRef.current);
         profileTimeoutRef.current = null;
+      }
+
+      // Token refresh (common when returning from background) must not flip global
+      // `loading` — ProtectedRoute would unmount the app and wipe UI state.
+      if (event === "TOKEN_REFRESHED" && sess) {
+        setSession(sess);
+        setUser(sess.user);
+        return;
+      }
+
+      if (event === "USER_UPDATED" && sess) {
+        setSession(sess);
+        setUser(sess.user);
+        void loadProfileAndRole(sess.user.id, sess.user.email ?? "");
+        return;
       }
 
       setLoading(true);
