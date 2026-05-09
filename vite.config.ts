@@ -36,6 +36,15 @@ export default defineConfig(({ mode }) => ({
         icons: [
           { src: "/finlo-logo.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
         ],
+        share_target: {
+          action: "/",
+          method: "GET",
+          params: {
+            title: "title",
+            text: "text",
+            url: "url",
+          },
+        },
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],

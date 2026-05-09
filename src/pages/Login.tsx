@@ -1,13 +1,25 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
+type FromState = { from?: { pathname: string; search?: string } };
+
+function destinationAfterAuth(state: unknown): string {
+  const s = state as FromState | null;
+  const path = s?.from?.pathname;
+  if (!path) return "/";
+  const q = s.from.search ?? "";
+  return `${path}${q}`;
+}
+
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const afterAuth = useMemo(() => destinationAfterAuth(location.state), [location.state]);
   const { login, isAuthed, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,8 +28,8 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && isAuthed) navigate("/", { replace: true });
-  }, [loading, isAuthed, navigate]);
+    if (!loading && isAuthed) navigate(afterAuth, { replace: true });
+  }, [loading, isAuthed, navigate, afterAuth]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +44,7 @@ export default function Login() {
       setError(err);
       return;
     }
-    navigate("/", { replace: true });
+    navigate(afterAuth, { replace: true });
   };
 
   return (

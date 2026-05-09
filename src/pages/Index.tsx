@@ -1,4 +1,4 @@
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, Loader2 } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
@@ -30,6 +30,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
 import { useExpenseAIQuickFlow } from "@/hooks/useExpenseAIQuickFlow";
 import { useTheme } from "@/hooks/useTheme";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Expense, addDays, formatINR, fullDateLabel, getCurrencySymbol,
@@ -83,6 +84,8 @@ const Index = () => {
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
   const [quickAddCycle, setQuickAddCycle] = useState(0);
   const quickAddTranscriptRef = useRef<((text: string) => void) | null>(null);
+  const [sharePrefill, setSharePrefill] = useState<string | undefined>();
+  const [pullRefreshEnabled, setPullRefreshEnabled] = useState(false);
 
   const today = todayISO();
   const yesterday = addDays(today, -1);
@@ -129,6 +132,29 @@ const Index = () => {
   useEffect(() => {
     try { localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)); } catch { /* ignore */ }
   }, [filters]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setPullRefreshEnabled(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const title = params.get("title")?.trim() ?? "";
+    const text = params.get("text")?.trim() ?? "";
+    const url = params.get("url")?.trim() ?? "";
+    const parts = [title, text, url].filter(Boolean);
+    if (parts.length === 0) return;
+    setSharePrefill(parts.join("\n"));
+    window.history.replaceState(
+      {},
+      document.title,
+      `${window.location.pathname}${window.location.hash}`,
+    );
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -223,6 +249,16 @@ const Index = () => {
     onAfterExpenseLogged: () => setQuickAddCycle((c) => c + 1),
   });
 
+  const handlePullRefresh = useCallback(async () => {
+    await sync();
+    await loadLoans();
+  }, [sync, loadLoans]);
+
+  const { phase: pullPhase, pullPx } = usePullToRefresh(
+    pullRefreshEnabled && !!expenseUserId,
+    handlePullRefresh,
+  );
+
   if (isAdmin) return <Navigate to="/admin" replace />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
@@ -284,8 +320,34 @@ const Index = () => {
     : view === "week" ? weekRangeOf(shiftWeek(weekAnchor, 1)).from <= today
     : monthRangeOf(shiftMonth(monthAnchor, 1)).from <= today;
 
+  const pullProgressPct =
+    pullPhase === "refreshing"
+      ? 100
+      : Math.min(100, (pullPx / 72) * 100);
+
   return (
     <main className="min-h-dvh bg-background text-foreground font-sans">
+      {(pullPx > 1 || pullPhase === "refreshing") && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[90] pointer-events-none flex flex-col items-center gap-1 pt-[calc(env(safe-area-inset-top,0px)+8px)]"
+          aria-hidden
+        >
+          {pullPhase === "refreshing" ? (
+            <Loader2 className="h-5 w-5 animate-spin text-foreground/85" aria-label="Refreshing" />
+          ) : (
+            <span className="text-[10px] font-medium text-ink-muted tracking-wide">
+              {pullPx >= 72 ? "Release to refresh" : "Pull to refresh"}
+            </span>
+          )}
+          <div className="h-0.5 w-24 rounded-full bg-border/80 overflow-hidden">
+            <div
+              className="h-full bg-foreground/55 rounded-full transition-[width] duration-75 ease-out"
+              style={{ width: `${pullProgressPct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-[520px] mx-auto px-6 pt-0 pb-32">
         <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md -mx-6 px-6 pt-6 pb-4 mb-8 border-b border-border/10 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -360,6 +422,7 @@ const Index = () => {
           }}
           categories={categories}
           defaultDate={quickDefaultDate}
+          sharePrefill={sharePrefill}
         />
 
         <div className="hidden sm:flex justify-center mb-12">
@@ -607,6 +670,10 @@ const Index = () => {
               </span>
             </div>
             <div className="flex justify-between items-center text-sm">
+              <span className="text-foreground">Refresh data</span>
+              <span className="text-xs text-ink-muted font-medium text-right">Pull down on the home screen (mobile)</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
               <span className="text-foreground">Open Search / NL Entry</span>
               <div className="flex gap-1.5">
                 <kbd className="font-mono bg-surface border border-border/60 px-1.5 py-0.5 rounded text-xs shadow-xs text-ink-muted font-bold">⌘</kbd>
@@ -722,6 +789,27 @@ const Index = () => {
           <span className="text-[9px] font-medium tracking-wide">Settings</span>
         </button>
       </div>
+
+      {/* Desktop / tablet: floating add (mobile uses bottom bar FAB) */}
+      <button
+        type="button"
+        onClick={() => {
+          setEditing(null);
+          setOpen(true);
+        }}
+        className={cn(
+          "hidden md:flex fixed z-50 items-center justify-center",
+          "bottom-8 right-8 h-14 w-14 rounded-full",
+          "bg-foreground text-background shadow-lg",
+          "hover:bg-foreground/90 active:scale-95 transition-transform",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/55 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        )}
+        style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        aria-label="Add transaction"
+        title="Add transaction"
+      >
+        <Plus className="h-6 w-6" strokeWidth={2.25} />
+      </button>
     </main>
   );
 };

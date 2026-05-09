@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus, Sparkles, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -16,9 +16,11 @@ interface Props {
   ai: ExpenseAIFlowLite;
   /** Receives setState so server transcripts can mirror into the quick-add field */
   registerTranscriptSink?: (setText: (text: string) => void) => void;
+  /** Set from PWA share target (SMS, notes); fills the natural-language field */
+  sharePrefill?: string;
 }
 
-export function QuickAddBar({ categories, defaultDate, ai, registerTranscriptSink }: Props) {
+export function QuickAddBar({ categories, defaultDate, ai, registerTranscriptSink, sharePrefill }: Props) {
   const [val, setVal] = useState("");
   const [parsedPreview, setParsedPreview] = useState<{ amount: number; note: string; date: string; category?: string } | null>(null);
 
@@ -27,7 +29,7 @@ export function QuickAddBar({ categories, defaultDate, ai, registerTranscriptSin
     return () => registerTranscriptSink?.(() => {});
   }, [registerTranscriptSink]);
 
-  const handleTextChange = (text: string) => {
+  const handleTextChange = useCallback((text: string) => {
     setVal(text);
     if (!text.trim()) {
       setParsedPreview(null);
@@ -83,7 +85,12 @@ export function QuickAddBar({ categories, defaultDate, ai, registerTranscriptSin
       }
     }
     setParsedPreview(null);
-  };
+  }, [categories, defaultDate]);
+
+  useEffect(() => {
+    if (!sharePrefill?.trim()) return;
+    handleTextChange(sharePrefill);
+  }, [sharePrefill, handleTextChange]);
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
