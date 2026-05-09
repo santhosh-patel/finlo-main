@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { applyMobileChrome } from "@/lib/mobileChrome";
 
 const THEME_KEY = "finlo.theme.v1";
 
@@ -35,6 +36,16 @@ function read(): ThemeSettings {
   return DEFAULT;
 }
 
+/** Run once at startup (before React) so `theme-color` matches stored theme immediately. */
+export function syncMobileChromeFromStoredTheme(): void {
+  if (typeof document === "undefined") return;
+  const t = read();
+  const isDark =
+    t.mode === "dark" ||
+    (t.mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  applyMobileChrome(isDark);
+}
+
 function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16) / 255;
@@ -61,6 +72,7 @@ function apply(t: ThemeSettings) {
     t.mode === "dark" ||
     (t.mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   root.classList.toggle("dark", isDark);
+  applyMobileChrome(isDark);
 
   const { h, s, l } = hexToHsl(t.accent);
   root.style.setProperty("--accent", `${h} ${s}% ${l}%`);

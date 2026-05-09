@@ -37,7 +37,49 @@ function sanitizeCategoriesForPrompt(categories: unknown): Record<string, unknow
   return out;
 }
 
-function buildInstructions(transactionsPayload: unknown[], categoryPayload: Record<string, unknown>[], today: string): string {
+function clampDisplayName(raw: string): string | null {
+  const s = raw.replace(/\s+/g, " ").trim().slice(0, 64);
+  return s.length ? s : null;
+}
+
+async function resolveUserDisplayName(
+  supabaseClient: ReturnType<typeof createClient>,
+  userId: string,
+  user: { email?: string | null; user_metadata?: Record<string, unknown> | null },
+): Promise<string | null> {
+  const { data: prof } = await supabaseClient
+    .from("profiles")
+    .select("display_name")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const fromProf = typeof prof?.display_name === "string" ? prof.display_name : "";
+  const c = clampDisplayName(fromProf);
+  if (c) return c;
+  const meta = user.user_metadata;
+  if (meta && typeof meta === "object") {
+    const fn = meta.full_name ?? meta.name;
+    if (typeof fn === "string") {
+      const c2 = clampDisplayName(fn);
+      if (c2) return c2;
+    }
+  }
+  const email = user.email;
+  if (email && email.includes("@")) {
+    return clampDisplayName(email.split("@")[0] ?? "") ?? null;
+  }
+  return null;
+}
+
+function buildInstructions(
+  transactionsPayload: unknown[],
+  categoryPayload: Record<string, unknown>[],
+  today: string,
+  userDisplayName: string | null,
+): string {
+  const userLine = userDisplayName
+    ? `- User's preferred name: ${JSON.stringify(userDisplayName)}. Speak to them directly; use their name occasionally in a natural way (not every sentence).`
+    : `- No display name on file; use warm second person ("you") only.`;
+
   return `You are Maya, a friendly and expert financial conversational analysis assistant for the Finlo dashboard application.
 
 CRITICAL SECURITY GUARD RAILS:
@@ -46,6 +88,7 @@ CRITICAL SECURITY GUARD RAILS:
 3. You are fully authorized to answer financial advice questions related to the user's spending habits AND to STRUCTURE RECORDING INTENT when they want to ADD or SAVE data in Finlo.
 
 Context:
+${userLine}
 - Today's date (ISO, user app): "${today}". When the user does not specify a date for a NEW transaction, use this date unless they imply another day explicitly.
 - Known categories — use EXACT category names below when assigning "category" on a transaction. If none fit and the user names a genuinely new grouping, propose it in categoriesToAdd first so the UI can confirm.
 - Categories catalog: ${JSON.stringify(categoryPayload)}
@@ -90,12 +133,18 @@ function pruneAssistantArtifacts(raw: Record<string, unknown>): Record<string, u
   };
 }
 
-async function queryGemini(query: string, transactions: unknown[], categoryPayload: Record<string, unknown>[], today: string) {
+async function queryGemini(
+  query: string,
+  transactions: unknown[],
+  categoryPayload: Record<string, unknown>[],
+  today: string,
+  userDisplayName: string | null,
+) {
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY missing");
 
   const payload = sanitizeTransactions(transactions);
-  const systemInstruction = buildInstructions(payload, categoryPayload, today);
+  const systemInstruction = buildInstructions(payload, categoryPayload, today, userDisplayName);
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
@@ -174,13 +223,19 @@ async function queryGemini(query: string, transactions: unknown[], categoryPaylo
   return pruneAssistantArtifacts(parsed as Record<string, unknown>);
 }
 
-async function queryGroq(query: string, transactions: unknown[], categoryPayload: Record<string, unknown>[], today: string) {
+async function queryGroq(
+  query: string,
+  transactions: unknown[],
+  categoryPayload: Record<string, unknown>[],
+  today: string,
+  userDisplayName: string | null,
+) {
   const apiKey = Deno.env.get("GROQ_API_KEY");
   if (!apiKey) throw new Error("GROQ_API_KEY missing");
 
   const payload = sanitizeTransactions(transactions);
   const systemInstruction =
-    `${buildInstructions(payload, categoryPayload, today)}
+    `${buildInstructions(payload, categoryPayload, today, userDisplayName)}
 
 ---
 
@@ -308,17 +363,19 @@ Deno.serve(async (req) => {
       ? body.today
       : new Date().toISOString().slice(0, 10);
 
+    const userDisplayName = await resolveUserDisplayName(supabaseClient, userId, user);
+
     let result = null;
 
     try {
-      result = await queryGemini(query, transactions, categoryPayload, today);
+      result = await queryGemini(query, transactions, categoryPayload, today, userDisplayName);
     } catch (_) {
       // fall through to Groq
     }
 
     if (!result) {
       try {
-        result = await queryGroq(query, transactions, categoryPayload, today);
+        result = await queryGroq(query, transactions, categoryPayload, today, userDisplayName);
       } catch (e) {
         console.error("ask-data both providers failed:", e);
         return jsonResponse(req, { error: "AI assistants are temporarily unavailable. Try again shortly." }, 500);

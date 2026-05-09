@@ -98,7 +98,7 @@ export function TrashSheet({ open, onOpenChange, userId, onRestore }: Props) {
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="bg-background border-border w-full sm:max-w-[480px] overflow-y-auto p-6"
+          className="bg-background border-border w-full sm:max-w-[480px] overflow-y-auto p-6 max-md:pb-[var(--finlo-mobile-tab-clearance)]"
         >
           <SheetHeader className="text-left mb-6">
             <SheetTitle className="font-serif text-3xl font-normal text-foreground">

@@ -127,7 +127,7 @@ export function ImportSheet({ open, onOpenChange, onImport }: Props) {
           </p>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6 pb-8">
+        <div className="mt-6 space-y-6 pb-8 max-md:pb-[var(--finlo-mobile-tab-clearance)]">
           <label className="block">
             <input
               ref={inputRef}

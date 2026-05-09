@@ -19,13 +19,14 @@ interface Props {
   anchor: string;
   onSelect?: (e: Expense) => void;
   categories?: CategoryDef[];
+  anomalyExpenseIds?: Set<string>;
 }
 
 interface Insight {
   text: string;
 }
 
-export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect, categories }: Props) {
+export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect, categories, anomalyExpenseIds }: Props) {
   const { from, to, label } = useMemo(() => monthRangeOf(anchor), [anchor]);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -34,6 +35,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [chartType, setChartType] = useState<"pie" | "trend">("pie");
+  const [chartsOpen, setChartsOpen] = useState(false);
 
   const monthExpenses = useMemo(
     () => expenses.filter((e) => e.date >= from && e.date <= to && (e.type ?? "expense") === "expense"),
@@ -72,6 +74,14 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
 
   const lastMonthTotal = useMemo(() => {
     return lastMonthExpenses.reduce((a, b) => a + baseAmountOf(b), 0);
+  }, [lastMonthExpenses]);
+
+  const prevMonthByCategory = useMemo(() => {
+    const m = new Map<string, number>();
+    lastMonthExpenses.forEach((e) =>
+      m.set(e.category, (m.get(e.category) || 0) + baseAmountOf(e))
+    );
+    return m;
   }, [lastMonthExpenses]);
 
   const momDelta = useMemo(() => {
@@ -216,130 +226,149 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
           </div>
         </div>
 
-        {/* Chart Header / Toggle */}
-        <div className="flex items-center justify-between mb-6">
-          <h4 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted">
-            {chartType === "pie" ? "Category breakdown" : "Daily spending trend"}
-          </h4>
-          <div className="flex bg-surface rounded-full p-0.5 border border-border/20">
-            <button 
-              onClick={() => setChartType("pie")}
-              className={cn(
-                "px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wider transition-all",
-                chartType === "pie" ? "bg-background text-foreground shadow-sm" : "text-ink-muted"
-              )}
-            >Pie</button>
-            <button 
-              onClick={() => setChartType("trend")}
-              className={cn(
-                "px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wider transition-all",
-                chartType === "trend" ? "bg-background text-foreground shadow-sm" : "text-ink-muted"
-              )}
-            >Trend</button>
-          </div>
-        </div>
-
-        {/* Charts */}
-        <div className="h-64 mb-8">
-          <ResponsiveContainer width="100%" height="100%">
-            {chartType === "pie" ? (
-              <PieChart>
-                <Pie
-                  data={byCategory}
-                  dataKey="amount"
-                  nameKey="category"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={90}
-                  paddingAngle={4}
-                  stroke="none"
-                  onClick={(data) => {
-                    const cat = data?.category || data?.name;
-                    if (cat) setSelectedCategory(cat);
-                  }}
-                >
-                  {byCategory.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={getColorForCategory(entry.category)} />
-                  ))}
-                </Pie>
-                <RechartsTooltip
-                  formatter={(value: number) => `${getCurrencySymbol()}${formatINR(value)}`}
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--surface))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "12px",
-                    fontSize: "12px",
-                    color: "hsl(var(--foreground))"
-                  }}
-                  itemStyle={{ color: "hsl(var(--foreground))" }}
-                />
-              </PieChart>
-            ) : (
-              <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--foreground))" stopOpacity={0.15}/>
-                    <stop offset="95%" stopColor="hsl(var(--foreground))" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.3} />
-                <XAxis 
-                  dataKey="day" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: 'hsl(var(--ink-muted))' }}
-                  interval={Math.floor(trendData.length / 7)}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: 'hsl(var(--ink-muted))' }}
-                />
-                <RechartsTooltip
-                  formatter={(value: number) => [`${getCurrencySymbol()}${formatINR(value)}`, "Total Spent"]}
-                  labelFormatter={(label) => `Day ${label}`}
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--surface))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "12px",
-                    fontSize: "12px",
-                    color: "hsl(var(--foreground))"
-                  }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="total" 
-                  stroke="hsl(var(--foreground))" 
-                  strokeWidth={2}
-                  fillOpacity={1} 
-                  fill="url(#colorTotal)" 
-                  animationDuration={1000}
-                />
-              </AreaChart>
-            )}
-          </ResponsiveContainer>
-        </div>
+        <Collapsible open={chartsOpen} onOpenChange={setChartsOpen} className="mb-6">
+          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/40 bg-surface/40 px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-ink-muted hover:bg-surface/60 transition-colors">
+            <span>Charts (optional)</span>
+            <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", chartsOpen && "rotate-180")} />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[10px] tracking-[0.2em] uppercase font-medium text-ink-muted">
+                {chartType === "pie" ? "Category breakdown" : "Daily trend"}
+              </h4>
+              <div className="flex bg-surface rounded-full p-0.5 border border-border/20">
+                <button
+                  type="button"
+                  onClick={() => setChartType("pie")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wider transition-all",
+                    chartType === "pie" ? "bg-background text-foreground shadow-sm" : "text-ink-muted"
+                  )}
+                >Pie</button>
+                <button
+                  type="button"
+                  onClick={() => setChartType("trend")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wider transition-all",
+                    chartType === "trend" ? "bg-background text-foreground shadow-sm" : "text-ink-muted"
+                  )}
+                >Trend</button>
+              </div>
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                {chartType === "pie" ? (
+                  <PieChart>
+                    <Pie
+                      data={byCategory}
+                      dataKey="amount"
+                      nameKey="category"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={4}
+                      stroke="none"
+                      onClick={(data) => {
+                        const cat = data?.category || data?.name;
+                        if (cat) setSelectedCategory(cat);
+                      }}
+                    >
+                      {byCategory.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={getColorForCategory(entry.category)} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip
+                      formatter={(value: number) => `${getCurrencySymbol()}${formatINR(value)}`}
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--surface))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        color: "hsl(var(--foreground))"
+                      }}
+                      itemStyle={{ color: "hsl(var(--foreground))" }}
+                    />
+                  </PieChart>
+                ) : (
+                  <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--foreground))" stopOpacity={0.15}/>
+                        <stop offset="95%" stopColor="hsl(var(--foreground))" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.3} />
+                    <XAxis
+                      dataKey="day"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "hsl(var(--ink-muted))" }}
+                      interval={Math.floor(trendData.length / 7)}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "hsl(var(--ink-muted))" }}
+                    />
+                    <RechartsTooltip
+                      formatter={(value: number) => [`${getCurrencySymbol()}${formatINR(value)}`, "Total Spent"]}
+                      labelFormatter={(label) => `Day ${label}`}
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--surface))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        color: "hsl(var(--foreground))"
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="total"
+                      stroke="hsl(var(--foreground))"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#colorTotal)"
+                      animationDuration={1000}
+                    />
+                  </AreaChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         <div className="space-y-4">
           {byCategory.map((c) => {
             const pct = total > 0 ? (c.amount / total) * 100 : 0;
+            const prevAmt = prevMonthByCategory.get(c.category) ?? 0;
+            const catMom = prevAmt > 0 ? ((c.amount - prevAmt) / prevAmt) * 100 : null;
             return (
               <div 
                 key={c.category} 
                 className="group cursor-pointer"
                 onClick={() => setSelectedCategory(c.category)}
               >
-                <div className="flex justify-between items-baseline mb-1.5">
-                  <span className="text-foreground text-sm flex items-center gap-2">
+                <div className="flex justify-between items-baseline mb-1.5 gap-2">
+                  <span className="text-foreground text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span 
-                      className="w-2.5 h-2.5 rounded-full inline-block" 
+                      className="w-2.5 h-2.5 rounded-full inline-block shrink-0" 
                       style={{ backgroundColor: getColorForCategory(c.category) }}
                     />
                     {c.category}
-                    <span className="text-ink-muted ml-2 text-xs tabular-nums">{pct.toFixed(0)}%</span>
+                    <span className="text-ink-muted text-xs tabular-nums">{pct.toFixed(0)}%</span>
+                    {catMom !== null && (
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium tabular-nums",
+                          catMom > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
+                        )}
+                      >
+                        {catMom > 0 ? "+" : ""}{catMom.toFixed(0)}% vs last mo
+                      </span>
+                    )}
                   </span>
-                  <span className="font-serif text-base text-foreground tabular-nums">
+                  <span className="font-serif text-base text-foreground tabular-nums shrink-0">
                     {getCurrencySymbol()}{formatINR(c.amount)}
                   </span>
                 </div>
@@ -574,7 +603,13 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                     <CollapsibleContent>
                       <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
                         {items.map((e) => (
-                          <ExpenseRow key={e.id} expense={e} onSelect={onSelect} categories={categories} />
+                          <ExpenseRow
+                            key={e.id}
+                            expense={e}
+                            onSelect={onSelect}
+                            categories={categories}
+                            showAnomaly={anomalyExpenseIds?.has(e.id)}
+                          />
                         ))}
                       </div>
                     </CollapsibleContent>
@@ -618,7 +653,8 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                       setSelectedCategory(null);
                       onSelect?.(exp);
                     }} 
-                    categories={categories} 
+                    categories={categories}
+                    showAnomaly={anomalyExpenseIds?.has(e.id)}
                   />
                 ))}
             </div>

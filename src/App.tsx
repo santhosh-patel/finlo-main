@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -20,20 +21,36 @@ function RouteFallback() {
   );
 }
 
+function RoutedViews() {
+  const location = useLocation();
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <div
+        key={location.pathname}
+        className={cn(
+          "min-h-dvh",
+          "motion-reduce:animate-none",
+          "animate-in fade-in slide-in-from-bottom-1 duration-200 ease-out",
+        )}
+      >
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute requireAdmin><Admin /></ProtectedRoute>} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </div>
+    </Suspense>
+  );
+}
+
 const App = () => (
   <AuthProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute requireAdmin><Admin /></ProtectedRoute>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+        <RoutedViews />
       </BrowserRouter>
     </TooltipProvider>
   </AuthProvider>

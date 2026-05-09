@@ -72,6 +72,7 @@ export function ExpenseDetailsDrawer({
   const [showAddSub, setShowAddSub] = useState(false);
   const [date, setDate] = useState("");
   const [note, setNote] = useState("");
+  const [splitNote, setSplitNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   
   // Tags & Splits states
@@ -134,6 +135,7 @@ export function ExpenseDetailsDrawer({
       setSubcategory(expense.subcategory ?? "");
       setDate(expense.date);
       setNote(expense.note ?? "");
+      setSplitNote(expense.split_note ?? "");
       setError(null);
       setShowAddSub(false);
       setNewSub("");
@@ -157,6 +159,7 @@ export function ExpenseDetailsDrawer({
       subcategory: subcategory || undefined,
       date,
       note: note.trim() || undefined,
+      split_note: splitNote.trim() || undefined,
     });
     setEditing(false);
     setError(null);
@@ -169,6 +172,7 @@ export function ExpenseDetailsDrawer({
       setSubcategory(expense.subcategory ?? "");
       setDate(expense.date);
       setNote(expense.note ?? "");
+      setSplitNote(expense.split_note ?? "");
     }
     setError(null);
     setEditing(false);
@@ -468,6 +472,28 @@ export function ExpenseDetailsDrawer({
                       </div>
                     )}
 
+                    {(expense.type ?? "expense") === "expense" && (
+                      <div className="space-y-2 pt-3 border-t border-border/20">
+                        <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-semibold">
+                          Split / payback note
+                        </Label>
+                        <Input
+                          value={splitNote}
+                          onChange={(e) => setSplitNote(e.target.value)}
+                          onBlur={() => {
+                            const t = splitNote.trim();
+                            const cur = (expense.split_note ?? "").trim();
+                            if (t !== cur) {
+                              onUpdate(expense.id, { split_note: t || undefined });
+                            }
+                          }}
+                          placeholder="e.g. Split with Kavya"
+                          maxLength={200}
+                          className="rounded-xl bg-background border-border text-sm h-10"
+                        />
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-2.5 pt-4 border-t border-border/20">
                       <Button
                         type="button"
@@ -635,6 +661,16 @@ export function ExpenseDetailsDrawer({
                         placeholder="Add a note…"
                         className="mt-4 border-0 border-b border-border rounded-none bg-transparent px-0 text-base text-foreground placeholder:text-ink-muted shadow-none focus-visible:ring-0 focus-visible:border-foreground"
                       />
+                      {(expense.type ?? "expense") === "expense" && (
+                        <Input
+                          type="text"
+                          maxLength={200}
+                          value={splitNote}
+                          onChange={(e) => setSplitNote(e.target.value)}
+                          placeholder="Split / payback note (optional)"
+                          className="mt-3 border-0 border-b border-border rounded-none bg-transparent px-0 text-sm text-foreground placeholder:text-ink-muted shadow-none focus-visible:ring-0"
+                        />
+                      )}
                     </div>
 
                     <div className="space-y-3">

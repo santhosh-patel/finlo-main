@@ -9,6 +9,9 @@
 
 @layer base {
   :root {
+    /* Space below scrollable content on mobile so it clears the floating tab bar + home indicator */
+    --finlo-mobile-tab-clearance: calc(8.5rem + env(safe-area-inset-bottom, 0px));
+
     /* Light theme — warm paper */
     --background: 42 27% 96%;
     --foreground: 220 18% 12%;
@@ -125,6 +128,12 @@
     touch-action: manipulation;
   }
 
+  @media (max-width: 767px) {
+    html {
+      scroll-padding-bottom: var(--finlo-mobile-tab-clearance);
+    }
+  }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "ss01", "cv11";
@@ -133,8 +142,8 @@
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
+    /* Top inset: avoid content under notch; bottom inset handled by fixed tab bars / page padding */
     padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
     overflow-x: hidden;
   }
 

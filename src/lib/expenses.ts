@@ -15,6 +15,8 @@ export interface Expense {
   fx_rate?: number; // rate from `currency` to user base at time of entry
   base_amount?: number; // amount * fx_rate, in user base currency
   is_reimbursable?: boolean;
+  /** Short context for splits / reimbursement (e.g. who owes) */
+  split_note?: string;
   reimbursed_at?: string | null;
   client_updated_at?: string;
   import_hash?: string;

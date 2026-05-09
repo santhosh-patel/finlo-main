@@ -6,19 +6,21 @@ import {
   Expense,
 } from "@/lib/expenses";
 import { toast } from "@/hooks/use-toast";
+import { vibrate } from "@/lib/utils";
+import {
+  idbGetPending,
+  idbSetPending,
+  migrateLegacyPendingFromLocalStorage,
+  type PendingOp,
+} from "@/lib/pendingQueueIdb";
 
 const EXP_KEY = "finlo.expenses.v1";
 const CAT_KEY = "finlo.categories.v1";
 const BUD_KEY = "finlo.budgets.v1";
-const PENDING_KEY = "finlo.pending.v1";
 const LAST_SYNC_KEY = "finlo.last_sync.v1";
 
 export type Budgets = Record<string, number>;
-
-type PendingOp =
-  | { kind: "insert"; row: Expense }
-  | { kind: "update"; id: string; patch: Partial<Expense> }
-  | { kind: "delete"; id: string };
+export type { PendingOp };
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -53,6 +55,7 @@ interface DBExpenseRow {
   is_reimbursable: boolean | null;
   import_hash: string | null;
   receipt_url: string | null;
+  split_note: string | null;
 }
 
 export function useExpenses(userId: string | null) {
@@ -65,8 +68,10 @@ export function useExpenses(userId: string | null) {
   const [lastSync, setLastSync] = useState<string | null>(
     () => localStorage.getItem(LAST_SYNC_KEY)
   );
-  const [pendingCount, setPendingCount] = useState(() => readJSON<PendingOp[]>(PENDING_KEY, []).length);
-  const pendingRef = useRef<PendingOp[]>(readJSON<PendingOp[]>(PENDING_KEY, []));
+  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingHydrated, setPendingHydrated] = useState(false);
+  const [initialDataReady, setInitialDataReady] = useState(false);
+  const pendingRef = useRef<PendingOp[]>([]);
   const expensesRef = useRef<Expense[]>(readJSON<Expense[]>(EXP_KEY, []));
   expensesRef.current = expenses;
 
@@ -78,9 +83,30 @@ export function useExpenses(userId: string | null) {
   useEffect(() => writeJSON(CAT_KEY, categories), [categories]);
   useEffect(() => writeJSON(BUD_KEY, budgets), [budgets]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let ops = await idbGetPending();
+      if (ops.length === 0) {
+        const legacy = migrateLegacyPendingFromLocalStorage();
+        if (legacy.length) {
+          ops = legacy;
+          await idbSetPending(ops);
+        }
+      }
+      if (cancelled) return;
+      pendingRef.current = ops;
+      setPendingCount(ops.length);
+      setPendingHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const queue = (op: PendingOp) => {
     pendingRef.current.push(op);
-    writeJSON(PENDING_KEY, pendingRef.current);
+    void idbSetPending(pendingRef.current);
     setPendingCount(pendingRef.current.length);
   };
 
@@ -105,7 +131,10 @@ export function useExpenses(userId: string | null) {
             type: op.row.type ?? "expense",
             currency: op.row.currency ?? "INR",
             fx_rate: op.row.fx_rate ?? 1,
+            base_amount: op.row.base_amount ?? op.row.amount * (op.row.fx_rate ?? 1),
             is_reimbursable: op.row.is_reimbursable ?? false,
+            split_note: op.row.split_note ?? null,
+            receipt_url: op.row.receipt_url ?? null,
           });
           if (error) remaining.push(op);
         } else if (op.kind === "update") {
@@ -119,11 +148,17 @@ export function useExpenses(userId: string | null) {
             ...(op.patch.type !== undefined && { type: op.patch.type }),
             ...(op.patch.currency !== undefined && { currency: op.patch.currency }),
             ...(op.patch.fx_rate !== undefined && { fx_rate: op.patch.fx_rate }),
+            ...(op.patch.base_amount !== undefined && { base_amount: op.patch.base_amount }),
             ...(op.patch.is_reimbursable !== undefined && { is_reimbursable: op.patch.is_reimbursable }),
+            ...(op.patch.split_note !== undefined && { split_note: op.patch.split_note ?? null }),
+            ...(op.patch.receipt_url !== undefined && { receipt_url: op.patch.receipt_url ?? null }),
           }).eq("id", op.id);
           if (error) remaining.push(op);
         } else if (op.kind === "delete") {
-          const { error } = await supabase.from("expenses").delete().eq("id", op.id);
+          const { error } = await supabase
+            .from("expenses")
+            .update({ deleted_at: new Date().toISOString() })
+            .eq("id", op.id);
           if (error) remaining.push(op);
         }
       } catch {
@@ -131,7 +166,7 @@ export function useExpenses(userId: string | null) {
       }
     }
     pendingRef.current = remaining;
-    writeJSON(PENDING_KEY, remaining);
+    void idbSetPending(remaining);
     setPendingCount(remaining.length);
   }, [userId]);
 
@@ -159,6 +194,7 @@ export function useExpenses(userId: string | null) {
         is_reimbursable: !!r.is_reimbursable,
         import_hash: r.import_hash ?? undefined,
         receipt_url: r.receipt_url ?? undefined,
+        split_note: r.split_note ?? undefined,
       })));
     }
     if (cat) {
@@ -201,9 +237,14 @@ export function useExpenses(userId: string | null) {
     localStorage.setItem(LAST_SYNC_KEY, ts);
   }, [userId]);
 
-  const sync = useCallback(async () => {
-    if (!userId) return;
-    if (syncInFlightRef.current) return;
+  /** Full sync (default). Pass `{ skipIfNoPending: true }` for pull-to-refresh: no network if the offline queue is empty. Returns whether a sync ran. */
+  const sync = useCallback(async (opts?: { skipIfNoPending?: boolean }) => {
+    if (!userId) return false;
+    if (syncInFlightRef.current) return false;
+    const hadPending = pendingRef.current.length > 0;
+    if (opts?.skipIfNoPending && !hadPending) {
+      return false;
+    }
     syncInFlightRef.current = true;
     setSyncing(true);
     try {
@@ -211,9 +252,11 @@ export function useExpenses(userId: string | null) {
       skipNextRealtimePullRef.current = true;
       await pullFromServer();
       toast({ title: "Synced", description: "All changes are up to date." });
+      return true;
     } catch (e) {
       console.error(e);
       toast({ title: "Sync failed", description: String(e), variant: "destructive" });
+      return false;
     } finally {
       syncInFlightRef.current = false;
       setSyncing(false);
@@ -227,17 +270,30 @@ export function useExpenses(userId: string | null) {
   useEffect(() => {
     if (!userId) {
       didInitialSyncRef.current = null;
+      setInitialDataReady(false);
       return;
     }
+    if (!pendingHydrated) return;
     if (didInitialSyncRef.current === userId) return;
     didInitialSyncRef.current = userId;
     let cancelled = false;
 
     const hasLocalExpenses = expensesRef.current.length > 0;
-    const hasPendingChanges = pendingRef.current && pendingRef.current.length > 0;
-    if (!hasLocalExpenses || hasPendingChanges) {
-      void syncRef.current();
-    }
+    const hasPendingChanges = pendingRef.current.length > 0;
+    const bootstrap = async () => {
+      try {
+        // Push offline queue only; do not pull from server on every app open when cache exists.
+        if (hasPendingChanges) {
+          await flushPending();
+        }
+        if (!hasLocalExpenses) {
+          await pullFromServer();
+        }
+      } finally {
+        if (!cancelled) setInitialDataReady(true);
+      }
+    };
+    void bootstrap();
     const ch = supabase
       .channel(`expenses-${userId}`)
       .on(
@@ -269,6 +325,8 @@ export function useExpenses(userId: string | null) {
                 is_reimbursable: !!row.is_reimbursable,
                 reimbursed_at: row.reimbursed_at ?? null,
                 client_updated_at: row.client_updated_at ?? undefined,
+                split_note: row.split_note ?? undefined,
+                receipt_url: row.receipt_url ?? undefined,
               };
               return [mapped, ...prev].sort((a, b) => b.date.localeCompare(a.date));
             });
@@ -291,6 +349,8 @@ export function useExpenses(userId: string | null) {
                 is_reimbursable: !!row.is_reimbursable,
                 reimbursed_at: row.reimbursed_at ?? null,
                 client_updated_at: row.client_updated_at ?? undefined,
+                split_note: row.split_note ?? undefined,
+                receipt_url: row.receipt_url ?? undefined,
               };
             }));
           } else if (eventType === "DELETE") {
@@ -307,7 +367,7 @@ export function useExpenses(userId: string | null) {
       supabase.removeChannel(ch);
       window.removeEventListener("online", onOnline);
     };
-  }, [userId, pullFromServer]);
+  }, [userId, pullFromServer, flushPending, pendingHydrated]);
 
   // ------- mutators (optimistic local + queue/server) -------
   const addExpense = useCallback((e: Omit<Expense, "id" | "created_at">) => {
@@ -328,10 +388,12 @@ export function useExpenses(userId: string | null) {
         type: newE.type ?? "expense",
         currency: newE.currency ?? "INR",
         fx_rate: fx,
+        base_amount: newE.base_amount ?? Number(newE.amount) * fx,
         is_reimbursable: newE.is_reimbursable ?? false,
+        split_note: newE.split_note ?? null,
         receipt_url: newE.receipt_url ?? null,
       }).then(({ error }) => { 
-        if (error) queue({ kind: "insert", row: newE }); 
+        if (error) queue({ kind: "insert", row: newE });
         else if (newE.category.toLowerCase() === "lending") {
           const counterparty = newE.note?.trim() || "Someone";
           const direction = newE.type === "income" ? "borrowed" : "lent";
@@ -351,9 +413,11 @@ export function useExpenses(userId: string | null) {
             }
           });
         }
+        vibrate([28, 42, 28]);
       });
     } else {
       queue({ kind: "insert", row: newE });
+      vibrate([28, 42, 28]);
     }
     return newE;
   }, [userId]);
@@ -397,6 +461,7 @@ export function useExpenses(userId: string | null) {
                 reimbursed_at: (serverRow.reimbursed_at as string) ?? null,
                 client_updated_at: (serverRow.client_updated_at as string) ?? undefined,
                 receipt_url: (serverRow.receipt_url as string) ?? undefined,
+                split_note: (serverRow.split_note as string) ?? undefined,
               } : e));
               toast({ title: "Resolved: Accepted Server Version" });
             }}
@@ -456,6 +521,7 @@ export function useExpenses(userId: string | null) {
           ...(patch.currency !== undefined && { currency: patch.currency }),
           ...(patch.fx_rate !== undefined && { fx_rate: patch.fx_rate }),
           ...(patch.is_reimbursable !== undefined && { is_reimbursable: patch.is_reimbursable }),
+          ...(patch.split_note !== undefined && { split_note: patch.split_note ?? null }),
           ...(patch.receipt_url !== undefined && { receipt_url: patch.receipt_url ?? null }),
           client_updated_at: clientUpdatedAt,
         }).eq("id", id);
@@ -732,7 +798,8 @@ export function useExpenses(userId: string | null) {
   return {
     expenses, categories, budgets,
     syncing, lastSync, sync,
-    pendingCount: pendingRef.current.length,
+    initialDataReady,
+    pendingCount,
     addExpense, updateExpense, deleteExpense,
     addCategory, renameCategory, deleteCategory, setCategoryStyle,
     addSubcategory, deleteSubcategory,

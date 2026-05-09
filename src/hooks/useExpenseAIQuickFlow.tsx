@@ -136,7 +136,7 @@ export function useExpenseAIQuickFlow({
     if (!confirmOpen) return;
     const picks = categories.length > 0 ? categories : DEFAULT_CATEGORIES;
     if (!picks.some((c) => c.name === confirmCategory)) {
-      setConfirmCategory(picks[0]?.name ?? "Other");
+      setConfirmCategory(picks[0]?.name ?? "Misc");
     }
   }, [confirmOpen, categories, confirmCategory]);
 
@@ -152,6 +152,8 @@ export function useExpenseAIQuickFlow({
         category?: string;
         date_explicit?: boolean;
         transcribed_text?: string;
+        /** From server; omit for local regex path so note heuristics apply */
+        is_income?: boolean;
       } | null = null;
 
       if (textToParse) {
@@ -182,43 +184,70 @@ export function useExpenseAIQuickFlow({
               date_explicit = true;
             }
 
-            let category = "Other";
+            let category = "Misc";
             const noteLower = cleanNote.toLowerCase();
             if (noteLower.includes("food") || noteLower.includes("lunch") || noteLower.includes("dinner") || noteLower.includes("cafe") || noteLower.includes("eat") || noteLower.includes("restaurant")) {
               category = "Food";
-            } else if (noteLower.includes("uber") || noteLower.includes("ola") || noteLower.includes("taxi") || noteLower.includes("auto") || noteLower.includes("cab") || noteLower.includes("travel")) {
-              category = "Transport";
-            } else if (noteLower.includes("rent") || noteLower.includes("room") || noteLower.includes("hostel")) {
-              category = "Housing";
-            } else if (noteLower.includes("wifi") || noteLower.includes("electricity") || noteLower.includes("bill") || noteLower.includes("water") || noteLower.includes("recharge")) {
-              category = "Utilities";
+            } else if (noteLower.includes("grocery") || noteLower.includes("bigbasket") || noteLower.includes("blinkit") || noteLower.includes("zepto")) {
+              category = "Groceries";
+            } else if (noteLower.includes("uber") || noteLower.includes("ola") || noteLower.includes("taxi") || noteLower.includes("auto") || noteLower.includes("cab") || noteLower.includes("travel") || noteLower.includes("fuel") || noteLower.includes("petrol")) {
+              category = "Travel";
+            } else if (noteLower.includes("rent") && !noteLower.includes("restaurant")) {
+              category = "Rent";
+            } else if (noteLower.includes("room") || noteLower.includes("hostel")) {
+              category = "Rent";
+            } else if (noteLower.includes("wifi") || noteLower.includes("electricity") || noteLower.includes("bill") || noteLower.includes("water") || noteLower.includes("recharge") || noteLower.includes("phone")) {
+              category = "Bills";
             } else if (noteLower.includes("amazon") || noteLower.includes("myntra") || noteLower.includes("shopping") || noteLower.includes("clothes") || noteLower.includes("flipkart")) {
               category = "Shopping";
+            } else if (noteLower.includes("salon") || noteLower.includes("haircut") || noteLower.includes("spa")) {
+              category = "Salon";
             }
 
             const matched = categories.find(c => c.name.toLowerCase() === category.toLowerCase());
+            const incomeHint =
+              noteLower.includes("salary") ||
+              noteLower.includes("freelance") ||
+              noteLower.includes("refund") ||
+              noteLower.includes("income") ||
+              noteLower.includes("bonus") ||
+              noteLower.includes("interest") ||
+              noteLower.includes("dividend");
             parsed = {
               amount,
               note: cleanNote,
               date,
-              category: matched?.name ?? "Other",
-              date_explicit
+              category: matched?.name ?? "Misc",
+              date_explicit,
+              is_income: incomeHint,
             };
           }
         }
       }
 
       if (!parsed) {
-        const payload: { text?: string; audio?: string; mimeType?: string } = {};
+        const payload: {
+          text?: string;
+          audio?: string;
+          mimeType?: string;
+          referenceDate?: string;
+          expenseCategories?: string[];
+          incomeCategories?: string[];
+        } = {};
         if (base64Audio) {
           payload.audio = base64Audio;
           payload.mimeType = "audio/webm";
         } else if (textToParse) {
           payload.text = textToParse;
         }
+        const ref = defaultDate || todayISO();
+        payload.referenceDate = ref;
+        const picks = categories.length > 0 ? categories : DEFAULT_CATEGORIES;
+        payload.expenseCategories = picks.filter((c) => c.type !== "income").map((c) => c.name);
+        payload.incomeCategories = picks.filter((c) => c.type === "income").map((c) => c.name);
 
         const { data, error } = await supabase.functions.invoke("nl-parse-expense", {
-          body: payload
+          body: payload,
         });
         if (error) throw error;
         if (data) {
@@ -228,7 +257,8 @@ export function useExpenseAIQuickFlow({
             date: data.date,
             category: data.category_guess,
             date_explicit: data.date_explicit,
-            transcribed_text: data.transcribed_text
+            transcribed_text: data.transcribed_text,
+            is_income: typeof data.is_income === "boolean" ? data.is_income : undefined,
           };
         }
       }
@@ -252,12 +282,23 @@ export function useExpenseAIQuickFlow({
         setConfirmDate(resolvedDate);
 
         const lowerNote = parsed.note.toLowerCase();
-        const isIncome = lowerNote.includes("salary") || lowerNote.includes("freelance") || lowerNote.includes("refund") || lowerNote.includes("income") || lowerNote.includes("bonus");
+        const fallbackIncome =
+          lowerNote.includes("salary") ||
+          lowerNote.includes("freelance") ||
+          lowerNote.includes("refund") ||
+          lowerNote.includes("income") ||
+          lowerNote.includes("bonus") ||
+          lowerNote.includes("interest") ||
+          lowerNote.includes("dividend");
+        const isIncome =
+          typeof parsed.is_income === "boolean" ? parsed.is_income : fallbackIncome;
         setConfirmType(isIncome ? "income" : "expense");
 
         const categoryOptions = categories.length > 0 ? categories : DEFAULT_CATEGORIES;
-        const matched = categoryOptions.find(c => c.name.toLowerCase() === parsed.category?.toLowerCase());
-        setConfirmCategory(matched?.name ?? categoryOptions[0]?.name ?? "Other");
+        const typeFiltered = categoryOptions.filter((c) => (isIncome ? c.type === "income" : c.type !== "income"));
+        const pool = typeFiltered.length > 0 ? typeFiltered : categoryOptions;
+        const matched = pool.find((c) => c.name.toLowerCase() === parsed.category?.toLowerCase());
+        setConfirmCategory(matched?.name ?? pool[0]?.name ?? categoryOptions[0]?.name ?? "Misc");
 
         setConfirmOpen(true);
         vibrate([40, 60]);
@@ -517,7 +558,6 @@ export function useExpenseAIQuickFlow({
     });
 
     setConfirmOpen(false);
-    vibrate([40, 60]);
     onAfterExpenseLogged?.();
   }, [categories, confirmAmount, confirmCategory, confirmDate, confirmNote, confirmType, onAdd, onAfterExpenseLogged]);
 

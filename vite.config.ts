@@ -29,12 +29,24 @@ export default defineConfig(({ mode }) => ({
         name: "Finlo",
         short_name: "Finlo",
         description: "Personal expense tracker",
+        id: "/",
         start_url: "/",
+        scope: "/",
         display: "standalone",
+        display_override: ["standalone", "minimal-ui", "browser"],
         background_color: "#0b0d12",
         theme_color: "#0b0d12",
         icons: [
           { src: "/finlo-logo.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+        ],
+        shortcuts: [
+          {
+            name: "Add expense",
+            short_name: "Add",
+            description: "Log a new transaction",
+            url: "/?action=add",
+            icons: [{ src: "/finlo-logo.png", sizes: "1024x1024", type: "image/png" }],
+          },
         ],
         share_target: {
           action: "/",

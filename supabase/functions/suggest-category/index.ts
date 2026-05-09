@@ -1,15 +1,18 @@
 import { requireAuthUser } from "../_shared/auth.ts";
 import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { normalizeCategory } from "../_shared/parseNormalize.ts";
 
 const STATIC_MATCHES: Record<string, string> = {
-  uber: "Transport",
-  ola: "Transport",
-  auto: "Transport",
-  metro: "Transport",
-  cab: "Transport",
-  taxi: "Transport",
-  train: "Transport",
-  flight: "Transport",
+  uber: "Travel",
+  ola: "Travel",
+  auto: "Travel",
+  metro: "Travel",
+  cab: "Travel",
+  taxi: "Travel",
+  train: "Travel",
+  flight: "Travel",
+  petrol: "Travel",
+  fuel: "Travel",
   swiggy: "Food",
   zomato: "Food",
   restaurant: "Food",
@@ -18,32 +21,39 @@ const STATIC_MATCHES: Record<string, string> = {
   breakfast: "Food",
   cafe: "Food",
   coffee: "Food",
-  groceries: "Food",
-  supermarket: "Food",
-  netflix: "Entertainment",
-  spotify: "Entertainment",
-  movie: "Entertainment",
-  theatre: "Entertainment",
-  game: "Entertainment",
-  steam: "Entertainment",
-  rent: "Housing",
-  maintenance: "Housing",
-  electricity: "Utilities",
-  water: "Utilities",
-  wifi: "Utilities",
-  internet: "Utilities",
-  gas: "Utilities",
-  medical: "Medical",
-  doctor: "Medical",
-  pharmacy: "Medical",
-  medicine: "Medical",
-  hospital: "Medical",
-  clinic: "Medical",
+  groceries: "Groceries",
+  supermarket: "Groceries",
+  bigbasket: "Groceries",
+  blinkit: "Groceries",
+  zepto: "Groceries",
+  netflix: "Misc",
+  spotify: "Misc",
+  movie: "Misc",
+  theatre: "Misc",
+  game: "Misc",
+  steam: "Misc",
+  rent: "Rent",
+  maintenance: "Bills",
+  electricity: "Bills",
+  water: "Bills",
+  wifi: "Bills",
+  internet: "Bills",
+  gas: "Bills",
+  phone: "Bills",
+  medical: "Misc",
+  doctor: "Misc",
+  pharmacy: "Misc",
+  medicine: "Misc",
+  hospital: "Misc",
+  clinic: "Misc",
   amazon: "Shopping",
   myntra: "Shopping",
   clothes: "Shopping",
   flipkart: "Shopping",
   shoes: "Shopping",
+  salon: "Salon",
+  haircut: "Salon",
+  spa: "Salon",
 };
 
 Deno.serve(async (req) => {
@@ -58,16 +68,17 @@ Deno.serve(async (req) => {
 
     const cleanNote = note.toLowerCase().trim().slice(0, 500);
 
+    const categoryNames = categories.length > 0 ? categories : ["Food", "Groceries", "Travel", "Bills", "Shopping", "Rent", "Misc", "Salon", "Lending", "Hehe", "Salary", "Freelance", "Refund", "Other Income"];
+
     for (const [kw, cat] of Object.entries(STATIC_MATCHES)) {
       if (cleanNote.includes(kw)) {
-        return jsonResponse(req, { category: cat, source: "static" });
+        const category = normalizeCategory(cat, categoryNames);
+        return jsonResponse(req, { category, source: "static" });
       }
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) return jsonResponse(req, { category: "Other", error: "Category service unavailable" }, 503);
-
-    const categoryNames = categories.length > 0 ? categories : ["Food", "Transport", "Utilities", "Entertainment", "Housing", "Medical", "Shopping", "Tax", "Other"];
+    if (!LOVABLE_API_KEY) return jsonResponse(req, { category: "Misc", error: "Category service unavailable" }, 503);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -77,22 +88,26 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
+        temperature: 0,
         messages: [
           {
             role: "system",
-            content: `You are an expert category suggestions assistant. Given a short transaction note and available categories, pick the single most relevant category.`,
+            content: `You classify short expense/income notes into ONE category from the user's list only.
+Rules:
+- Return exactly one string that matches one of the provided categories (case-insensitive ok in reasoning; output must be the canonical name from the list).
+- Prefer specific categories (e.g. Groceries vs Food for supermarkets; Travel for cab/metro/fuel; Bills for utilities).`,
           },
           {
             role: "user",
-            content: `Transaction: "${cleanNote.slice(0, 200)}"
-Categories: ${JSON.stringify(categoryNames)}`,
+            content: `Note: "${cleanNote.slice(0, 200)}"
+Allowed categories (pick one): ${JSON.stringify(categoryNames)}`,
           },
         ],
         tools: [{
           type: "function",
           function: {
             name: "suggest_category",
-            description: "Return suggested category",
+            description: "Return suggested category exactly from the allowed list",
             parameters: {
               type: "object",
               properties: { category: { type: "string" } },
@@ -105,24 +120,26 @@ Categories: ${JSON.stringify(categoryNames)}`,
     });
 
     if (!response.ok) {
-      return jsonResponse(req, { category: "Other" }, 200);
+      return jsonResponse(req, { category: normalizeCategory("Misc", categoryNames) }, 200);
     }
 
     const data = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    let category = "Other";
+    let raw = "Misc";
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
-        category = parsed.category ?? "Other";
+        raw = typeof parsed.category === "string" ? parsed.category : "Misc";
       } catch {
-        category = "Other";
+        raw = "Misc";
       }
     }
+
+    const category = normalizeCategory(raw, categoryNames);
 
     return jsonResponse(req, { category, source: "gemini" });
   } catch {
     console.error("suggest-category error");
-    return jsonResponse(req, { category: "Other" }, 200);
+    return jsonResponse(req, { category: "Misc" }, 200);
   }
 });

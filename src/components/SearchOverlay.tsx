@@ -83,7 +83,7 @@ export function SearchOverlay({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="bg-background border-border w-full sm:max-w-[520px] overflow-y-auto p-6"
+        className="bg-background border-border w-full sm:max-w-[520px] overflow-y-auto p-6 max-md:pb-[var(--finlo-mobile-tab-clearance)]"
       >
         <SheetHeader className="text-left mb-4">
           <SheetTitle className="font-serif text-3xl font-normal text-foreground">
@@ -118,7 +118,7 @@ export function SearchOverlay({
             No expenses match your filters.
           </p>
         ) : (
-          <div className="flex flex-col divide-y divide-border/50 pb-20">
+          <div className="flex flex-col divide-y divide-border/50 pb-20 max-md:pb-[var(--finlo-mobile-tab-clearance)]">
             {filtered.map((e) => {
               const isSelected = selectedIds.has(e.id);
               return (

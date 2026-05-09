@@ -1,6 +1,6 @@
 import { getCurrencySymbol,  Expense, formatINR, baseAmountOf } from "@/lib/expenses";
 import { CURRENCY_SYMBOLS, getBaseCurrency } from "@/lib/fx";
-import { Trash2 } from "lucide-react";
+import { Trash2, Users, AlertTriangle } from "lucide-react";
 import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
 import type { CategoryDef } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
@@ -11,9 +11,11 @@ interface Props {
   onSelect?: (e: Expense) => void;
   showDate?: boolean;
   categories?: CategoryDef[];
+  /** Unusually high vs typical spend in this category */
+  showAnomaly?: boolean;
 }
 
-export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }: Props) {
+export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories, showAnomaly }: Props) {
   const def = categories?.find((c) => c.name === expense.category);
   const Icon = getIconForCategory(expense.category, def?.icon);
   const bgColor = getColorForCategory(expense.category, def?.color);
@@ -70,7 +72,17 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories }
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1">
+          {showAnomaly && (
+            <span title="Higher than usual for this category" className="text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+            </span>
+          )}
+          {(expense.is_reimbursable || !!expense.split_note?.trim()) && (
+            <Users className="h-3.5 w-3.5 text-amber-700/75 dark:text-amber-400/85 shrink-0" aria-label="Split or reimbursable" />
+          )}
+        </div>
         <div className="flex flex-col items-end">
           <span className={cn(
             "font-serif text-2xl tabular-nums",

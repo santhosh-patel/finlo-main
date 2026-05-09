@@ -1,4 +1,4 @@
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, Loader2 } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, Loader2, HandCoins, ChevronRight } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
@@ -38,6 +38,8 @@ import {
   baseAmountOf,
 } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { ReceiptScanPrefill } from "@/components/AddExpenseSheet";
 
 type View = "today" | "week" | "month";
 
@@ -59,7 +61,7 @@ const Index = () => {
   const expenseUserId = !isAdmin ? user?.id ?? null : null;
   const {
     expenses, categories, budgets,
-    syncing, lastSync, sync,
+    syncing, lastSync, sync, initialDataReady,
     addExpense, updateExpense, deleteExpense,
     addCategory, renameCategory, deleteCategory, setCategoryStyle,
     addSubcategory, deleteSubcategory,
@@ -86,6 +88,34 @@ const Index = () => {
   const quickAddTranscriptRef = useRef<((text: string) => void) | null>(null);
   const [sharePrefill, setSharePrefill] = useState<string | undefined>();
   const [pullRefreshEnabled, setPullRefreshEnabled] = useState(false);
+  const [receiptScanPrefill, setReceiptScanPrefill] = useState<ReceiptScanPrefill | null>(null);
+
+  const clearReceiptPrefill = useCallback(() => setReceiptScanPrefill(null), []);
+
+  const anomalyExpenseIds = useMemo(() => {
+    const ids = new Set<string>();
+    const byCat: Record<string, Expense[]> = {};
+    expenses.forEach((e) => {
+      if ((e.type ?? "expense") !== "expense") return;
+      if (!byCat[e.category]) byCat[e.category] = [];
+      byCat[e.category].push(e);
+    });
+    Object.values(byCat).forEach((list) => {
+      if (list.length < 4) return;
+      list.forEach((e) => {
+        const others = list.filter((x) => x.id !== e.id);
+        const mean = others.reduce((a, x) => a + baseAmountOf(x), 0) / others.length;
+        if (mean > 0 && baseAmountOf(e) > 2 * mean) ids.add(e.id);
+      });
+    });
+    return ids;
+  }, [expenses]);
+
+  const totalBudgetCap = useMemo(() => {
+    const vals = Object.values(budgets);
+    if (vals.length === 0) return null;
+    return vals.reduce((a, b) => a + b, 0);
+  }, [budgets]);
 
   const today = todayISO();
   const yesterday = addDays(today, -1);
@@ -95,6 +125,18 @@ const Index = () => {
   const [dayAnchor, setDayAnchor] = useState(today);
   const [weekAnchor, setWeekAnchor] = useState(today);
   const [monthAnchor, setMonthAnchor] = useState(today);
+
+  const monthSpendForBudgets = useMemo(() => {
+    const ms = startOfMonthISO();
+    return expenses
+      .filter((e) => e.date >= ms && e.date <= today && (e.type ?? "expense") === "expense")
+      .reduce((a, e) => a + baseAmountOf(e), 0);
+  }, [expenses, today]);
+
+  const safeToSpend =
+    totalBudgetCap != null && totalBudgetCap > 0
+      ? Math.max(0, totalBudgetCap - monthSpendForBudgets)
+      : null;
 
   interface Loan {
     id: string;
@@ -143,17 +185,25 @@ const Index = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const action = params.get("action")?.trim().toLowerCase() ?? "";
+    if (action === "add") {
+      setEditing(null);
+      setOpen(true);
+    }
     const title = params.get("title")?.trim() ?? "";
     const text = params.get("text")?.trim() ?? "";
     const url = params.get("url")?.trim() ?? "";
     const parts = [title, text, url].filter(Boolean);
-    if (parts.length === 0) return;
-    setSharePrefill(parts.join("\n"));
-    window.history.replaceState(
-      {},
-      document.title,
-      `${window.location.pathname}${window.location.hash}`,
-    );
+    if (parts.length > 0) {
+      setSharePrefill(parts.join("\n"));
+    }
+    if (action === "add" || parts.length > 0) {
+      window.history.replaceState(
+        {},
+        document.title,
+        `${window.location.pathname}${window.location.hash}`,
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -243,6 +293,9 @@ const Index = () => {
     onAdd: addExpense,
     onParsedTranscript: (t) => quickAddTranscriptRef.current?.(t),
     onTapAddExpense: () => {
+      setSettingsOpen(false);
+      setLoansOpen(false);
+      setBudgetsOpen(false);
       setEditing(null);
       setOpen(true);
     },
@@ -250,8 +303,8 @@ const Index = () => {
   });
 
   const handlePullRefresh = useCallback(async () => {
-    await sync();
-    await loadLoans();
+    const didSync = await sync({ skipIfNoPending: true });
+    if (didSync) await loadLoans();
   }, [sync, loadLoans]);
 
   const { phase: pullPhase, pullPx } = usePullToRefresh(
@@ -348,17 +401,17 @@ const Index = () => {
         </div>
       )}
 
-      <div className="w-full max-w-[520px] mx-auto px-6 pt-0 pb-32">
-        <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md -mx-6 px-6 pt-6 pb-4 mb-8 border-b border-border/10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+      <div className="w-full max-w-[640px] mx-auto px-4 sm:px-6 pt-0 pb-[var(--finlo-mobile-tab-clearance)] md:pb-24">
+        <header className="sticky z-40 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 sm:pt-5 pb-3 mb-6 border-b border-border/40 flex items-center justify-between gap-2 top-[env(safe-area-inset-top,0px)]">
+          <div className="flex items-center gap-2.5 min-w-0">
             <img src="/finlo-logo.png" alt="Finlo" className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl object-contain shrink-0" />
             <div className="min-w-0">
               <h1 className="font-serif text-lg sm:text-xl text-foreground leading-none truncate">Finlo</h1>
-              <p className="hidden sm:block text-[10px] text-ink-muted mt-1 tracking-wider uppercase truncate">{profile.name}</p>
+              <p className="hidden sm:block text-[11px] text-ink-muted mt-1 truncate">Hi {profile.name}</p>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1" role="tablist" aria-label="Ledger view">
+            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1 border border-border/50" role="tablist" aria-label="Ledger view">
               {(["today", "week", "month"] as View[]).map((v) => (
                 <button
                   key={v}
@@ -384,16 +437,16 @@ const Index = () => {
           </div>
         </header>
 
-        <section className="flex flex-col items-center text-center space-y-5 mb-8">
-          <span className="text-ink-muted text-[10px] tracking-[0.25em] uppercase font-medium">
+        <section className="rounded-3xl border border-border/50 bg-card p-5 sm:p-6 mb-6">
+          <span className="text-ink-muted text-[10px] tracking-[0.2em] uppercase font-medium block mb-3">
             {heroLabel}
           </span>
-          <div className="font-serif text-5xl xs:text-6xl md:text-8xl font-normal tracking-tight text-foreground flex items-start justify-center max-w-full px-4">
-            <span className="text-ink-muted/40 text-2xl md:text-4xl mt-1.5 md:mt-3 mr-1 shrink-0">{getCurrencySymbol()}</span>
+          <div className="font-serif text-4xl sm:text-5xl font-normal tracking-tight text-foreground flex items-start max-w-full">
+            <span className="text-ink-muted/40 text-xl sm:text-2xl mt-1 mr-1 shrink-0">{getCurrencySymbol()}</span>
             <span className="truncate">{formatINR(heroTotal)}</span>
           </div>
           {(heroIncome > 0 || heroNet !== -heroTotal) && (
-            <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-4 text-xs mt-3">
               <span className="text-emerald-600 dark:text-emerald-400">
                 + {getCurrencySymbol()}{formatINR(heroIncome)} in
               </span>
@@ -406,24 +459,54 @@ const Index = () => {
               </span>
             </div>
           )}
+          {safeToSpend !== null && (
+            <div className="pt-4 mt-4 border-t border-border/40">
+              <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium mb-1">
+                Safe to spend (month)
+              </p>
+              <p className="font-serif text-2xl sm:text-3xl text-foreground tabular-nums">
+                {getCurrencySymbol()}{formatINR(safeToSpend)}
+              </p>
+              <p className="text-[10px] text-ink-muted mt-1 leading-snug">
+                Left across your budgets after spending this month to date
+              </p>
+            </div>
+          )}
         </section>
 
         <PeriodNav label={periodLabel} onPrev={onPrev} onNext={onNext} canNext={canNext} />
 
-        <QuickAddBar
-          key={quickAddCycle}
-          registerTranscriptSink={(fn) => {
-            quickAddTranscriptRef.current = fn;
-          }}
-          ai={{
-            loading: expenseAI.loading,
-            isListening: expenseAI.isListening,
-            parseQuickAddText: expenseAI.parseQuickAddText,
-          }}
-          categories={categories}
-          defaultDate={quickDefaultDate}
-          sharePrefill={sharePrefill}
-        />
+        {!initialDataReady && expenseUserId ? (
+          <div className="space-y-5 py-6" aria-busy="true">
+            <Skeleton className="h-24 w-full rounded-3xl" />
+            <Skeleton className="h-14 w-full rounded-2xl" />
+            <Skeleton className="h-40 w-full rounded-3xl" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+          </div>
+        ) : (
+          <>
+        <section className="rounded-2xl border border-border/50 bg-card p-3 mb-6">
+          <p className="text-[10px] tracking-[0.18em] uppercase text-ink-muted font-medium px-2 pt-1">Quick capture</p>
+          <QuickAddBar
+            key={quickAddCycle}
+            registerTranscriptSink={(fn) => {
+              quickAddTranscriptRef.current = fn;
+            }}
+            ai={{
+              loading: expenseAI.loading,
+              isListening: expenseAI.isListening,
+              parseQuickAddText: expenseAI.parseQuickAddText,
+            }}
+            categories={categories}
+            defaultDate={quickDefaultDate}
+            sharePrefill={sharePrefill}
+            onReceiptScan={(prefill) => {
+              setReceiptScanPrefill(prefill);
+              setEditing(null);
+              setOpen(true);
+            }}
+          />
+        </section>
 
         <div className="hidden sm:flex justify-center mb-12">
           <Button
@@ -434,46 +517,57 @@ const Index = () => {
           </Button>
         </div>
 
-        {/* Lending Tracker Summary Widget */}
         {(owedToMeSum > 0 || iOweSum > 0) && (
-          <div 
+          <div
             role="button"
             tabIndex={0}
             onClick={() => setLoansOpen(true)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setLoansOpen(true); }}
-            className="mb-8 p-4 rounded-2xl border border-border/40 bg-surface/30 backdrop-blur-md flex items-center justify-between cursor-pointer hover:bg-surface/50 transition-all"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setLoansOpen(true);
+            }}
+            className="mb-6 group rounded-2xl border border-border/50 bg-card/80 px-3 py-2.5 sm:px-4 sm:py-3 cursor-pointer hover:bg-surface/50 active:scale-[0.99] transition-[background,transform] duration-150"
           >
-            <div className="flex items-center gap-3">
-              <span className="h-8 w-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-serif text-lg font-semibold shrink-0">₹</span>
-              <div className="min-w-0">
-                <h4 className="text-xs font-semibold text-foreground">Lending & Debt</h4>
-                <p className="text-[10px] text-ink-muted truncate">Active balances from loans</p>
+            <div className="flex flex-col gap-2.5 min-[400px]:flex-row min-[400px]:items-center min-[400px]:gap-3">
+              <div className="flex items-center justify-between gap-2 min-[400px]:justify-start min-[400px]:shrink-0">
+                <div className="flex items-center gap-2 text-ink-muted">
+                  <HandCoins className="h-4 w-4 text-foreground/70 shrink-0" aria-hidden />
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em]">Loans</span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-ink-muted/40 group-hover:text-ink-muted/65 transition-colors shrink-0 min-[400px]:hidden" aria-hidden />
               </div>
-            </div>
-            <div className="flex gap-4 text-right shrink-0">
-              {owedToMeSum > 0 && (
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-ink-muted">Owed to me</p>
-                  <p className="font-serif text-sm text-emerald-600 dark:text-emerald-400 tabular-nums font-semibold mt-0.5">
-                    +{getCurrencySymbol()}{formatINR(owedToMeSum)}
-                  </p>
+              <div className="flex flex-1 items-stretch min-[400px]:items-center gap-2 min-[400px]:justify-end min-[400px]:min-w-0">
+                <div
+                  className={cn(
+                    "grid gap-2 flex-1 min-[400px]:flex-none min-[400px]:flex min-[400px]:flex-wrap min-[400px]:justify-end",
+                    owedToMeSum > 0 && iOweSum > 0 ? "grid-cols-2" : "grid-cols-1",
+                  )}
+                >
+                  {owedToMeSum > 0 && (
+                    <div className="min-w-0 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 px-2.5 py-1.5 sm:px-3 sm:py-2 min-[400px]:text-right">
+                      <p className="text-[9px] uppercase tracking-wider text-ink-muted/90">In</p>
+                      <p className="font-serif text-sm sm:text-base text-emerald-600 dark:text-emerald-400 tabular-nums font-medium leading-tight truncate">
+                        +{getCurrencySymbol()}{formatINR(owedToMeSum)}
+                      </p>
+                    </div>
+                  )}
+                  {iOweSum > 0 && (
+                    <div className="min-w-0 rounded-xl bg-destructive/5 px-2.5 py-1.5 sm:px-3 sm:py-2 min-[400px]:text-right">
+                      <p className="text-[9px] uppercase tracking-wider text-ink-muted/90">Out</p>
+                      <p className="font-serif text-sm sm:text-base text-destructive tabular-nums font-medium leading-tight truncate">
+                        −{getCurrencySymbol()}{formatINR(iOweSum)}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-              {iOweSum > 0 && (
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-ink-muted">I owe</p>
-                  <p className="font-serif text-sm text-destructive tabular-nums font-semibold mt-0.5">
-                    −{getCurrencySymbol()}{formatINR(iOweSum)}
-                  </p>
-                </div>
-              )}
+                <ChevronRight className="hidden min-[400px]:block h-4 w-4 text-ink-muted/35 group-hover:text-ink-muted/60 transition-colors shrink-0 self-center" aria-hidden />
+              </div>
             </div>
           </div>
         )}
 
         {view === "today" && (
           <section>
-            <h3 className="text-ink-muted/70 text-[10px] tracking-[0.2em] uppercase font-medium mb-6 text-center">
+            <h3 className="text-ink-muted/80 text-[10px] tracking-[0.2em] uppercase font-medium mb-4">
               {dayExpenses.length === 0 ? "Nothing logged" : "Recorded"}
             </h3>
             {dayExpenses.length === 0 ? (
@@ -493,6 +587,7 @@ const Index = () => {
                     key={e.id} expense={e} onSelect={setDetails}
                     onDelete={() => handleAskDelete(e)}
                     categories={categories}
+                    showAnomaly={anomalyExpenseIds.has(e.id)}
                   />
                 ))}
               </div>
@@ -524,7 +619,13 @@ const Index = () => {
                         ) : (
                           <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
                             {items.map((e) => (
-                              <ExpenseRow key={e.id} expense={e} onSelect={setDetails} categories={categories} />
+                              <ExpenseRow
+                                key={e.id}
+                                expense={e}
+                                onSelect={setDetails}
+                                categories={categories}
+                                showAnomaly={anomalyExpenseIds.has(e.id)}
+                              />
                             ))}
                           </div>
                         )}
@@ -538,7 +639,13 @@ const Index = () => {
         )}
 
         {view === "week" && (
-          <WeeklyView expenses={expenses} categories={categories} anchor={weekAnchor} onSelect={setDetails} />
+          <WeeklyView
+            expenses={expenses}
+            categories={categories}
+            anchor={weekAnchor}
+            onSelect={setDetails}
+            anomalyExpenseIds={anomalyExpenseIds}
+          />
         )}
 
         {view === "month" && (
@@ -546,16 +653,21 @@ const Index = () => {
             expenses={expenses} budgets={budgets}
             onOpenBudgets={() => setBudgetsOpen(true)}
             anchor={monthAnchor} onSelect={setDetails} categories={categories}
+            anomalyExpenseIds={anomalyExpenseIds}
           />
+        )}
+          </>
         )}
       </div>
 
       <AddExpenseSheet
-        open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}
+        open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditing(null); clearReceiptPrefill(); } }}
         categories={categories} onAdd={addExpense}
         onAddCategory={addCategory} onAddSubcategory={addSubcategory}
         editing={editing} onUpdate={updateExpense}
         budgets={budgets} spentByCategory={spentByCategory}
+        receiptScanPrefill={receiptScanPrefill}
+        onReceiptScanPrefillConsumed={clearReceiptPrefill}
       />
 
       <SearchOverlay
@@ -715,80 +827,89 @@ const Index = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Premium Glassmorphic Bottom Navigation Bar for Mobile */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border/40 z-40 flex items-center justify-around md:hidden px-4 shadow-lg" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)", paddingTop: "6px", height: "auto" }}>
-        <button
-          onClick={() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
-          aria-label="Home"
-          title="Home"
-        >
-          <Home className="h-5 w-5" />
-          <span className="text-[9px] font-medium tracking-wide">Home</span>
-        </button>
+      {/* Mobile bottom navigation — hidden while Maya chat is open */}
+      {!askAIOpen && (
+      <div 
+        className="fixed z-[60] bottom-0 inset-x-0 md:hidden flex justify-center pointer-events-none pb-4" 
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+      >
+        <div className="bg-background/90 backdrop-blur-xl border border-border/60 shadow-[0_8px_32px_-8px_hsl(var(--foreground)/0.15)] rounded-full flex items-center justify-between px-2 py-1.5 pointer-events-auto w-[calc(100%-2rem)] max-w-[380px]">
+          <button
+            onClick={() => {
+              setSettingsOpen(false);
+              setLoansOpen(false);
+              setBudgetsOpen(false);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="flex items-center justify-center text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            aria-label="Home"
+            title="Home"
+          >
+            <Home className="h-[22px] w-[22px]" strokeWidth={2.25} />
+          </button>
 
-        <button
-          onClick={() => setBudgetsOpen(true)}
-          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
-          aria-label="Budgets"
-          title="Budgets"
-        >
-          <Wallet className="h-5 w-5" />
-          <span className="text-[9px] font-medium tracking-wide">Budgets</span>
-        </button>
+          <button
+            onClick={() => {
+              setSettingsOpen(false);
+              setLoansOpen(false);
+              setBudgetsOpen(true);
+            }}
+            className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            aria-label="Budgets"
+            title="Budgets"
+          >
+            <Wallet className="h-[22px] w-[22px]" strokeWidth={2.25} />
+          </button>
 
-        {/* Center FAB — lifted, fluid motion */}
-        <button
-          type="button"
-          {...expenseAI.fabPointerProps}
-          className={cn(
-            "relative isolate h-14 w-14 shrink-0 overflow-hidden rounded-full",
-            "flex items-center justify-center",
-            "bg-gradient-to-br from-foreground to-foreground/88",
-            "text-background",
-            "shadow-[0_12px_32px_-10px_hsl(var(--foreground)/0.5),0_4px_16px_-4px_hsl(220_30%_12%/0.12)]",
-            "dark:shadow-[0_14px_40px_-12px_hsla(40,8%,98%,0.14),0_4px_16px_-4px_hsl(220_50%_4%/0.45)]",
-            "ring-[3.5px] ring-background/95 dark:ring-background/90",
-            "touch-manipulation select-none -translate-y-4",
-            "transition-[transform,box-shadow] duration-300 ease-out",
-            "hover:scale-[1.052] hover:-translate-y-[1.075rem]",
-            "hover:shadow-[0_16px_40px_-12px_hsl(var(--foreground)/0.52),0_6px_20px_-6px_hsl(220_30%_12%/0.14)]",
-            "active:scale-[0.93] active:-translate-y-[0.925rem]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/55 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background",
-            "before:pointer-events-none before:absolute before:inset-0 before:rounded-full",
-            "before:bg-gradient-to-br before:from-white/[0.14] before:via-transparent before:to-transparent",
-            "dark:before:from-white/[0.08]",
-            expenseAI.isListening &&
-              "scale-[1.04] shadow-[0_0_0_6px_rgba(244,114,182,0.16),0_12px_32px_-10px_hsl(var(--foreground)/0.48)] ring-rose-400/45"
-          )}
-          aria-label="Add transaction. Press and hold to log by voice."
-          title="Tap to add. Hold for voice."
-        >
-          <Plus className="relative z-[1] h-6 w-6 shrink-0 stroke-[2.25]" strokeLinecap="round" strokeLinejoin="round" />
-        </button>
+          {/* Center FAB */}
+          <button
+            type="button"
+            {...expenseAI.fabPointerProps}
+            className={cn(
+              "relative isolate h-12 w-12 shrink-0 overflow-hidden rounded-full mx-1",
+              "flex items-center justify-center",
+              "bg-foreground text-background",
+              "shadow-[0_4px_12px_-4px_hsl(var(--foreground)/0.3)]",
+              "transition-transform duration-300 ease-out",
+              "active:scale-90",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2",
+              expenseAI.isListening &&
+                "scale-105 bg-rose-500 text-white shadow-[0_0_0_4px_rgba(244,114,182,0.2)]"
+            )}
+            aria-label="Add transaction. Press and hold to log by voice."
+            title="Tap to add. Hold for voice."
+          >
+            <Plus className="relative z-10 h-6 w-6 stroke-[2.5]" />
+          </button>
 
-        <button
-          onClick={() => setLoansOpen(true)}
-          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
-          aria-label="Loans"
-          title="Loans"
-        >
-          <ArrowLeftRight className="h-5 w-5" />
-          <span className="text-[9px] font-medium tracking-wide">Loans</span>
-        </button>
+          <button
+            onClick={() => {
+              setSettingsOpen(false);
+              setBudgetsOpen(false);
+              setLoansOpen(true);
+            }}
+            className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            aria-label="Loans"
+            title="Loans"
+          >
+            <ArrowLeftRight className="h-[22px] w-[22px]" strokeWidth={2.25} />
+          </button>
 
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="flex flex-col items-center justify-center text-ink-muted hover:text-foreground active:scale-95 transition-all gap-0.5 h-full px-3"
-          aria-label="Settings"
-          title="Settings"
-        >
-          <SettingsIcon className="h-5 w-5" />
-          <span className="text-[9px] font-medium tracking-wide">Settings</span>
-        </button>
+          <button
+            onClick={() => {
+              setLoansOpen(false);
+              setBudgetsOpen(false);
+              setSettingsOpen(true);
+            }}
+            className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            aria-label="Settings"
+            title="Settings"
+          >
+            <SettingsIcon className="h-[22px] w-[22px]" strokeWidth={2.25} />
+          </button>
+        </div>
       </div>
+      )}
 
       {/* Desktop / tablet: floating add (mobile uses bottom bar FAB) */}
       <button
@@ -804,7 +925,9 @@ const Index = () => {
           "hover:bg-foreground/90 active:scale-95 transition-transform",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/55 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         )}
-        style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        style={{
+          marginBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))",
+        }}
         aria-label="Add transaction"
         title="Add transaction"
       >

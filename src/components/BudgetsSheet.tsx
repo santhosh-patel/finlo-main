@@ -80,7 +80,7 @@ export function BudgetsSheet({
           </p>
         </SheetHeader>
 
-        <div className="mt-6 space-y-4 pb-8">
+        <div className="mt-6 space-y-4 pb-8 max-md:pb-[var(--finlo-mobile-tab-clearance)]">
           {categories.map((c) => {
             const spent = spentByCategory[c.name] || 0;
             const draftRaw = (draft[c.name] ?? "").trim();

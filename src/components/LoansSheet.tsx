@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { formatINR, getCurrencySymbol, todayISO } from "@/lib/expenses";
-import { ArrowDownLeft, ArrowUpRight, Check, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Check, Loader2, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RollingDatePicker } from "./RollingDatePicker";
 
@@ -99,11 +99,28 @@ export function LoansSheet({ open, onOpenChange, userId }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="bg-background border-border w-full sm:max-w-[520px] overflow-y-auto p-6">
-        <SheetHeader className="text-left mb-6">
-          <SheetTitle className="font-serif text-3xl font-normal text-foreground">Lending</SheetTitle>
-          <p className="text-xs text-ink-muted mt-1">Track money you've lent out or borrowed.</p>
-        </SheetHeader>
+      <SheetContent
+        side="right"
+        hideCloseButton
+        overlayClassName="z-[55]"
+        className="bg-background border-border w-full sm:max-w-[520px] overflow-y-auto p-6 max-md:pb-[var(--finlo-mobile-tab-clearance)] z-[55] pt-[calc(1.5rem+env(safe-area-inset-top,0px))]"
+      >
+        <div className="flex items-start gap-2 mb-6">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0 rounded-full -ml-2 -mt-1 h-10 w-10"
+            onClick={() => onOpenChange(false)}
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <SheetHeader className="text-left space-y-1 flex-1 p-0">
+            <SheetTitle className="font-serif text-2xl sm:text-3xl font-normal text-foreground">Lending</SheetTitle>
+            <p className="text-xs text-ink-muted">Track money you've lent out or borrowed.</p>
+          </SheetHeader>
+        </div>
 
         <div className="grid grid-cols-2 gap-3 mb-6">
           <div className="rounded-2xl border border-border/50 bg-surface/40 p-4">

@@ -304,6 +304,7 @@ export type Database = {
           note: string | null
           payment_method: string
           receipt_url: string | null
+          split_note: string | null
           reimbursed_at: string | null
           subcategory: string | null
           type: string
@@ -328,6 +329,7 @@ export type Database = {
           payment_method?: string
           receipt_url?: string | null
           reimbursed_at?: string | null
+          split_note?: string | null
           subcategory?: string | null
           type?: string
           updated_at?: string
@@ -351,6 +353,7 @@ export type Database = {
           payment_method?: string
           receipt_url?: string | null
           reimbursed_at?: string | null
+          split_note?: string | null
           subcategory?: string | null
           type?: string
           updated_at?: string

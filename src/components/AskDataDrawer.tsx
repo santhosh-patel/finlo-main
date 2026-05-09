@@ -71,7 +71,7 @@ interface Props {
   ) => void;
 }
 
-const QUICK_PROMPTS = [
+const SUGGESTED_QUERIES = [
   "Summarize my spending",
   "What is my largest expense?",
   "How much spent on Food?",
@@ -79,8 +79,8 @@ const QUICK_PROMPTS = [
   "Log a ₹500 Coffee expense today",
 ];
 
-const MAYA_WELCOME =
-  "Hi! I'm Maya. Ask about your spending, or save entries like \"₹450 Food lunch today\". When I propose new categories or transactions, tap \"Add to Finlo\" below my reply to confirm.";
+const MAYA_INTRO =
+  "Ask about your money or describe a purchase to log it. Use \"Add to Finlo\" when Maya suggests entries.";
 
 export function AskDataDrawer({
   open,
@@ -108,6 +108,7 @@ export function AskDataDrawer({
   const [renameValue, setRenameValue] = useState("");
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom helper
   useEffect(() => {
@@ -186,14 +187,7 @@ export function AskDataDrawer({
         });
         setMessages(mapped);
       } else {
-        // Welcome text on clean sessions
-        setMessages([
-          {
-            id: "welcome",
-            sender: "bot",
-            text: MAYA_WELCOME,
-          },
-        ]);
+        setMessages([]);
       }
     } catch (e) {
       console.error("Failed to load chat messages:", e);
@@ -206,13 +200,7 @@ export function AskDataDrawer({
     if (activeSessionId) {
       loadMessages(activeSessionId);
     } else {
-      setMessages([
-        {
-          id: "welcome",
-          sender: "bot",
-          text: MAYA_WELCOME,
-        },
-      ]);
+      setMessages([]);
     }
   }, [activeSessionId, loadMessages]);
 
@@ -284,13 +272,7 @@ export function AskDataDrawer({
           setActiveSessionId(remaining[0].id);
         } else {
           setActiveSessionId(null);
-          setMessages([
-            {
-              id: "welcome",
-              sender: "bot",
-              text: MAYA_WELCOME,
-            },
-          ]);
+          setMessages([]);
         }
       }
     } catch (e) {
@@ -516,6 +498,7 @@ export function AskDataDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
+        hideCloseButton
         className="bg-background border-border rounded-t-[32px] h-[90vh] md:h-[80vh] flex flex-col p-0 overflow-hidden"
       >
         <div className="flex flex-1 overflow-hidden h-full">
@@ -651,7 +634,7 @@ export function AskDataDrawer({
                         : "Ask Maya"
                       }
                     </span>
-                    <span className="text-[10px] text-ink-muted font-sans font-medium tracking-wide uppercase">Your Personal AI Assistant</span>
+                    <span className="text-[10px] text-ink-muted font-sans font-medium tracking-wide">Assistant</span>
                   </div>
                 </SheetTitle>
               </SheetHeader>
@@ -669,15 +652,40 @@ export function AskDataDrawer({
             {/* Messages list */}
             <div 
               ref={scrollRef}
-              className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar bg-surface/10"
+              className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-surface/10 flex flex-col min-h-0"
             >
               {messagesLoading ? (
-                <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <div className="flex flex-col items-center justify-center flex-1 min-h-[12rem] space-y-3">
                   <Loader2 className="h-6 w-6 animate-spin text-ink-muted" />
                   <p className="text-xs text-ink-muted italic">Retrieving conversations...</p>
                 </div>
+              ) : messages.length === 0 && !loading ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center px-2 py-6 min-h-[min(420px,55vh)]">
+                  <img
+                    src="/maya.png"
+                    alt=""
+                    className="h-12 w-12 rounded-full object-cover border border-purple-500/15 shadow-sm mb-4"
+                  />
+                  <p className="font-serif text-lg text-foreground tracking-tight mb-2">Maya</p>
+                  <p className="text-[13px] text-ink-muted leading-relaxed max-w-[300px] mb-6">
+                    {MAYA_INTRO}
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2 max-w-md w-full">
+                    {SUGGESTED_QUERIES.map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => void handleSend(q)}
+                        className="px-3 py-2 rounded-full border border-border/60 bg-background/80 text-left text-[11px] font-medium text-foreground/90 hover:bg-surface hover:border-border transition-colors active:scale-[0.98]"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ) : (
-                messages.map((m) => {
+                <div className="space-y-5">
+                {messages.map((m) => {
                   const isUser = m.sender === "user";
                   return (
                     <div
@@ -832,40 +840,24 @@ export function AskDataDrawer({
                       </div>
                     </div>
                   );
-                })
-              )}
-
-              {loading && (
-                <div className="flex items-center gap-3 max-w-[80%] mr-auto">
-                  <div className="relative h-8 w-8 shrink-0">
-                    <img src="/maya.png" alt="Maya" className="h-full w-full rounded-full object-cover border border-purple-500/15" />
-                    <span className="absolute inset-0 rounded-full border border-purple-500/50 border-t-transparent animate-spin" />
+                })}
+                {loading && (
+                  <div className="flex items-center gap-3 max-w-[80%] mr-auto">
+                    <div className="relative h-8 w-8 shrink-0">
+                      <img src="/maya.png" alt="Maya" className="h-full w-full rounded-full object-cover border border-purple-500/15" />
+                      <span className="absolute inset-0 rounded-full border border-purple-500/50 border-t-transparent animate-spin" />
+                    </div>
+                    <div className="bg-surface/40 border border-border/40 rounded-2xl px-4 py-3 text-sm text-ink-muted italic flex items-center gap-2">
+                      Maya is thinking...
+                    </div>
                   </div>
-                  <div className="bg-surface/40 border border-border/40 rounded-2xl px-4 py-3 text-sm text-ink-muted italic flex items-center gap-2">
-                    Maya is thinking...
-                  </div>
+                )}
                 </div>
               )}
             </div>
 
             {/* Input box */}
-            <div className="p-6 border-t border-border/40 bg-background shrink-0 space-y-4">
-              {/* Quick Prompts */}
-              {messages.length === 1 && !loading && (
-                <div className="flex flex-wrap gap-2">
-                  {QUICK_PROMPTS.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => handleSend(p)}
-                      className="px-3.5 py-1.5 rounded-full border border-border/60 bg-surface/40 text-xs font-medium text-ink-muted hover:text-foreground hover:bg-surface hover:border-border transition-all active:scale-95"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              )}
-
+            <div className="p-6 border-t border-border/40 bg-background shrink-0">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -874,6 +866,7 @@ export function AskDataDrawer({
                 className="relative flex items-center bg-surface/40 rounded-full border border-border/40 focus-within:border-foreground/20 focus-within:bg-surface/50 transition-all p-1.5 pl-5 pr-1.5"
               >
                 <Input
+                  ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={loading}

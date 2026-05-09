@@ -6,7 +6,7 @@ import { CategoryDef, Expense } from "@/lib/expenses";
 import { useRef, useState } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import {
   AlertDialog,
@@ -45,7 +45,7 @@ interface Props {
   theme: ThemeSettings;
   onUpdateTheme: (patch: Partial<ThemeSettings>) => void;
   onLogout: () => void;
-  onSync: () => Promise<void>;
+  onSync: (opts?: { skipIfNoPending?: boolean }) => Promise<boolean>;
   syncing: boolean;
   lastSync: string | null;
   onExportData: () => { version: number; exported_at: string; expenses: Expense[]; categories: CategoryDef[]; budgets: Budgets };
@@ -61,13 +61,27 @@ export default function Settings(props: Props) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="bg-background border-border w-full sm:max-w-[560px] p-0 flex flex-col h-full"
+        hideCloseButton
+        overlayClassName="z-[55]"
+        className="bg-background border-border w-full sm:max-w-[560px] p-0 flex flex-col h-full z-[55] pt-[env(safe-area-inset-top,0px)]"
       >
         {/* Fixed Header & Navigation Container */}
         <div className="p-6 pb-4 border-b border-border/10 bg-background/90 backdrop-blur-md shrink-0">
-          <SheetHeader className="text-left mb-5">
-            <SheetTitle className="font-serif text-3xl font-normal text-foreground">Settings</SheetTitle>
-          </SheetHeader>
+          <div className="flex items-center gap-2 mb-5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0 rounded-full -ml-2 h-10 w-10"
+              onClick={() => onOpenChange(false)}
+              aria-label="Back"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <SheetHeader className="text-left space-y-0 flex-1 p-0">
+              <SheetTitle className="font-serif text-2xl sm:text-3xl font-normal text-foreground">Settings</SheetTitle>
+            </SheetHeader>
+          </div>
 
           <nav className="flex gap-1 bg-surface/60 rounded-full p-1 text-xs">
             {(["profile", "categories", "appearance", "data"] as const).map((s) => (
@@ -83,7 +97,7 @@ export default function Settings(props: Props) {
         </div>
 
         {/* Scrollable Contents Container */}
-        <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-6 scrollbar-none">
+        <div className="flex-1 overflow-y-auto p-6 pt-4 max-md:pb-[var(--finlo-mobile-tab-clearance)] md:pb-6 space-y-6 scrollbar-none">
           {section === "profile" && <ProfileSection {...props} />}
           {section === "categories" && <CategoriesSection {...props} />}
           {section === "appearance" && <AppearanceSection {...props} />}
@@ -479,7 +493,7 @@ function DataSection({
             {lastSync ? `Last synced ${new Date(lastSync).toLocaleString()}` : "Never synced yet"}
           </p>
         </div>
-        <Button size="sm" onClick={onSync} disabled={syncing}
+        <Button size="sm" onClick={() => void onSync()} disabled={syncing}
           className="rounded-full bg-foreground text-background hover:bg-foreground/90 h-8">
           Sync now
         </Button>

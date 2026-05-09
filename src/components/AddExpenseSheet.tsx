@@ -21,6 +21,13 @@ import { Plus, AlertCircle, Camera, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { RollingDatePicker } from "./RollingDatePicker";
 
+export type ReceiptScanPrefill = {
+  amount?: number;
+  merchant?: string;
+  date?: string;
+  categoryGuess?: string;
+};
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -32,11 +39,16 @@ interface Props {
   onUpdate?: (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => void;
   budgets?: Record<string, number>;
   spentByCategory?: Record<string, number>;
+  /** From quick-add receipt scan: applied when sheet opens (add mode only) */
+  receiptScanPrefill?: ReceiptScanPrefill | null;
+  onReceiptScanPrefillConsumed?: () => void;
 }
 
 export function AddExpenseSheet({ 
   open, onOpenChange, categories, onAdd, onAddCategory, onAddSubcategory, editing, onUpdate,
-  budgets = {}, spentByCategory = {}
+  budgets = {}, spentByCategory = {},
+  receiptScanPrefill = null,
+  onReceiptScanPrefillConsumed,
 }: Props) {
   const isEdit = !!editing;
   const [txnType, setTxnType] = useState<TxnType>("expense");
@@ -146,6 +158,28 @@ export function AddExpenseSheet({
     return () => window.clearTimeout(focusTimer);
   }, [open, editing, categories, baseCurrency]);
 
+  useEffect(() => {
+    if (!open || editing || !receiptScanPrefill) return;
+    if (receiptScanPrefill.amount != null && receiptScanPrefill.amount > 0) {
+      setAmount(String(receiptScanPrefill.amount));
+    }
+    if (receiptScanPrefill.merchant) setNote(receiptScanPrefill.merchant);
+    if (receiptScanPrefill.date && /^\d{4}-\d{2}-\d{2}$/.test(receiptScanPrefill.date)) {
+      setDate(receiptScanPrefill.date);
+    }
+    if (receiptScanPrefill.categoryGuess) {
+      const g = receiptScanPrefill.categoryGuess;
+      const matched = categories.find((c) => c.name.toLowerCase() === g.toLowerCase());
+      if (matched) setCategory(matched.name);
+      else {
+        const loose = categories.find((c) => g.toLowerCase().includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(g.toLowerCase()));
+        if (loose) setCategory(loose.name);
+      }
+    }
+    setTxnType("expense");
+    onReceiptScanPrefillConsumed?.();
+  }, [open, editing, receiptScanPrefill, categories, onReceiptScanPrefillConsumed]);
+
   // Live revalidation after first submit attempt
   useEffect(() => {
     if (submitted) setErrors(validate());
@@ -181,7 +215,7 @@ export function AddExpenseSheet({
       vibrate([30, 50, 30]); // Success vibration
     } else {
       onAdd(payload);
-      vibrate([30, 50, 30]); // Success vibration
+      // Success haptics: centralized in useExpenses.addExpense after server ack / queue
     }
     onOpenChange(false);
   };
@@ -223,8 +257,14 @@ export function AddExpenseSheet({
             })
             .catch(err => console.error("Optional upload storage err:", err));
 
+          const expenseOnly = activeCategories.map((c) => c.name);
           const { data, error } = await supabase.functions.invoke("parse-receipt", {
-            body: { imageBase64: base64String, contentType: file.type }
+            body: {
+              imageBase64: base64String,
+              contentType: file.type,
+              referenceDate: date,
+              expenseCategories: expenseOnly,
+            },
           });
 
           if (error) throw error;
@@ -234,13 +274,10 @@ export function AddExpenseSheet({
             if (data.merchant) setNote(data.merchant);
             if (data.date) setDate(data.date);
             if (data.category_guess) {
-              const matched = categories.find(c => c.name.toLowerCase() === data.category_guess.toLowerCase());
-              if (matched) {
-                setCategory(matched.name);
-              } else {
-                // If mismatch, set to Other or first matching
-                setCategory(categories[0]?.name ?? "Food");
-              }
+              const g = String(data.category_guess);
+              const matched = activeCategories.find((c) => c.name.toLowerCase() === g.toLowerCase())
+                ?? activeCategories.find((c) => g.toLowerCase().includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(g.toLowerCase()));
+              setCategory(matched?.name ?? activeCategories[0]?.name ?? "Food");
             }
             vibrate([40, 60]); // Successful double vibration
           }
@@ -291,7 +328,7 @@ export function AddExpenseSheet({
           </SheetTitle>
         </SheetHeader>
 
-        <form onSubmit={submit} className="mt-6 space-y-8 pb-8">
+        <form onSubmit={submit} className="mt-6 space-y-8 pb-8 max-md:pb-[var(--finlo-mobile-tab-clearance)]">
           {/* Type toggle */}
           <div className="flex p-1 rounded-full bg-surface/60 border border-border/40">
             {(["expense", "income"] as TxnType[]).map((t) => (

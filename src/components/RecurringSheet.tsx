@@ -206,7 +206,7 @@ export function RecurringSheet({ open, onOpenChange, categories, userId }: Props
           </div>
         )}
 
-        <div className="mt-4 space-y-2 pb-8">
+        <div className="mt-4 space-y-2 pb-8 max-md:pb-[var(--finlo-mobile-tab-clearance)]">
           {loading && rules.length === 0 ? (
             <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-ink-muted" /></div>
           ) : rules.length === 0 ? (
