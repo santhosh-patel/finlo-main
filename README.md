@@ -87,4 +87,5 @@ In production, the service worker is registered from `src/main.tsx` when appropr
 
 ## License
 
+
 This repository is **private** (`"private": true` in `package.json`). Add a `LICENSE` file if you intend to distribute the code.
