@@ -23,6 +23,7 @@ Finlo is a personal expense tracker with a mobile-first web app (installable PWA
 
 ## Prerequisites
 
+
 - **Node.js** 18+ (20+ recommended)
 - **npm** (or compatible client)
 - A **Supabase** project with this app’s schema, RLS policies, and Edge Functions deployed (see `supabase/migrations/` and `supabase/functions/`).
