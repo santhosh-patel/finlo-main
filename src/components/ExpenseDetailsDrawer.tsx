@@ -284,7 +284,7 @@ export function ExpenseDetailsDrawer({
     if (!expense || !userId) return;
     const totalSplitAmt = splitRows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
     if (Math.abs(totalSplitAmt - expense.amount) > 0.01) {
-      setError(`Splits total (${getCurrencySymbol()}${totalSplitAmt.toFixed(2)}) must match transaction total (${getCurrencySymbol()}${expense.amount.toFixed(2)}).`);
+      setError(`Lines total (${getCurrencySymbol()}${totalSplitAmt.toFixed(2)}) must match the transaction (${getCurrencySymbol()}${expense.amount.toFixed(2)}).`);
       return;
     }
 
@@ -310,12 +310,12 @@ export function ExpenseDetailsDrawer({
         if (insErr) throw insErr;
       }
 
-      toast({ title: "Splits updated successfully!" });
+      toast({ title: "Split saved" });
       setIsSplitting(false);
       setError(null);
       loadTagsAndSplits();
     } catch (err: unknown) {
-      toast({ title: "Failed to save splits", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Couldn’t save split", description: (err as Error).message, variant: "destructive" });
     }
   };
 
@@ -328,16 +328,16 @@ export function ExpenseDetailsDrawer({
         >
           {expense && (
             <>
-              <SheetHeader className="text-left">
-                <SheetTitle className="font-serif text-3xl font-normal text-foreground">
-                  {editing ? "Edit transaction" : isSplitting ? "Split transaction" : "Transaction Details"}
+              <SheetHeader className="text-left pr-10">
+                <SheetTitle className="font-serif text-2xl sm:text-3xl font-normal text-foreground leading-tight">
+                  {editing ? "Edit transaction" : isSplitting ? "Split" : "Transaction Details"}
                 </SheetTitle>
               </SheetHeader>
 
-              <div className="mt-6 space-y-8 pb-6">
+              <div className="mt-5 sm:mt-6 space-y-6 sm:space-y-8 pb-6 sm:pb-8">
                 {!editing && !isSplitting ? (
                   <>
-                    <div className="bg-surface/60 rounded-3xl p-6 border border-border/40 text-center relative overflow-hidden">
+                    <div className="bg-surface/60 rounded-3xl p-4 sm:p-6 border border-border/40 text-center relative overflow-hidden">
                       {expense.is_reimbursable && (
                         <div className={cn(
                           "absolute top-3 right-3 text-[9px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full",
@@ -348,8 +348,8 @@ export function ExpenseDetailsDrawer({
                           {expense.reimbursed_at ? "Reimbursed" : "Reimbursable"}
                         </div>
                       )}
-                      <div className="font-serif text-6xl text-foreground tabular-nums">
-                        <span className="text-ink-muted/40 text-3xl mr-1">{getCurrencySymbol()}</span>
+                      <div className="font-serif text-4xl sm:text-5xl md:text-6xl text-foreground tabular-nums leading-none">
+                        <span className="text-ink-muted/40 text-2xl sm:text-3xl mr-0.5 sm:mr-1 align-top">{getCurrencySymbol()}</span>
                         {formatINR(expense.amount)}
                       </div>
                       {expense.note && (
@@ -405,17 +405,17 @@ export function ExpenseDetailsDrawer({
                     {/* Splits Ledger Section */}
                     {splits.length > 0 && (
                       <div className="space-y-3 pt-3 border-t border-border/20">
-                        <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-semibold flex items-center gap-1.5">
-                          <GitMerge className="h-3 w-3" /> Itemized Splits ({splits.length})
+                        <Label className="text-[10px] sm:text-[11px] tracking-[0.18em] sm:tracking-[0.2em] uppercase text-ink-muted font-semibold flex items-center gap-1.5">
+                          <GitMerge className="h-3 w-3 shrink-0" /> Split · {splits.length} line{splits.length === 1 ? "" : "s"}
                         </Label>
                         <div className="rounded-2xl border border-border/40 bg-surface/20 divide-y divide-border/30 overflow-hidden">
                           {splits.map((s, i) => (
-                            <div key={s.id || i} className="flex justify-between items-center p-3 text-sm">
-                              <div>
-                                <span className="font-semibold text-foreground text-xs">{s.category}</span>
-                                {s.note && <span className="text-[10px] text-ink-muted block mt-0.5">{s.note}</span>}
+                            <div key={s.id || i} className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center p-3 sm:p-3.5 text-sm">
+                              <div className="min-w-0">
+                                <span className="font-semibold text-foreground text-xs sm:text-sm">{s.category}</span>
+                                {s.note && <span className="text-[10px] sm:text-xs text-ink-muted block mt-0.5 break-words">{s.note}</span>}
                               </div>
-                              <span className="font-serif text-sm text-foreground tabular-nums">
+                              <span className="font-serif text-sm sm:text-base text-foreground tabular-nums sm:text-right shrink-0">
                                 {getCurrencySymbol()}{formatINR(Number(s.amount))}
                               </span>
                             </div>
@@ -427,15 +427,15 @@ export function ExpenseDetailsDrawer({
                     {/* Reimbursable Section */}
                     {(expense.type ?? "expense") === "expense" && (
                       <div className="space-y-3 pt-3 border-t border-border/20">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="text-sm font-semibold text-foreground">Reimbursements</h4>
-                            <p className="text-xs text-ink-muted">Track if this is paid back by company/peers</p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <h4 className="text-sm sm:text-base font-semibold text-foreground">Reimbursements</h4>
+                            <p className="text-xs sm:text-sm text-ink-muted mt-0.5">Track if this is paid back by company or friends</p>
                           </div>
                           <button
                             onClick={handleToggleReimbursable}
                             className={cn(
-                              "text-xs px-3 py-1.5 rounded-full border transition-all font-medium",
+                              "text-xs sm:text-sm px-3 sm:px-4 py-2 min-h-[44px] sm:min-h-0 rounded-full border transition-all font-medium shrink-0 self-start sm:self-auto",
                               expense.is_reimbursable 
                                 ? "bg-amber-500/10 border-amber-500/20 text-amber-600" 
                                 : "bg-transparent border-border text-ink-muted hover:text-foreground"
@@ -445,10 +445,10 @@ export function ExpenseDetailsDrawer({
                           </button>
                         </div>
                         {expense.is_reimbursable && (
-                          <div className="p-3.5 rounded-2xl bg-surface/40 border border-border/30 flex items-center justify-between text-xs mt-2">
-                            <div>
-                              <span className="font-medium text-foreground">Reimbursement Status</span>
-                              <p className="text-[10px] text-ink-muted mt-0.5">
+                          <div className="p-3.5 sm:p-4 rounded-2xl bg-surface/40 border border-border/30 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs sm:text-sm mt-2">
+                            <div className="min-w-0">
+                              <span className="font-medium text-foreground">Reimbursement status</span>
+                              <p className="text-[10px] sm:text-xs text-ink-muted mt-0.5">
                                 {expense.reimbursed_at 
                                   ? `Settled on ${new Date(expense.reimbursed_at).toLocaleDateString()}` 
                                   : "Awaiting payback"}
@@ -459,7 +459,7 @@ export function ExpenseDetailsDrawer({
                               variant="outline"
                               onClick={handleToggleReimbursedStatus}
                               className={cn(
-                                "rounded-full text-xs h-8 px-3",
+                                "rounded-full text-xs sm:text-sm h-10 sm:h-9 px-4 w-full sm:w-auto min-h-[44px] sm:min-h-0",
                                 expense.reimbursed_at 
                                   ? "text-ink-muted hover:text-destructive" 
                                   : "text-emerald-600 hover:text-emerald-700 bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20"
@@ -474,8 +474,8 @@ export function ExpenseDetailsDrawer({
 
                     {(expense.type ?? "expense") === "expense" && (
                       <div className="space-y-2 pt-3 border-t border-border/20">
-                        <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-semibold">
-                          Split / payback note
+                        <Label className="text-[10px] sm:text-[11px] tracking-[0.18em] sm:tracking-[0.2em] uppercase text-ink-muted font-semibold">
+                          Split note
                         </Label>
                         <Input
                           value={splitNote}
@@ -487,72 +487,80 @@ export function ExpenseDetailsDrawer({
                               onUpdate(expense.id, { split_note: t || undefined });
                             }
                           }}
-                          placeholder="e.g. Split with Kavya"
+                          placeholder="e.g. with Kavya, office lunch"
                           maxLength={200}
-                          className="rounded-xl bg-background border-border text-sm h-10"
+                          className="rounded-xl bg-background border-border text-sm sm:text-base h-11 sm:h-10 min-h-[44px] sm:min-h-0"
                         />
                       </div>
                     )}
 
-                    <div className="grid grid-cols-3 gap-2.5 pt-4 border-t border-border/20">
+                    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-3 sm:gap-2.5 pt-4 border-t border-border/20">
                       <Button
                         type="button"
                         variant="secondary"
                         onClick={() => setEditing(true)}
-                        className="rounded-full h-11 text-xs"
+                        className="rounded-full min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm px-3 w-full sm:w-auto justify-center"
                       >
-                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit details
+                        <Pencil className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 shrink-0" /> <span className="truncate">Edit details</span>
                       </Button>
                       <Button
                         type="button"
                         variant="secondary"
                         onClick={startSplitting}
-                        className="rounded-full h-11 text-xs"
+                        className="rounded-full min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm px-3 w-full sm:w-auto justify-center"
                       >
-                        <GitMerge className="h-3.5 w-3.5 mr-1" /> {splits.length > 0 ? "Manage splits" : "Split transaction"}
+                        <GitMerge className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 shrink-0" />{" "}
+                        <span className="truncate">{splits.length > 0 ? "Manage split" : "Split"}</span>
                       </Button>
                       <Button
                         type="button"
                         variant="destructive"
                         onClick={() => setConfirmOpen(true)}
-                        className="rounded-full h-11 text-xs"
+                        className="rounded-full min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm px-3 w-full sm:w-auto justify-center"
                       >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 shrink-0" /> Delete
                       </Button>
                     </div>
                   </>
                 ) : isSplitting ? (
                   /* Splits Editor View */
-                  <div className="space-y-5">
-                    <p className="text-xs text-ink-muted">
-                      Divide the total of <span className="font-semibold text-foreground font-serif">{getCurrencySymbol()}{formatINR(expense.amount)}</span> into custom items.
+                  <div className="space-y-4 sm:space-y-5">
+                    <p className="text-xs sm:text-sm text-ink-muted leading-relaxed">
+                      Divide{" "}
+                      <span className="font-semibold text-foreground font-serif whitespace-nowrap">
+                        {getCurrencySymbol()}{formatINR(expense.amount)}
+                      </span>{" "}
+                      across lines. They must add up to the total.
                     </p>
 
                     <div className="space-y-3">
                       {splitRows.map((row, idx) => (
-                        <div key={idx} className="flex gap-2 items-start p-3 bg-surface/40 rounded-2xl border border-border/20">
-                          <div className="flex-1 space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <Label className="text-[9px] uppercase tracking-wider text-ink-muted font-medium">Category</Label>
+                        <div
+                          key={idx}
+                          className="flex flex-col gap-3 sm:flex-row sm:items-stretch p-3 sm:p-3.5 bg-surface/40 rounded-2xl border border-border/20"
+                        >
+                          <div className="flex-1 space-y-2.5 min-w-0">
+                            <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-2.5 sm:gap-2">
+                              <div className="min-w-0">
+                                <Label className="text-[9px] sm:text-[10px] uppercase tracking-wider text-ink-muted font-medium">Category</Label>
                                 <Select
                                   value={row.category}
                                   onValueChange={(val) => {
                                     setSplitRows((prev) => prev.map((r, i) => i === idx ? { ...r, category: val } : r));
                                   }}
                                 >
-                                  <SelectTrigger className="h-8 rounded-lg mt-0.5 border-border bg-background text-xs">
+                                  <SelectTrigger className="h-10 sm:h-9 rounded-lg mt-0.5 border-border bg-background text-xs sm:text-sm w-full">
                                     <SelectValue />
                                   </SelectTrigger>
-                                  <SelectContent className="bg-popover">
+                                  <SelectContent className="bg-popover max-h-[min(50vh,320px)]">
                                     {categories.map((c) => (
-                                      <SelectItem key={c.name} value={c.name} className="text-xs">{c.name}</SelectItem>
+                                      <SelectItem key={c.name} value={c.name} className="text-xs sm:text-sm">{c.name}</SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
                               </div>
-                              <div>
-                                <Label className="text-[9px] uppercase tracking-wider text-ink-muted font-medium">Amount</Label>
+                              <div className="min-w-0">
+                                <Label className="text-[9px] sm:text-[10px] uppercase tracking-wider text-ink-muted font-medium">Amount</Label>
                                 <Input
                                   type="number"
                                   inputMode="decimal"
@@ -563,77 +571,95 @@ export function ExpenseDetailsDrawer({
                                     setSplitRows((prev) => prev.map((r, i) => i === idx ? { ...r, amount: e.target.value } : r));
                                     setError(null);
                                   }}
-                                  className="h-8 rounded-lg mt-0.5 bg-background border-border text-xs text-foreground font-serif"
+                                  className="h-10 sm:h-9 rounded-lg mt-0.5 bg-background border-border text-sm sm:text-base text-foreground font-serif min-h-[44px] sm:min-h-0"
                                 />
                               </div>
                             </div>
                             <div>
-                              <Label className="text-[9px] uppercase tracking-wider text-ink-muted font-medium">Item Note</Label>
+                              <Label className="text-[9px] sm:text-[10px] uppercase tracking-wider text-ink-muted font-medium">Line note</Label>
                               <Input
                                 type="text"
-                                placeholder="Sub-item note"
+                                placeholder="Optional"
                                 value={row.note}
                                 onChange={(e) => {
                                   setSplitRows((prev) => prev.map((r, i) => i === idx ? { ...r, note: e.target.value } : r));
                                 }}
-                                className="h-8 rounded-lg mt-0.5 bg-background border-border text-xs text-foreground placeholder:text-ink-muted/50"
+                                className="h-10 sm:h-9 rounded-lg mt-0.5 bg-background border-border text-xs sm:text-sm text-foreground placeholder:text-ink-muted/50 min-h-[44px] sm:min-h-0"
                               />
                             </div>
                           </div>
-                          <button onClick={() => handleRemoveSplitRow(idx)} className="text-ink-muted hover:text-destructive p-1 rounded mt-5 shrink-0 transition-colors">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSplitRow(idx)}
+                            className="text-ink-muted hover:text-destructive rounded-xl border border-border/50 sm:border-0 p-2.5 sm:p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 sm:mt-7 self-end sm:self-start shrink-0 flex items-center justify-center transition-colors"
+                            aria-label="Remove line"
+                          >
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       ))}
                     </div>
 
-                    <div className="flex justify-between items-center bg-surface/30 px-4 py-2.5 rounded-xl border border-border/30">
-                      <span className="text-xs text-ink-muted">Total divided:</span>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center bg-surface/30 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-border/30">
+                      <span className="text-xs sm:text-sm text-ink-muted">Total</span>
                       <span className={cn(
-                        "font-serif font-semibold text-sm tabular-nums",
+                        "font-serif font-semibold text-sm sm:text-base tabular-nums break-all sm:break-normal sm:text-right",
                         Math.abs(splitRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0) - expense.amount) < 0.01
                           ? "text-emerald-600 dark:text-emerald-400"
                           : "text-destructive"
                       )}>
-                        {getCurrencySymbol()}{formatINR(splitRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0))} of {getCurrencySymbol()}{formatINR(expense.amount)}
+                        {getCurrencySymbol()}{formatINR(splitRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0))}{" "}
+                        <span className="text-ink-muted font-sans font-normal text-xs sm:text-sm"> / </span>
+                        {getCurrencySymbol()}{formatINR(expense.amount)}
                       </span>
                     </div>
 
                     {error && (
-                      <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/5 p-3 rounded-xl border border-destructive/20" role="alert">
-                        <AlertCircle className="h-4 w-4 shrink-0" />
-                        <span>{error}</span>
+                      <div className="flex items-start gap-2 text-xs sm:text-sm text-destructive bg-destructive/5 p-3 rounded-xl border border-destructive/20" role="alert">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span className="min-w-0">{error}</span>
                       </div>
                     )}
 
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" className="rounded-full flex-1" onClick={handleAddSplitRow}>
-                        <Plus className="h-4 w-4 mr-1" /> Add split item
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full flex-1 min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm"
+                        onClick={handleAddSplitRow}
+                      >
+                        <Plus className="h-4 w-4 mr-1.5 shrink-0" /> Add line
                       </Button>
-                      <Button type="button" variant="outline" className="rounded-full w-12 p-0" onClick={() => {
-                        // Reset splits
-                        setSplitRows([]);
-                        setError(null);
-                      }} title="Clear splits">
-                        <RefreshCw className="h-4 w-4" />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full min-h-[48px] h-12 sm:h-11 sm:w-12 sm:px-0 shrink-0 inline-flex items-center justify-center gap-2 sm:gap-0"
+                        onClick={() => {
+                          setSplitRows([]);
+                          setError(null);
+                        }}
+                        title="Clear all lines"
+                      >
+                        <RefreshCw className="h-4 w-4 shrink-0" />
+                        <span className="text-xs sm:text-sm sm:hidden">Clear</span>
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/20">
+                    <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2.5 sm:gap-3 pt-3 border-t border-border/20">
                       <Button
                         type="button"
                         variant="secondary"
                         onClick={() => { setIsSplitting(false); setError(null); }}
-                        className="rounded-full h-11"
+                        className="rounded-full min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm w-full"
                       >
-                        <X className="h-4 w-4 mr-1" /> Cancel
+                        <X className="h-4 w-4 mr-1.5 shrink-0" /> Cancel
                       </Button>
                       <Button
                         type="button"
                         onClick={handleSaveSplits}
-                        className="rounded-full h-11 bg-foreground text-background hover:bg-foreground/90"
+                        className="rounded-full min-h-[48px] h-12 sm:h-11 text-xs sm:text-sm w-full bg-foreground text-background hover:bg-foreground/90"
                       >
-                        <Check className="h-4 w-4 mr-1" /> Save splits
+                        <Check className="h-4 w-4 mr-1.5 shrink-0" /> Save
                       </Button>
                     </div>
                   </div>
@@ -667,7 +693,7 @@ export function ExpenseDetailsDrawer({
                           maxLength={200}
                           value={splitNote}
                           onChange={(e) => setSplitNote(e.target.value)}
-                          placeholder="Split / payback note (optional)"
+                          placeholder="Split note (optional)"
                           className="mt-3 border-0 border-b border-border rounded-none bg-transparent px-0 text-sm text-foreground placeholder:text-ink-muted shadow-none focus-visible:ring-0"
                         />
                       )}
@@ -838,11 +864,11 @@ export function ExpenseDetailsDrawer({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between items-baseline border-b border-border/40 pb-3">
-      <dt className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">
+    <div className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:items-baseline border-b border-border/40 pb-3">
+      <dt className="text-[10px] sm:text-[11px] tracking-[0.18em] sm:tracking-[0.2em] uppercase text-ink-muted font-medium shrink-0">
         {label}
       </dt>
-      <dd className="text-foreground capitalize">{value}</dd>
+      <dd className="text-sm sm:text-base text-foreground capitalize text-left sm:text-right break-words">{value}</dd>
     </div>
   );
 }

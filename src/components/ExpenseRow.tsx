@@ -80,7 +80,7 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories, 
             </span>
           )}
           {(expense.is_reimbursable || !!expense.split_note?.trim()) && (
-            <Users className="h-3.5 w-3.5 text-amber-700/75 dark:text-amber-400/85 shrink-0" aria-label="Split or reimbursable" />
+            <Users className="h-3.5 w-3.5 text-amber-700/75 dark:text-amber-400/85 shrink-0" aria-label="Split / reimbursable" />
           )}
         </div>
         <div className="flex flex-col items-end">

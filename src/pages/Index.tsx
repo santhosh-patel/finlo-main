@@ -827,8 +827,8 @@ const Index = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Mobile bottom navigation — hidden while Maya chat is open */}
-      {!askAIOpen && (
+      {/* Mobile bottom navigation — hidden while Maya or transaction details are open */}
+      {!askAIOpen && !details && (
       <div 
         className="fixed z-[60] bottom-0 inset-x-0 md:hidden flex justify-center pointer-events-none pb-4" 
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
