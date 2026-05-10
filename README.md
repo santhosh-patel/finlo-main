@@ -13,6 +13,7 @@ Finlo is a personal expense tracker with a mobile-first web app (installable PWA
 - **Accounts** — Email/password auth, user profile, optional admin area for managed deployments.
 
 ## Tech stack
+
  
 | Area | Choice |
 |------|--------|
