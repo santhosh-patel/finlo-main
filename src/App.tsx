@@ -6,6 +6,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AuthProvider } from "@/hooks/useAuth";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { InstallAppBanner } from "@/components/InstallAppBanner";
 
 const Login = lazy(() => import("./pages/Login.tsx"));
 const Index = lazy(() => import("./pages/Index.tsx"));
@@ -44,13 +47,23 @@ function RoutedViews() {
   );
 }
 
+function AppChrome() {
+  const online = useOnlineStatus();
+  return (
+    <>
+      <OfflineBanner online={online} className="relative z-[100]" />
+      <RoutedViews />
+    </>
+  );
+}
+
 const App = () => (
   <AuthProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <RoutedViews />
+        <AppChrome />
       </BrowserRouter>
     </TooltipProvider>
   </AuthProvider>

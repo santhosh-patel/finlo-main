@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { InstallAppBanner } from "@/components/InstallAppBanner";
 
 type FromState = { from?: { pathname: string; search?: string } };
 
@@ -48,7 +49,9 @@ export default function Login() {
   };
 
   return (
-    <main className="min-h-dvh bg-background text-foreground font-sans flex items-center justify-center px-6">
+    <main className="min-h-dvh bg-background text-foreground font-sans flex flex-col">
+      <InstallAppBanner className="shrink-0 border-b border-border/50" />
+      <div className="flex flex-1 items-center justify-center px-6 py-8">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
           <img
@@ -74,7 +77,7 @@ export default function Login() {
               Email
             </Label>
             <Input
-              id="email" type="email" autoComplete="email"
+              id="email" name="email" type="email" autoComplete="email" inputMode="email"
               value={email}
               onChange={(e) => { setEmail(e.target.value); setError(null); }}
               className="rounded-full bg-background border-border text-foreground"
@@ -87,7 +90,7 @@ export default function Login() {
             </Label>
             <div className="relative">
               <Input
-                id="password" type={showPassword ? "text" : "password"} autoComplete="current-password"
+                id="password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(null); }}
                 className="rounded-full bg-background border-border text-foreground pr-10"
@@ -117,6 +120,7 @@ export default function Login() {
         <p className="text-[11px] text-ink-muted text-center mt-6">
           Synced across devices · Offline-ready
         </p>
+      </div>
       </div>
     </main>
   );

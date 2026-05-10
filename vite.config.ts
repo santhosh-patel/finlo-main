@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: false,
-      devOptions: { enabled: false },
+      devOptions: { enabled: true },
       manifest: {
         name: "Finlo",
         short_name: "Finlo",
@@ -37,7 +37,10 @@ export default defineConfig(({ mode }) => ({
         background_color: "#0b0d12",
         theme_color: "#0b0d12",
         icons: [
-          { src: "/finlo-logo.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "/finlo-logo.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
         ],
         shortcuts: [
           {
@@ -45,7 +48,7 @@ export default defineConfig(({ mode }) => ({
             short_name: "Add",
             description: "Log a new transaction",
             url: "/?action=add",
-            icons: [{ src: "/finlo-logo.png", sizes: "1024x1024", type: "image/png" }],
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
           },
         ],
         share_target: {

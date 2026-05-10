@@ -31,6 +31,8 @@ import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
 import { useExpenseAIQuickFlow } from "@/hooks/useExpenseAIQuickFlow";
 import { useTheme } from "@/hooks/useTheme";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
+import { useOverlayHistorySync } from "@/hooks/useOverlayHistorySync";
+import { InstallAppBanner } from "@/components/InstallAppBanner";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Expense, addDays, formatINR, fullDateLabel, getCurrencySymbol,
@@ -331,6 +333,104 @@ const Index = () => {
     mainRef,
   );
 
+  const overlayCount = useMemo(
+    () =>
+      (confirmDelete ? 1 : 0) +
+      (shortcutsHelpOpen ? 1 : 0) +
+      (trashOpen ? 1 : 0) +
+      (loansOpen ? 1 : 0) +
+      (recurringOpen ? 1 : 0) +
+      (importOpen ? 1 : 0) +
+      (budgetsOpen ? 1 : 0) +
+      (settingsOpen ? 1 : 0) +
+      (searchOpen ? 1 : 0) +
+      (askAIOpen ? 1 : 0) +
+      (open ? 1 : 0) +
+      (details ? 1 : 0),
+    [
+      confirmDelete,
+      shortcutsHelpOpen,
+      trashOpen,
+      loansOpen,
+      recurringOpen,
+      importOpen,
+      budgetsOpen,
+      settingsOpen,
+      searchOpen,
+      askAIOpen,
+      open,
+      details,
+    ],
+  );
+
+  const closeTopOverlay = useCallback(() => {
+    if (details) {
+      setDetails(null);
+      return;
+    }
+    if (open) {
+      setOpen(false);
+      setEditing(null);
+      clearReceiptPrefill();
+      return;
+    }
+    if (askAIOpen) {
+      setAskAIOpen(false);
+      return;
+    }
+    if (searchOpen) {
+      setSearchOpen(false);
+      return;
+    }
+    if (settingsOpen) {
+      setSettingsOpen(false);
+      return;
+    }
+    if (budgetsOpen) {
+      setBudgetsOpen(false);
+      return;
+    }
+    if (importOpen) {
+      setImportOpen(false);
+      return;
+    }
+    if (recurringOpen) {
+      setRecurringOpen(false);
+      return;
+    }
+    if (loansOpen) {
+      setLoansOpen(false);
+      return;
+    }
+    if (trashOpen) {
+      setTrashOpen(false);
+      return;
+    }
+    if (shortcutsHelpOpen) {
+      setShortcutsHelpOpen(false);
+      return;
+    }
+    if (confirmDelete) {
+      setConfirmDelete(null);
+    }
+  }, [
+    details,
+    open,
+    askAIOpen,
+    searchOpen,
+    settingsOpen,
+    budgetsOpen,
+    importOpen,
+    recurringOpen,
+    loansOpen,
+    trashOpen,
+    shortcutsHelpOpen,
+    confirmDelete,
+    clearReceiptPrefill,
+  ]);
+
+  useOverlayHistorySync(overlayCount, closeTopOverlay);
+
   if (isAdmin) return <Navigate to="/admin" replace />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
@@ -398,7 +498,8 @@ const Index = () => {
       : Math.min(100, (pullPx / 72) * 100);
 
   return (
-    <main ref={mainRef} className="min-h-dvh bg-background text-foreground font-sans">
+    <main ref={mainRef} className="min-h-dvh bg-background text-foreground font-sans overscroll-y-contain">
+      <InstallAppBanner className="sticky top-0 z-[55]" />
       {(pullPx > 1 || pullPhase === "refreshing") && (
         <div
           className="fixed top-0 left-0 right-0 z-[90] pointer-events-none flex flex-col items-center gap-1 pt-[calc(env(safe-area-inset-top,0px)+8px)]"

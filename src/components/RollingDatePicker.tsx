@@ -58,15 +58,22 @@ interface WheelProps {
 function Wheel({ items, selected, onSelect, label, width }: WheelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrolling    = useRef(false);
-  const raf          = useRef(0);
+  const settleRaf    = useRef(0);
   const settleTimer  = useRef<ReturnType<typeof setTimeout>>();
+  /** Throttles barrel-transform updates to one React commit per frame (setScrollTop every native scroll event was main-thread choke). */
+  const visualRaf    = useRef(0);
 
   /* ---- programmatic scroll ---- */
   const scrollToIdx = useCallback((idx: number, instant = false) => {
     const el = containerRef.current;
     if (!el) return;
+    const top = idx * ITEM_H;
+    if (instant && Math.abs(el.scrollTop - top) < 0.5) {
+      scrolling.current = false;
+      return;
+    }
     scrolling.current = true;
-    el.scrollTo({ top: idx * ITEM_H, behavior: instant ? "instant" : "smooth" });
+    el.scrollTo({ top, behavior: instant ? "auto" : "smooth" });
     clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(() => { scrolling.current = false; }, instant ? 50 : 320);
   }, []);
@@ -74,32 +81,54 @@ function Wheel({ items, selected, onSelect, label, width }: WheelProps) {
   /* ---- sync to selected prop ---- */
   useEffect(() => {
     const idx = items.findIndex((i) => i.value === selected);
-    if (idx >= 0) scrollToIdx(idx, true);
+    if (idx < 0) return;
+    const run = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const target = idx * ITEM_H;
+      if (Math.abs(el.scrollTop - target) > 1) scrollToIdx(idx, true);
+    };
+    run();
+    const id = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(id);
   }, [selected, items, scrollToIdx]);
 
   /* ---- distance-based style for each item ---- */
   const [scrollTop, setScrollTop] = useState(0);
 
+  const flushVisualScrollTop = useCallback(() => {
+    visualRaf.current = 0;
+    const el = containerRef.current;
+    if (el) setScrollTop(el.scrollTop);
+  }, []);
+
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    setScrollTop(el.scrollTop);
+    if (!visualRaf.current) {
+      visualRaf.current = requestAnimationFrame(flushVisualScrollTop);
+    }
 
     if (scrolling.current) return;
-    cancelAnimationFrame(raf.current);
-    raf.current = requestAnimationFrame(() => {
+    cancelAnimationFrame(settleRaf.current);
+    settleRaf.current = requestAnimationFrame(() => {
       clearTimeout(settleTimer.current);
       settleTimer.current = setTimeout(() => {
         if (!containerRef.current) return;
-        const idx = clamp(Math.round(containerRef.current.scrollTop / ITEM_H), 0, items.length - 1);
+        const elNow = containerRef.current;
+        const idx = clamp(Math.round(elNow.scrollTop / ITEM_H), 0, items.length - 1);
         const v = items[idx].value;
         if (v !== selected) onSelect(v);
-        scrollToIdx(idx);
-      }, 100);
+        if (Math.abs(elNow.scrollTop - idx * ITEM_H) > 0.5) scrollToIdx(idx, false);
+      }, 120);
     });
-  }, [items, selected, onSelect, scrollToIdx]);
+  }, [items, selected, onSelect, scrollToIdx, flushVisualScrollTop]);
 
-  useEffect(() => () => { cancelAnimationFrame(raf.current); clearTimeout(settleTimer.current); }, []);
+  useEffect(() => () => {
+    cancelAnimationFrame(settleRaf.current);
+    cancelAnimationFrame(visualRaf.current);
+    clearTimeout(settleTimer.current);
+  }, []);
 
   const itemStyle = useCallback((idx: number): CSSProperties => {
     const center = scrollTop + PAD;
@@ -143,8 +172,8 @@ function Wheel({ items, selected, onSelect, label, width }: WheelProps) {
         <div
           ref={containerRef}
           onScroll={handleScroll}
-          className="h-full overflow-y-auto scrollbar-none overscroll-contain"
-          style={{ scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch" }}
+          className="h-full overflow-y-auto scrollbar-none overscroll-contain touch-pan-y"
+          style={{ scrollSnapType: "y proximity", WebkitOverflowScrolling: "touch" }}
         >
           <div style={{ height: PAD }} aria-hidden />
           {items.map((item, idx) => {

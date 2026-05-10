@@ -215,7 +215,7 @@ export function AddExpenseSheet({
       vibrate([30, 50, 30]); // Success vibration
     } else {
       onAdd(payload);
-      // Success haptics: centralized in useExpenses.addExpense after server ack / queue
+      vibrate(35);
     }
     onOpenChange(false);
   };
