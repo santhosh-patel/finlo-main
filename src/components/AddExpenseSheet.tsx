@@ -112,6 +112,8 @@ export function AddExpenseSheet({
     return subs.filter(s => s.toLowerCase().includes(subSearch.toLowerCase()));
   }, [subs, subSearch]);
 
+  const normalizedDate = useMemo(() => date.trim().split("T")[0], [date]);
+
   const validate = useCallback((): typeof errors => {
     const errs: typeof errors = {};
     const num = parseFloat(amount);
@@ -120,10 +122,10 @@ export function AddExpenseSheet({
     else if (num <= 0) errs.amount = "Amount must be greater than zero.";
     else if (num > 10_000_000) errs.amount = "Amount looks too large.";
     if (!category.trim()) errs.category = "Pick a category.";
-    if (!date) errs.date = "Date is required.";
-    else if (date > todayISO()) errs.date = "Date can't be in the future.";
+    if (!normalizedDate) errs.date = "Date is required.";
+    else if (normalizedDate > todayISO()) errs.date = "Date can't be in the future.";
     return errs;
-  }, [amount, category, date]);
+  }, [amount, category, normalizedDate]);
 
   const commitNewCategory = useCallback(() => {
     const v = newCat.trim();
@@ -224,7 +226,7 @@ export function AddExpenseSheet({
       category,
       subcategory: subcategory || undefined,
       note: note.trim() || undefined,
-      date,
+      date: normalizedDate,
       payment_method: payment,
       type: txnType,
       currency,
@@ -647,7 +649,7 @@ export function AddExpenseSheet({
               <RollingDatePicker
                 value={date}
                 max={todayISO()}
-                showTime={true}
+                showTime={false}
                 onChange={(val) => setDate(val)}
                 className={errors.date ? "border-destructive focus-visible:ring-destructive" : ""}
               />

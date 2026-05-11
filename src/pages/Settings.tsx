@@ -464,8 +464,8 @@ function DataSection({
     const data = onExportData();
     const username = (profile.name || profile.email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g, "-");
     let filtered = data.expenses;
-    if (exportFrom) filtered = filtered.filter((e) => e.date >= exportFrom);
-    if (exportTo) filtered = filtered.filter((e) => e.date <= exportTo);
+    if (exportFrom) filtered = filtered.filter((e) => e.date.split("T")[0] >= exportFrom);
+    if (exportTo) filtered = filtered.filter((e) => e.date.split("T")[0] <= exportTo);
     const payload = { ...data, expenses: filtered, range: { from: exportFrom || null, to: exportTo || null } };
     let suffix: string;
     if (exportFrom && exportTo) {

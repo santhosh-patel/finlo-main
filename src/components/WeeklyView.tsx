@@ -29,10 +29,11 @@ export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpe
     const map = new Map<string, Expense[]>();
     days.forEach((d) => map.set(d, []));
     expenses.forEach((e) => {
-      if (e.date >= from && e.date <= to) {
-        const list = map.get(e.date) || [];
+      const dPart = e.date.split("T")[0];
+      if (dPart >= from && dPart <= to) {
+        const list = map.get(dPart) || [];
         list.push(e);
-        map.set(e.date, list);
+        map.set(dPart, list);
       }
     });
     return map;
@@ -57,7 +58,10 @@ export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpe
 
   const weekIncome = useMemo(() => {
     return expenses
-      .filter((e) => e.date >= from && e.date <= to && e.type === "income")
+      .filter((e) => {
+        const dPart = e.date.split("T")[0];
+        return dPart >= from && dPart <= to && e.type === "income";
+      })
       .reduce((sum, e) => sum + baseAmountOf(e), 0);
   }, [expenses, from, to]);
 

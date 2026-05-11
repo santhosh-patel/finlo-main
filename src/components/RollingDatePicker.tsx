@@ -91,28 +91,45 @@ interface WheelColumnProps {
 export function WheelColumn({ items, selectedValue, onChange }: WheelColumnProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastIndexRef = useRef<number>(-1);
+  const isUserScrollingRef = useRef(false);
+  const scrollEndTimerRef = useRef<number>(0);
 
-  // Set initial scroll position
+  // Sync scroll position only for programmatic / external value changes.
+  // Skips when the user is actively scrolling so we don't kill momentum.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const index = items.findIndex((item) => item.value === selectedValue);
     if (index !== -1) {
-      container.scrollTop = index * 36;
       lastIndexRef.current = index;
+      if (isUserScrollingRef.current) return;
+      container.style.scrollBehavior = "auto";
+      container.scrollTop = index * 36;
+      requestAnimationFrame(() => {
+        if (containerRef.current) containerRef.current.style.scrollBehavior = "";
+      });
     }
   }, [items, selectedValue]);
+
+  useEffect(() => {
+    return () => clearTimeout(scrollEndTimerRef.current);
+  }, []);
 
   const handleScroll = () => {
     const container = containerRef.current;
     if (!container) return;
-    
-    // Snaps to index based on h-9 (36px) rows
+
+    isUserScrollingRef.current = true;
+    clearTimeout(scrollEndTimerRef.current);
+    scrollEndTimerRef.current = window.setTimeout(() => {
+      isUserScrollingRef.current = false;
+    }, 150);
+
     const index = Math.round(container.scrollTop / 36);
     if (index >= 0 && index < items.length) {
       if (index !== lastIndexRef.current) {
         lastIndexRef.current = index;
-        playHapticTick(); // Play highly realistic clicking tick on change!
+        playHapticTick();
         onChange(items[index].value);
       }
     }
@@ -123,10 +140,11 @@ export function WheelColumn({ items, selectedValue, onChange }: WheelColumnProps
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-scroll scroll-smooth scrollbar-none relative"
+        className="h-full overflow-y-scroll scrollbar-none relative"
         style={{
           scrollSnapType: "y mandatory",
           scrollbarWidth: "none",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         {/* Spacer to push first item to selection bar center */}
@@ -145,10 +163,17 @@ export function WheelColumn({ items, selectedValue, onChange }: WheelColumnProps
                 scrollSnapAlign: "center",
               }}
               onClick={() => {
-                if (containerRef.current) {
-                  const idx = items.findIndex((x) => x.value === item.value);
-                  containerRef.current.scrollTop = idx * 36;
-                }
+                const container = containerRef.current;
+                if (!container) return;
+                const idx = items.findIndex((x) => x.value === item.value);
+                if (idx === -1) return;
+                lastIndexRef.current = idx;
+                container.style.scrollBehavior = "auto";
+                container.scrollTop = idx * 36;
+                requestAnimationFrame(() => {
+                  if (containerRef.current) containerRef.current.style.scrollBehavior = "";
+                });
+                onChange(items[idx].value);
               }}
             >
               {item.label}
@@ -232,7 +257,7 @@ export function RollingDatePicker({
   const openModal = useCallback(() => {
     playHapticTick();
     const hasTime = value.includes("T");
-    const dStr = hasTime ? datePartOf(value) : todayISO();
+    const dStr = datePartOf(value) || todayISO();
     const tStr = hasTime ? timePartOf(value) : currentTimeStr();
     const d = parseLocalDate(dStr) || new Date();
 
@@ -328,6 +353,16 @@ export function RollingDatePicker({
     setSelectedHour(h24 % 12 === 0 ? 12 : h24 % 12);
     setSelectedMinute(now.getMinutes());
     setSelectedPeriod(h24 >= 12 ? "PM" : "AM");
+  };
+
+  const setYesterday = () => {
+    playHapticTick();
+    const base = new Date();
+    base.setDate(base.getDate() - 1);
+    const d = parseLocalDate(clampDateToMax(toLocalISO(base), max)) || base;
+    setSelectedYear(d.getFullYear());
+    setSelectedMonth(d.getMonth() + 1);
+    setSelectedDay(d.getDate());
   };
 
   // Generate lists of items dynamically
@@ -492,7 +527,7 @@ export function RollingDatePicker({
                 onTouchEnd={handleTouchEnd}
               >
                 <span className="text-[9px] tracking-[0.2em] font-bold text-foreground/50 uppercase">
-                  Time & Date Wheel
+                  {showTime ? "Time & Date Wheel" : "Date Wheel"}
                 </span>
                 <h2 className="font-serif text-xl font-semibold text-foreground tracking-tight mt-0.5 leading-snug">
                   {preview}
@@ -581,9 +616,21 @@ export function RollingDatePicker({
                 </button>
                 <button
                   type="button"
+                  onClick={setYesterday}
+                  className={cn(
+                    "flex-1 h-11 text-[12px] font-bold rounded-2xl uppercase tracking-wider",
+                    "border border-border/50 text-foreground bg-surface",
+                    "hover:bg-foreground/5 active:scale-[0.95]",
+                    "transition-all duration-300 ease-out shadow-sm",
+                  )}
+                >
+                  Yesterday
+                </button>
+                <button
+                  type="button"
                   onClick={confirm}
                   className={cn(
-                    "flex-[1.6] h-11 text-[12px] font-bold rounded-2xl uppercase tracking-wider",
+                    "flex-[1.4] h-11 text-[12px] font-bold rounded-2xl uppercase tracking-wider",
                     "bg-foreground text-background",
                     "hover:scale-[1.01] hover:opacity-90 active:scale-[0.95]",
                     "transition-all duration-300 ease-out shadow-sm",
