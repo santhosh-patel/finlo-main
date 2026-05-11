@@ -22,6 +22,11 @@ export interface AuthState {
   user: User | null;
   profile: Profile;
   isAdmin: boolean;
+  impersonatedUserId: string | null;
+  impersonatedEmail: string | null;
+  impersonatedName: string | null;
+  impersonate: (id: string, email: string, name: string) => void;
+  stopImpersonating: () => void;
   login: (email: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
   updateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
@@ -35,6 +40,35 @@ function useProvideAuth(): AuthState {
   const [profile, setProfile] = useState<Profile>({ user_id: "", email: "", name: "" });
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Impersonation state
+  const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(() => {
+    return sessionStorage.getItem("finlo_impersonated_id");
+  });
+  const [impersonatedEmail, setImpersonatedEmail] = useState<string | null>(() => {
+    return sessionStorage.getItem("finlo_impersonated_email");
+  });
+  const [impersonatedName, setImpersonatedName] = useState<string | null>(() => {
+    return sessionStorage.getItem("finlo_impersonated_name");
+  });
+
+  const impersonate = useCallback((id: string, email: string, name: string) => {
+    sessionStorage.setItem("finlo_impersonated_id", id);
+    sessionStorage.setItem("finlo_impersonated_email", email);
+    sessionStorage.setItem("finlo_impersonated_name", name);
+    setImpersonatedUserId(id);
+    setImpersonatedEmail(email);
+    setImpersonatedName(name);
+  }, []);
+
+  const stopImpersonating = useCallback(() => {
+    sessionStorage.removeItem("finlo_impersonated_id");
+    sessionStorage.removeItem("finlo_impersonated_email");
+    sessionStorage.removeItem("finlo_impersonated_name");
+    setImpersonatedUserId(null);
+    setImpersonatedEmail(null);
+    setImpersonatedName(null);
+  }, []);
 
   const mountedRef = useRef(true);
 
@@ -55,9 +89,6 @@ function useProvideAuth(): AuthState {
       setIsAdmin((roleData ?? []).some((r) => r.role === "admin"));
     };
 
-    // `loading` is ONLY for the first cold bootstrap (getSession). Never set it true from
-    // onAuthStateChange — INITIAL_SESSION / SIGNED_IN / token refresh on resume would
-    // unmount ProtectedRoute and wipe Index (tabs, Maya, sheets).
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (event === "TOKEN_REFRESHED" && sess) {
         setSession(sess);
@@ -77,6 +108,7 @@ function useProvideAuth(): AuthState {
       if (!sess) {
         setProfile({ user_id: "", email: "", name: "" });
         setIsAdmin(false);
+        stopImpersonating(); // Reset impersonation on sign-out
         return;
       }
 
@@ -94,6 +126,7 @@ function useProvideAuth(): AuthState {
         } else {
           setProfile({ user_id: "", email: "", name: "" });
           setIsAdmin(false);
+          stopImpersonating();
         }
       })
       .catch(() => {
@@ -102,6 +135,7 @@ function useProvideAuth(): AuthState {
           setUser(null);
           setProfile({ user_id: "", email: "", name: "" });
           setIsAdmin(false);
+          stopImpersonating();
         }
       })
       .finally(() => {
@@ -112,7 +146,7 @@ function useProvideAuth(): AuthState {
       mountedRef.current = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [stopImpersonating]);
 
   const login = useCallback(async (email: string, password: string): Promise<string | null> => {
     const formattedEmail = email.trim().toLowerCase();
@@ -124,8 +158,9 @@ function useProvideAuth(): AuthState {
   }, []);
 
   const logout = useCallback(async () => {
+    stopImpersonating();
     await supabase.auth.signOut();
-  }, []);
+  }, [stopImpersonating]);
 
   const updateProfile = useCallback(
     async (patch: { name?: string; password?: string }): Promise<string | null> => {
@@ -154,6 +189,11 @@ function useProvideAuth(): AuthState {
     user,
     profile,
     isAdmin,
+    impersonatedUserId,
+    impersonatedEmail,
+    impersonatedName,
+    impersonate,
+    stopImpersonating,
     login,
     logout,
     updateProfile,

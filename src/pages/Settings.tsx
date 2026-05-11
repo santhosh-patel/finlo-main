@@ -128,7 +128,7 @@ export default function Settings(props: Props) {
               Finlo AI
             </p>
             <p className="text-[11px] text-ink-muted/60 dark:text-ink-muted/50 font-medium mt-1.5 tracking-tight font-sans">
-              v1.1.0
+              v1.1.2
             </p>
           </div>
         </div>
