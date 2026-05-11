@@ -14,7 +14,6 @@ Finlo is a personal expense tracker with a mobile-first web app (installable PWA
 
 ## Tech stack
 
-
 | Area | Choice |
 |------|--------|
 | UI | React 18, TypeScript, Vite 5, Tailwind CSS, shadcn/ui (Radix), Recharts |
