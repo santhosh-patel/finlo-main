@@ -190,7 +190,7 @@ export function SearchFilters({ value, onChange, categories, resultsCount, onExp
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => onChange({ query: "", category: "", from: "", to: "" })}
+              onClick={() => onChange({ query: "", category: "", from: "", to: "", reimbursableOnly: false })}
               className="text-xs text-ink-muted hover:text-foreground h-7"
             >
               Clear filters

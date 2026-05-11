@@ -1,5 +1,5 @@
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, HandCoins, ChevronRight } from "lucide-react";
-import { Navigate } from "react-router-dom";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, HandCoins, ChevronRight, ShieldCheck, Lock } from "lucide-react";
+import { Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
 import { ExpenseRow } from "@/components/ExpenseRow";
@@ -48,7 +48,7 @@ import type { ReceiptScanPrefill } from "@/components/AddExpenseSheet";
 type View = "today" | "week" | "month";
 
 const FILTERS_KEY = "finlo.filters.v1";
-const EMPTY_FILTERS: FilterState = { query: "", category: "", from: "", to: "" };
+const EMPTY_FILTERS: FilterState = { query: "", category: "", from: "", to: "", reimbursableOnly: false };
 
 function readFilters(): FilterState {
   try {
@@ -59,10 +59,11 @@ function readFilters(): FilterState {
 }
 
 const Index = () => {
-  const { logout, profile, updateProfile, isAdmin, user } = useAuth();
+  const navigate = useNavigate();
+  const { logout, profile, updateProfile, isAdmin, user, impersonatedUserId, impersonatedEmail, stopImpersonating } = useAuth();
   const { theme, update: updateTheme } = useTheme();
-  // Admins never use the consumer app — skip data subscriptions for them.
-  const expenseUserId = !isAdmin ? user?.id ?? null : null;
+  // Admins never use the consumer app unless they are active in Impersonated Support mode.
+  const expenseUserId = impersonatedUserId ? impersonatedUserId : (!isAdmin ? user?.id ?? null : null);
   const {
     expenses, categories, budgets,
     syncing, lastSync, sync, initialDataReady,
@@ -224,6 +225,24 @@ const Index = () => {
   const openLoans = loans.filter((l) => l.status === "open");
   const owedToMeSum = openLoans.filter((l) => l.direction === "lent").reduce((a, b) => a + Number(b.amount), 0);
   const iOweSum = openLoans.filter((l) => l.direction === "borrowed").reduce((a, b) => a + Number(b.amount), 0);
+
+  const reimbursablesSummary = useMemo(() => {
+    const pendingItems = expenses.filter((e) => e.is_reimbursable && !e.reimbursed_at);
+    const settledItems = expenses.filter((e) => e.is_reimbursable && !!e.reimbursed_at);
+    const pendingSum = pendingItems.reduce((a, e) => a + baseAmountOf(e), 0);
+    const settledSum = settledItems.reduce((a, e) => a + baseAmountOf(e), 0);
+    return {
+      pendingSum,
+      settledSum,
+      pendingCount: pendingItems.length,
+      settledCount: settledItems.length,
+    };
+  }, [expenses]);
+
+  const handleOpenReimbursables = () => {
+    setFilters({ query: "", category: "", from: "", to: "", reimbursableOnly: true });
+    setSearchOpen(true);
+  };
 
   useEffect(() => {
     try { localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)); } catch { /* ignore */ }
@@ -516,7 +535,7 @@ const Index = () => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [overlayCount]);
 
-  if (isAdmin) return <Navigate to="/admin" replace />;
+  if (isAdmin && !impersonatedUserId) return <Navigate to="/admin" replace />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
 
@@ -577,6 +596,36 @@ const Index = () => {
     : view === "week" ? weekRangeOf(shiftWeek(weekAnchor, 1)).from <= today
     : monthRangeOf(shiftMonth(monthAnchor, 1)).from <= today;
 
+  const isMaintenanceActive = localStorage.getItem("finlo_config_maintenance") === "true";
+  const shouldBlockForMaintenance = isMaintenanceActive && !isAdmin;
+
+  if (shouldBlockForMaintenance) {
+    return (
+      <main className="min-h-dvh bg-background text-foreground flex flex-col items-center justify-center p-6 select-none animate-in fade-in duration-300">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="mx-auto h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20 shadow-[0_0_24px_rgba(245,158,11,0.15)] animate-bounce duration-[2000ms]">
+            <Lock className="h-6 w-6 text-amber-500" strokeWidth={1.5} />
+          </div>
+          <div className="space-y-2">
+            <h1 className="font-serif text-3xl font-normal tracking-tight">Scheduled Maintenance</h1>
+            <p className="text-sm text-ink-muted leading-relaxed">
+              Finlo is currently undergoing a routine security & system optimization upgrade. We will be back online shortly.
+            </p>
+          </div>
+          <div className="p-4 rounded-2xl bg-surface/40 border border-border/30 text-[11px] text-ink-muted">
+            <p className="font-medium text-foreground mb-1">Estimated Completion Time</p>
+            <p className="tabular-nums font-mono">Under 45 Minutes</p>
+          </div>
+          <div className="pt-4 border-t border-border/15">
+            <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-bold">
+              Finlo Support
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main
       ref={mainRef}
@@ -586,6 +635,18 @@ const Index = () => {
         willChange: pullPx > 0 ? "transform" : undefined,
       }}
     >
+      {impersonatedUserId && (
+        <div className="bg-amber-500 text-amber-950 px-4 py-2.5 text-center text-xs font-semibold flex items-center justify-center gap-2 select-none sticky top-0 z-[60] shadow-md border-b border-amber-600/20">
+          <ShieldCheck className="h-4 w-4 shrink-0" />
+          <span>You are impersonating <strong>{impersonatedEmail}</strong> (Read-Only Support Session)</span>
+          <button 
+            onClick={() => stopImpersonating()} 
+            className="bg-amber-950 text-amber-50 rounded-full px-2.5 py-0.5 text-[10px] uppercase font-bold hover:bg-amber-900 transition-colors ml-1"
+          >
+            Exit Session
+          </button>
+        </div>
+      )}
       {/* Premium Native-Style Animated Splash Screen Loader */}
       {!initialDataReady && expenseUserId && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background select-none pointer-events-auto animate-in fade-in duration-300">
@@ -732,37 +793,71 @@ const Index = () => {
           </div>
         ) : (
           <>
-        <div className="mb-6">
-          <p className="text-[10px] tracking-[0.18em] uppercase text-ink-muted font-semibold px-1.5 mb-2">Quick capture</p>
-          <QuickAddBar
-            key={quickAddCycle}
-            registerTranscriptSink={(fn) => {
-              quickAddTranscriptRef.current = fn;
-            }}
-            ai={{
-              loading: expenseAI.loading,
-              isListening: expenseAI.isListening,
-              parseQuickAddText: expenseAI.parseQuickAddText,
-            }}
-            categories={categories}
-            defaultDate={quickDefaultDate}
-            sharePrefill={sharePrefill}
-            onReceiptScan={(prefill) => {
-              setReceiptScanPrefill(prefill);
-              setEditing(null);
-              setOpen(true);
-            }}
-          />
-        </div>
+        {impersonatedUserId ? (
+          <div className="mb-8 p-5 rounded-3xl bg-amber-500/5 border border-amber-500/15 text-center select-none flex flex-col items-center justify-center animate-in fade-in slide-in-from-top-2 duration-300">
+            <ShieldCheck className="h-6 w-6 text-amber-500 mb-2" strokeWidth={1.5} />
+            <p className="text-sm font-semibold text-foreground">Impersonation Sandbox Active</p>
+            <p className="text-xs text-ink-muted/80 mt-1 max-w-sm">
+              You are securely viewing the live budget of <strong>{impersonatedEmail}</strong>. In this support session, transaction writes and category additions are locked.
+            </p>
+            <div className="mt-4 flex items-center gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  stopImpersonating();
+                  toast({ title: "Impersonation session ended", description: "You are now back in standard Admin mode." });
+                  navigate("/admin");
+                }}
+                className="rounded-full h-8 px-4 text-xs font-medium border-amber-500/20 text-amber-500 hover:bg-amber-500/10"
+              >
+                End Session
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/admin")}
+                className="rounded-full h-8 px-4 text-xs font-medium border-border/60 text-foreground hover:bg-surface"
+              >
+                Go to Admin
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mb-6">
+              <p className="text-[10px] tracking-[0.18em] uppercase text-ink-muted font-semibold px-1.5 mb-2">Quick capture</p>
+              <QuickAddBar
+                key={quickAddCycle}
+                registerTranscriptSink={(fn) => {
+                  quickAddTranscriptRef.current = fn;
+                }}
+                ai={{
+                  loading: expenseAI.loading,
+                  isListening: expenseAI.isListening,
+                  parseQuickAddText: expenseAI.parseQuickAddText,
+                }}
+                categories={categories}
+                defaultDate={quickDefaultDate}
+                sharePrefill={sharePrefill}
+                onReceiptScan={(prefill) => {
+                  setReceiptScanPrefill(prefill);
+                  setEditing(null);
+                  setOpen(true);
+                }}
+              />
+            </div>
 
-        <div className="hidden sm:flex justify-center mb-12">
-          <Button
-            onClick={() => { setEditing(null); setOpen(true); }}
-            className="rounded-full bg-foreground text-background hover:bg-foreground/90 px-7 h-12 text-sm font-medium shadow-md"
-          >
-            <Plus className="h-4 w-4 mr-1" /> Add transaction
-          </Button>
-        </div>
+            <div className="hidden sm:flex justify-center mb-12">
+              <Button
+                onClick={() => { setEditing(null); setOpen(true); }}
+                className="rounded-full bg-foreground text-background hover:bg-foreground/90 px-7 h-12 text-sm font-medium shadow-md"
+              >
+                <Plus className="h-4 w-4 mr-1" /> Add transaction
+              </Button>
+            </div>
+          </>
+        )}
 
         {(owedToMeSum > 0 || iOweSum > 0) && (
           <div
@@ -805,6 +900,39 @@ const Index = () => {
                       </p>
                     </div>
                   )}
+                </div>
+                <ChevronRight className="hidden min-[400px]:block h-4 w-4 text-ink-muted/35 group-hover:text-ink-muted/60 transition-colors shrink-0 self-center" aria-hidden />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {reimbursablesSummary.pendingSum > 0 && (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={handleOpenReimbursables}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleOpenReimbursables();
+            }}
+            className="mb-6 group rounded-2xl border border-border/50 bg-card/80 px-3 py-2.5 sm:px-4 sm:py-3 cursor-pointer hover:bg-surface/50 active:scale-[0.99] transition-[background,transform] duration-150"
+          >
+            <div className="flex flex-col gap-2.5 min-[400px]:flex-row min-[400px]:items-center min-[400px]:gap-3">
+              <div className="flex items-center justify-between gap-2 min-[400px]:justify-start min-[400px]:shrink-0">
+                <div className="flex items-center gap-2 text-ink-muted">
+                  <ArrowLeftRight className="h-4 w-4 text-foreground/70 shrink-0" aria-hidden />
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em]">Reimbursements</span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-ink-muted/40 group-hover:text-ink-muted/65 transition-colors shrink-0 min-[400px]:hidden" aria-hidden />
+              </div>
+              <div className="flex flex-1 items-stretch min-[400px]:items-center gap-2 min-[400px]:justify-end min-[400px]:min-w-0">
+                <div className="grid gap-2 flex-1 min-[400px]:flex-none min-[400px]:flex min-[400px]:flex-wrap min-[400px]:justify-end grid-cols-1">
+                  <div className="min-w-0 rounded-xl bg-amber-500/5 dark:bg-amber-500/10 px-2.5 py-1.5 sm:px-3 sm:py-2 min-[400px]:text-right flex items-center justify-between min-[400px]:block gap-4">
+                    <p className="text-[9px] uppercase tracking-wider text-ink-muted/90 leading-none min-[400px]:mb-1">Pending payback</p>
+                    <p className="font-serif text-sm sm:text-base text-amber-600 dark:text-amber-400 tabular-nums font-medium leading-tight truncate">
+                      {getCurrencySymbol()}{formatINR(reimbursablesSummary.pendingSum)}
+                    </p>
+                  </div>
                 </div>
                 <ChevronRight className="hidden min-[400px]:block h-4 w-4 text-ink-muted/35 group-hover:text-ink-muted/60 transition-colors shrink-0 self-center" aria-hidden />
               </div>
@@ -1136,25 +1264,27 @@ const Index = () => {
           </button>
 
           {/* Center FAB */}
-          <button
-            type="button"
-            {...expenseAI.fabPointerProps}
-            className={cn(
-              "relative isolate h-12 w-12 shrink-0 overflow-hidden rounded-full mx-1",
-              "flex items-center justify-center",
-              "bg-foreground text-background",
-              "shadow-[0_4px_12px_-4px_hsl(var(--foreground)/0.3)]",
-              "transition-transform duration-300 ease-out",
-              "active:scale-90",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2",
-              expenseAI.isListening &&
-                "scale-105 bg-rose-500 text-white shadow-[0_0_0_4px_rgba(244,114,182,0.2)]"
-            )}
-            aria-label="Add transaction. Press and hold to log by voice."
-            title="Tap to add. Hold for voice."
-          >
-            <Plus className="relative z-10 h-6 w-6 stroke-[2.5]" />
-          </button>
+          {!impersonatedUserId && (
+            <button
+              type="button"
+              {...expenseAI.fabPointerProps}
+              className={cn(
+                "relative isolate h-12 w-12 shrink-0 overflow-hidden rounded-full mx-1",
+                "flex items-center justify-center",
+                "bg-foreground text-background",
+                "shadow-[0_4px_12px_-4px_hsl(var(--foreground)/0.3)]",
+                "transition-transform duration-300 ease-out",
+                "active:scale-90",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2",
+                expenseAI.isListening &&
+                  "scale-105 bg-rose-500 text-white shadow-[0_0_0_4px_rgba(244,114,182,0.2)]"
+              )}
+              aria-label="Add transaction. Press and hold to log by voice."
+              title="Tap to add. Hold for voice."
+            >
+              <Plus className="relative z-10 h-6 w-6 stroke-[2.5]" />
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -1204,27 +1334,29 @@ const Index = () => {
       )}
 
       {/* Desktop / tablet: floating add (mobile uses bottom bar FAB) */}
-      <button
-        type="button"
-        onClick={() => {
-          setEditing(null);
-          setOpen(true);
-        }}
-        className={cn(
-          "hidden md:flex fixed z-50 items-center justify-center",
-          "bottom-8 right-8 h-14 w-14 rounded-full",
-          "bg-foreground text-background shadow-lg",
-          "hover:bg-foreground/90 active:scale-95 transition-transform",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/55 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        )}
-        style={{
-          marginBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))",
-        }}
-        aria-label="Add transaction"
-        title="Add transaction"
-      >
-        <Plus className="h-6 w-6" strokeWidth={2.25} />
-      </button>
+      {!impersonatedUserId && (
+        <button
+          type="button"
+          onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}
+          className={cn(
+            "hidden md:flex fixed z-50 items-center justify-center",
+            "bottom-8 right-8 h-14 w-14 rounded-full",
+            "bg-foreground text-background shadow-lg",
+            "hover:bg-foreground/90 active:scale-95 transition-transform",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/55 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          )}
+          style={{
+            marginBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))",
+          }}
+          aria-label="Add transaction"
+          title="Add transaction"
+        >
+          <Plus className="h-6 w-6" strokeWidth={2.25} />
+        </button>
+      )}
     </main>
   );
 };
