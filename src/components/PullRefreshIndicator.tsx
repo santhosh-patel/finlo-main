@@ -35,12 +35,19 @@ export function PullRefreshIndicator({
   // Refresh: fixed gap arc (~26% of circumference), whole SVG rotates.
   const refreshDash = `${C * 0.26} ${C}`;
 
+  // Let the spinner move down as we pull, up to a maximum of 44px
+  const translatePx = Math.min(44, pullPx);
+
   return (
     <div
       className={cn(
         "pointer-events-none flex justify-center pt-[calc(env(safe-area-inset-top,0px)+14px)]",
         className,
       )}
+      style={{
+        transform: `translateY(${translatePx}px)`,
+        transition: phase !== "pulling" ? "transform 330ms cubic-bezier(0.2, 0.8, 0.2, 1)" : undefined,
+      }}
       aria-hidden
     >
       <div className="flex h-[26px] w-[26px] items-center justify-center">

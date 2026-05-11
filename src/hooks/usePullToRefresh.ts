@@ -40,13 +40,14 @@ export function usePullToRefresh(
     if (refreshLock.current) return;
     refreshLock.current = true;
     setPhase("refreshing");
-    setPullPx(0);
-    pullDistanceRef.current = 0;
+    setPullPx(44);
+    pullDistanceRef.current = 44;
     try {
       await onRefreshRef.current();
     } finally {
       refreshLock.current = false;
       setPhase("idle");
+      setPullPx(0);
     }
   }, []);
 
@@ -123,9 +124,12 @@ export function usePullToRefresh(
       pulling.current = false;
       touchedInContainer.current = false;
       pullDistanceRef.current = 0;
-      setPullPx(0);
-      if (d >= THRESHOLD_PX) void runRefresh();
-      else setPhase("idle");
+      if (d >= THRESHOLD_PX) {
+        void runRefresh();
+      } else {
+        setPullPx(0);
+        setPhase("idle");
+      }
     };
 
     const onTouchCancel = () => {
