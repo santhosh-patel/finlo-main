@@ -42,6 +42,7 @@ import {
 } from "@/lib/expenses";
 import { cn, vibrate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/hooks/use-toast";
 import type { ReceiptScanPrefill } from "@/components/AddExpenseSheet";
 
 type View = "today" | "week" | "month";
@@ -92,6 +93,18 @@ const Index = () => {
   const mainRef = useRef<HTMLElement>(null);
   const [sharePrefill, setSharePrefill] = useState<string | undefined>();
   const [pullRefreshEnabled, setPullRefreshEnabled] = useState(false);
+
+  const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
   const [receiptScanPrefill, setReceiptScanPrefill] = useState<ReceiptScanPrefill | null>(null);
 
   const clearReceiptPrefill = useCallback(() => setReceiptScanPrefill(null), []);
@@ -469,6 +482,40 @@ const Index = () => {
 
   useOverlayHistorySync(overlayCount, closeTopOverlay);
 
+  // Traps hardware back clicks on mobile home screen and demands a double tap to exit
+  const lastBackPressRef = useRef<number>(0);
+  useEffect(() => {
+    if (overlayCount > 0) return;
+
+    // Push the initial home page trap states if not set
+    if (!window.history.state || (!window.history.state.finloExitTrap && !window.history.state.finloOverlay)) {
+      window.history.replaceState({ finloHome: true }, "", window.location.href);
+      window.history.pushState({ finloExitTrap: true }, "", window.location.href);
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (overlayCount > 0) return;
+
+      const now = Date.now();
+      if (now - lastBackPressRef.current < 2000) {
+        // Double tap confirmed -> Let it pop out of the application cleanly
+        window.history.go(-1);
+      } else {
+        lastBackPressRef.current = now;
+        toast({
+          title: "Press back again to exit",
+          duration: 2000,
+        });
+
+        // Re-push the trap state to catch the next pop action
+        window.history.pushState({ finloExitTrap: true }, "", window.location.href);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [overlayCount]);
+
   if (isAdmin) return <Navigate to="/admin" replace />;
 
   const handleAskDelete = (e: Expense) => setConfirmDelete(e);
@@ -556,7 +603,18 @@ const Index = () => {
           <div className="flex items-center gap-2.5 min-w-0">
             <img src="/finlo-logo.png" alt="Finlo" className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl object-contain shrink-0" />
             <div className="min-w-0">
-              <h1 className="font-serif text-lg sm:text-xl text-foreground leading-none truncate">Finlo</h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-serif text-lg sm:text-xl text-foreground leading-none truncate">Finlo</h1>
+                <div 
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-500",
+                    isOnline 
+                      ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" 
+                      : "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)] animate-pulse"
+                  )} 
+                  title={isOnline ? "Online & Synced" : "Offline Mode (Changes saved locally)"} 
+                />
+              </div>
               <p className="hidden sm:block text-[11px] text-ink-muted mt-1 truncate">Hi {profile.name}</p>
             </div>
           </div>
