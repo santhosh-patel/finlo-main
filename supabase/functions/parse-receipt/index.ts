@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: getCorsHeaders(req) });
 
   const authResult = await requireAuthUser(req);
-  if (!authResult.ok) return authResult.response;
+  if ("response" in authResult) return authResult.response;
 
   try {
     const body = await req.json() as {

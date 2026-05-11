@@ -56,6 +56,20 @@ interface DBExpenseRow {
   import_hash: string | null;
   receipt_url: string | null;
   split_note: string | null;
+  reimbursed_at: string | null;
+  client_updated_at: string | null;
+}
+
+function normalizeExpenseDate(value: string): string {
+  return value.trim().split("T")[0];
+}
+
+function normalizeExpense<T extends Expense>(expense: T): T {
+  return { ...expense, date: normalizeExpenseDate(expense.date) };
+}
+
+function normalizeExpenses(expenses: Expense[]): Expense[] {
+  return expenses.map(normalizeExpense);
 }
 
 export function useExpenses(userId: string | null) {
@@ -64,7 +78,9 @@ export function useExpenses(userId: string | null) {
   const budKey = userId ? `finlo.budgets.${userId}.v1` : BUD_KEY;
   const lastSyncKey = userId ? `finlo.last_sync.${userId}.v1` : LAST_SYNC_KEY;
 
-  const [expenses, setExpenses] = useState<Expense[]>(() => readJSON<Expense[]>(expKey, []));
+  const [expenses, setExpenses] = useState<Expense[]>(() =>
+    normalizeExpenses(readJSON<Expense[]>(expKey, []))
+  );
   const [categories, setCategories] = useState<CategoryDef[]>(() =>
     readJSON<CategoryDef[]>(catKey, DEFAULT_CATEGORIES)
   );
@@ -85,7 +101,7 @@ export function useExpenses(userId: string | null) {
 
   // Dynamic state hydration on login/logout/impersonation session switch
   useEffect(() => {
-    setExpenses(readJSON<Expense[]>(expKey, []));
+    setExpenses(normalizeExpenses(readJSON<Expense[]>(expKey, [])));
     setCategories(readJSON<CategoryDef[]>(catKey, DEFAULT_CATEGORIES));
     setBudgets(readJSON<Budgets>(budKey, {}));
     setLastSync(localStorage.getItem(lastSyncKey));
@@ -98,16 +114,16 @@ export function useExpenses(userId: string | null) {
 
   // Dynamic writing back to user-scoped storage
   useEffect(() => {
-    if (userId) writeJSON(expKey, expenses);
-  }, [expenses, userId, expKey]);
+    writeJSON(expKey, expenses);
+  }, [expenses, expKey]);
 
   useEffect(() => {
-    if (userId) writeJSON(catKey, categories);
-  }, [categories, userId, catKey]);
+    writeJSON(catKey, categories);
+  }, [categories, catKey]);
 
   useEffect(() => {
-    if (userId) writeJSON(budKey, budgets);
-  }, [budgets, userId, budKey]);
+    writeJSON(budKey, budgets);
+  }, [budgets, budKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,6 +152,19 @@ export function useExpenses(userId: string | null) {
     setPendingCount(pendingRef.current.length);
   };
 
+  const dequeue = (id: string) => {
+    pendingRef.current = pendingRef.current.filter(
+      (op) =>
+        !(
+          (op.kind === "insert" && op.row.id === id) ||
+          (op.kind === "update" && op.id === id) ||
+          (op.kind === "delete" && op.id === id)
+        )
+    );
+    void idbSetPending(pendingRef.current);
+    setPendingCount(pendingRef.current.length);
+  };
+
   const flushPending = useCallback(async () => {
     if (!userId || !navigator.onLine) return;
     const ops = [...pendingRef.current];
@@ -152,7 +181,7 @@ export function useExpenses(userId: string | null) {
             category: op.row.category,
             subcategory: op.row.subcategory ?? null,
             note: op.row.note ?? null,
-            date: op.row.date,
+            date: normalizeExpenseDate(op.row.date),
             payment_method: op.row.payment_method,
             type: op.row.type ?? "expense",
             currency: op.row.currency ?? "INR",
@@ -169,7 +198,7 @@ export function useExpenses(userId: string | null) {
             ...(op.patch.category !== undefined && { category: op.patch.category }),
             ...(op.patch.subcategory !== undefined && { subcategory: op.patch.subcategory ?? null }),
             ...(op.patch.note !== undefined && { note: op.patch.note ?? null }),
-            ...(op.patch.date !== undefined && { date: op.patch.date }),
+            ...(op.patch.date !== undefined && { date: normalizeExpenseDate(op.patch.date) }),
             ...(op.patch.payment_method !== undefined && { payment_method: op.patch.payment_method }),
             ...(op.patch.type !== undefined && { type: op.patch.type }),
             ...(op.patch.currency !== undefined && { currency: op.patch.currency }),
@@ -204,13 +233,13 @@ export function useExpenses(userId: string | null) {
       supabase.from("budgets").select("*").eq("user_id", userId),
     ]);
     if (exp) {
-      setExpenses((exp as unknown as DBExpenseRow[]).map((r) => ({
+      const serverExpenses = (exp as unknown as DBExpenseRow[]).map((r) => ({
         id: r.id,
         amount: Number(r.amount),
         category: r.category,
         subcategory: r.subcategory ?? undefined,
         note: r.note ?? undefined,
-        date: r.date,
+        date: normalizeExpenseDate(r.date),
         payment_method: (r.payment_method as Expense["payment_method"]) ?? "upi",
         created_at: r.created_at,
         type: (r.type as Expense["type"]) ?? "expense",
@@ -221,7 +250,50 @@ export function useExpenses(userId: string | null) {
         import_hash: r.import_hash ?? undefined,
         receipt_url: r.receipt_url ?? undefined,
         split_note: r.split_note ?? undefined,
-      })));
+        reimbursed_at: r.reimbursed_at ?? null,
+        client_updated_at: r.client_updated_at ?? undefined,
+      }));
+
+      // Merge offline additions that have not synced yet
+      const pendingInserts = pendingRef.current
+        .filter((op): op is PendingOp & { kind: "insert" } => op.kind === "insert")
+        .map((op) => op.row)
+        .filter((row) => !serverExpenses.some((se) => se.id === row.id));
+
+      // Retrieve offline deletions
+      const pendingDeletes = new Set(
+        pendingRef.current
+          .filter((op): op is PendingOp & { kind: "delete" } => op.kind === "delete")
+          .map((op) => op.id)
+      );
+
+      // Retrieve offline updates map
+      const pendingUpdates = new Map<string, Partial<Expense>>();
+      pendingRef.current
+        .filter((op): op is PendingOp & { kind: "update" } => op.kind === "update")
+        .forEach((op) => {
+          pendingUpdates.set(op.id, op.patch);
+        });
+
+      // Filter and map offline-edited states
+      let mergedExpenses = [...pendingInserts, ...serverExpenses]
+        .filter((e) => !pendingDeletes.has(e.id))
+        .map((e) => {
+          const patch = pendingUpdates.get(e.id);
+          if (patch) {
+            return { ...e, ...patch };
+          }
+          return e;
+        });
+
+      // Maintain proper sorting order
+      mergedExpenses.sort((a, b) => {
+        const dateCompare = b.date.localeCompare(a.date);
+        if (dateCompare !== 0) return dateCompare;
+        return b.created_at.localeCompare(a.created_at);
+      });
+
+      setExpenses(mergedExpenses);
     }
     if (cat) {
       const serverCats = cat.map((c) => ({
@@ -346,7 +418,7 @@ export function useExpenses(userId: string | null) {
                 category: row.category,
                 subcategory: row.subcategory ?? undefined,
                 note: row.note ?? undefined,
-                date: row.date,
+                date: normalizeExpenseDate(row.date),
                 payment_method: (row.payment_method as Expense["payment_method"]) ?? "upi",
                 created_at: row.created_at,
                 type: (row.type as Expense["type"]) ?? "expense",
@@ -371,7 +443,7 @@ export function useExpenses(userId: string | null) {
                 category: row.category,
                 subcategory: row.subcategory ?? undefined,
                 note: row.note ?? undefined,
-                date: row.date,
+                date: normalizeExpenseDate(row.date),
                 payment_method: (row.payment_method as Expense["payment_method"]) ?? "upi",
                 type: (row.type as Expense["type"]) ?? "expense",
                 currency: row.currency ?? "INR",
@@ -405,6 +477,7 @@ export function useExpenses(userId: string | null) {
     const fx = e.fx_rate ?? 1;
     const newE: Expense = {
       ...e,
+      date: normalizeExpenseDate(e.date),
       fx_rate: fx,
       base_amount: e.base_amount ?? Number(e.amount) * fx,
       id: crypto.randomUUID(),
@@ -412,7 +485,11 @@ export function useExpenses(userId: string | null) {
     };
     setExpenses((prev) => [newE, ...prev]);
 
-    if (userId) {
+    // Queue first so the expense survives a page close/reload before the
+    // direct insert completes. Dequeue on success.
+    queue({ kind: "insert", row: newE });
+
+    if (userId && navigator.onLine) {
       (async () => {
         try {
           const { error } = await supabase.from("expenses").insert({
@@ -428,40 +505,40 @@ export function useExpenses(userId: string | null) {
             receipt_url: newE.receipt_url ?? null,
           });
 
-          if (error) {
-            console.error("Failed to insert expense:", error);
-            queue({ kind: "insert", row: newE });
-          } else if (newE.category.toLowerCase() === "lending") {
-            const counterparty = newE.note?.trim() || "Someone";
-            const direction = newE.type === "income" ? "borrowed" : "lent";
-            try {
-              const { error: loanErr } = await supabase.from("loans").insert({
-                user_id: userId,
-                counterparty,
-                amount: newE.amount,
-                direction,
-                date: newE.date,
-                note: newE.note ? `Auto-created from transaction: ${newE.note}` : "Auto-created from transaction",
-                expense_id: newE.id,
-                status: "open",
-              });
-              if (loanErr) console.error("Failed to auto-create loan:", loanErr);
-              else {
-                toast({ title: "Loan tracker updated", description: `Added ${direction === "lent" ? "lent to" : "borrowed from"} ${counterparty}.` });
+          if (!error) {
+            dequeue(newE.id);
+            if (newE.category.toLowerCase() === "lending") {
+              const counterparty = newE.note?.trim() || "Someone";
+              const direction = newE.type === "income" ? "borrowed" : "lent";
+              try {
+                const { error: loanErr } = await supabase.from("loans").insert({
+                  user_id: userId,
+                  counterparty,
+                  amount: newE.amount,
+                  direction,
+                  date: newE.date,
+                  note: newE.note ? `Auto-created from transaction: ${newE.note}` : "Auto-created from transaction",
+                  expense_id: newE.id,
+                  status: "open",
+                });
+                if (loanErr) console.error("Failed to auto-create loan:", loanErr);
+                else {
+                  toast({ title: "Loan tracker updated", description: `Added ${direction === "lent" ? "lent to" : "borrowed from"} ${counterparty}.` });
+                }
+              } catch (lErr) {
+                console.error("Failed to auto-create loan due to exception:", lErr);
               }
-            } catch (lErr) {
-              console.error("Failed to auto-create loan due to exception:", lErr);
             }
+          } else {
+            console.error("Failed to insert expense:", error);
           }
         } catch (err) {
           console.error("Exception during expense insert:", err);
-          queue({ kind: "insert", row: newE });
         } finally {
           vibrate([28, 42, 28]);
         }
       })();
     } else {
-      queue({ kind: "insert", row: newE });
       vibrate([28, 42, 28]);
     }
     return newE;
@@ -496,7 +573,7 @@ export function useExpenses(userId: string | null) {
                 category: String(serverRow.category),
                 subcategory: (serverRow.subcategory as string) ?? undefined,
                 note: (serverRow.note as string) ?? undefined,
-                date: String(serverRow.date),
+                date: normalizeExpenseDate(String(serverRow.date)),
                 payment_method: (serverRow.payment_method as Expense["payment_method"]) ?? "upi",
                 type: (serverRow.type as Expense["type"]) ?? "expense",
                 currency: (serverRow.currency as string) ?? "INR",
@@ -521,13 +598,17 @@ export function useExpenses(userId: string | null) {
 
   const updateExpense = useCallback(async (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => {
     const clientUpdatedAt = new Date().toISOString();
+    const normalizedPatch = {
+      ...patch,
+      ...(patch.date !== undefined ? { date: normalizeExpenseDate(patch.date) } : {}),
+    };
     let localRow: Expense | undefined;
 
     setExpenses((prev) => {
       localRow = prev.find((e) => e.id === id);
       return prev.map((x) => {
         if (x.id !== id) return x;
-        const merged = { ...x, ...patch, client_updated_at: clientUpdatedAt };
+        const merged = { ...x, ...normalizedPatch, client_updated_at: clientUpdatedAt };
         const fx = merged.fx_rate ?? 1;
         merged.fx_rate = fx;
         merged.base_amount = Number(merged.amount) * fx;
@@ -535,7 +616,9 @@ export function useExpenses(userId: string | null) {
       });
     });
 
-    if (userId) {
+    queue({ kind: "update", id, patch: { ...normalizedPatch, client_updated_at: clientUpdatedAt } });
+
+    if (userId && navigator.onLine) {
       try {
         const { data: serverRow } = await supabase
           .from("expenses")
@@ -543,62 +626,68 @@ export function useExpenses(userId: string | null) {
           .eq("id", id)
           .maybeSingle();
 
-        if (serverRow && serverRow.client_updated_at) {
+        // Only compare when we know the client's last write time. If local state
+        // never had client_updated_at (e.g. cached before we mapped it from the
+        // server), treating server > 0 would falsely block every update.
+        if (
+          serverRow?.client_updated_at &&
+          localRow?.client_updated_at
+        ) {
           const serverTime = new Date(serverRow.client_updated_at).getTime();
-          const localLastTime = localRow?.client_updated_at 
-            ? new Date(localRow.client_updated_at).getTime() 
-            : 0;
+          const localLastTime = new Date(localRow.client_updated_at).getTime();
 
           if (serverTime > localLastTime) {
-            showConflictToast(id, patch, serverRow);
+            dequeue(id);
+            showConflictToast(id, normalizedPatch, serverRow);
             return;
           }
         }
 
         const { error } = await supabase.from("expenses").update({
-          ...(patch.amount !== undefined && { amount: patch.amount }),
-          ...(patch.category !== undefined && { category: patch.category }),
-          ...(patch.subcategory !== undefined && { subcategory: patch.subcategory ?? null }),
-          ...(patch.note !== undefined && { note: patch.note ?? null }),
-          ...(patch.date !== undefined && { date: patch.date }),
-          ...(patch.payment_method !== undefined && { payment_method: patch.payment_method }),
-          ...(patch.type !== undefined && { type: patch.type }),
-          ...(patch.currency !== undefined && { currency: patch.currency }),
-          ...(patch.fx_rate !== undefined && { fx_rate: patch.fx_rate }),
-          ...(patch.is_reimbursable !== undefined && { is_reimbursable: patch.is_reimbursable }),
-          ...(patch.split_note !== undefined && { split_note: patch.split_note ?? null }),
-          ...(patch.receipt_url !== undefined && { receipt_url: patch.receipt_url ?? null }),
+          ...(normalizedPatch.amount !== undefined && { amount: normalizedPatch.amount }),
+          ...(normalizedPatch.category !== undefined && { category: normalizedPatch.category }),
+          ...(normalizedPatch.subcategory !== undefined && { subcategory: normalizedPatch.subcategory ?? null }),
+          ...(normalizedPatch.note !== undefined && { note: normalizedPatch.note ?? null }),
+          ...(normalizedPatch.date !== undefined && { date: normalizedPatch.date }),
+          ...(normalizedPatch.payment_method !== undefined && { payment_method: normalizedPatch.payment_method }),
+          ...(normalizedPatch.type !== undefined && { type: normalizedPatch.type }),
+          ...(normalizedPatch.currency !== undefined && { currency: normalizedPatch.currency }),
+          ...(normalizedPatch.fx_rate !== undefined && { fx_rate: normalizedPatch.fx_rate }),
+          ...(normalizedPatch.is_reimbursable !== undefined && { is_reimbursable: normalizedPatch.is_reimbursable }),
+          ...(normalizedPatch.split_note !== undefined && { split_note: normalizedPatch.split_note ?? null }),
+          ...(normalizedPatch.receipt_url !== undefined && { receipt_url: normalizedPatch.receipt_url ?? null }),
           client_updated_at: clientUpdatedAt,
         }).eq("id", id);
 
-        if (error) {
-          queue({ kind: "update", id, patch: { ...patch, client_updated_at: clientUpdatedAt } });
+        if (!error) {
+          dequeue(id);
+        } else {
+          console.error("Failed to update expense:", error);
         }
       } catch (err) {
-        queue({ kind: "update", id, patch: { ...patch, client_updated_at: clientUpdatedAt } });
+        console.error("Exception during expense update:", err);
       }
-    } else {
-      queue({ kind: "update", id, patch: { ...patch, client_updated_at: clientUpdatedAt } });
     }
   }, [userId, showConflictToast]);
 
   const deleteExpense = useCallback((id: string) => {
     setExpenses((prev) => prev.filter((x) => x.id !== id));
-    if (userId) {
+
+    queue({ kind: "delete", id });
+
+    if (userId && navigator.onLine) {
       (async () => {
         try {
           const { error } = await supabase.from("expenses").update({ deleted_at: new Date().toISOString() }).eq("id", id);
-          if (error) {
+          if (!error) {
+            dequeue(id);
+          } else {
             console.error("Failed to soft-delete expense:", error);
-            queue({ kind: "delete", id });
           }
         } catch (err) {
           console.error("Exception during expense delete:", err);
-          queue({ kind: "delete", id });
         }
       })();
-    } else {
-      queue({ kind: "delete", id });
     }
   }, [userId]);
 
@@ -722,6 +811,7 @@ export function useExpenses(userId: string | null) {
       }
       toImport.push({
         ...r,
+        date: normalizeExpenseDate(r.date),
         id: crypto.randomUUID(),
         created_at: new Date(now - i).toISOString(),
       });
@@ -804,13 +894,13 @@ export function useExpenses(userId: string | null) {
     mode: "replace" | "merge"
   ) => {
     if (mode === "replace") {
-      setExpenses(data.expenses ?? []);
+      setExpenses(normalizeExpenses(data.expenses ?? []));
       setCategories(data.categories ?? DEFAULT_CATEGORIES);
       setBudgets(data.budgets ?? {});
     } else {
       setExpenses((prev) => {
         const ids = new Set(prev.map((x) => x.id));
-        const adds = (data.expenses ?? []).filter((x) => !ids.has(x.id));
+        const adds = normalizeExpenses(data.expenses ?? []).filter((x) => !ids.has(x.id));
         return [...adds, ...prev];
       });
       setCategories((prev) => {
@@ -831,7 +921,7 @@ export function useExpenses(userId: string | null) {
       const expRows = exp.map((r) => ({
         id: r.id, user_id: userId, amount: r.amount, category: r.category,
         subcategory: r.subcategory ?? null, note: r.note ?? null,
-        date: r.date, payment_method: r.payment_method,
+        date: normalizeExpenseDate(r.date), payment_method: r.payment_method,
       }));
       for (let i = 0; i < expRows.length; i += 200) {
         await supabase.from("expenses").upsert(expRows.slice(i, i + 200), { onConflict: "id" });

@@ -43,8 +43,9 @@ export function SearchOverlay({
 
     return expenses.filter((e) => {
       if (filters.category && e.category !== filters.category) return false;
-      if (filters.from && e.date < filters.from) return false;
-      if (filters.to && e.date > filters.to) return false;
+      const d = e.date.split("T")[0];
+      if (filters.from && d < filters.from) return false;
+      if (filters.to && d > filters.to) return false;
       if (filters.reimbursableOnly && !e.is_reimbursable) return false;
       if (isReimbursableQuery && !e.is_reimbursable) return false;
       if (cleanQ) {

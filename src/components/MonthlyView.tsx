@@ -38,17 +38,26 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   const [chartsOpen, setChartsOpen] = useState(false);
 
   const monthExpenses = useMemo(
-    () => expenses.filter((e) => e.date >= from && e.date <= to && (e.type ?? "expense") === "expense"),
+    () => expenses.filter((e) => {
+      const d = e.date.split("T")[0];
+      return d >= from && d <= to && (e.type ?? "expense") === "expense";
+    }),
     [expenses, from, to]
   );
 
   const monthIncomes = useMemo(
-    () => expenses.filter((e) => e.date >= from && e.date <= to && e.type === "income"),
+    () => expenses.filter((e) => {
+      const d = e.date.split("T")[0];
+      return d >= from && d <= to && e.type === "income";
+    }),
     [expenses, from, to]
   );
 
   const monthAllTransactions = useMemo(
-    () => expenses.filter((e) => e.date >= from && e.date <= to),
+    () => expenses.filter((e) => {
+      const d = e.date.split("T")[0];
+      return d >= from && d <= to;
+    }),
     [expenses, from, to]
   );
 
@@ -69,7 +78,10 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
     }
     const prevFrom = `${year}-${String(month).padStart(2, "0")}-01`;
     const prevTo = `${year}-${String(month).padStart(2, "0")}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
-    return expenses.filter((e) => e.date >= prevFrom && e.date <= prevTo && (e.type ?? "expense") === "expense");
+    return expenses.filter((e) => {
+      const d = e.date.split("T")[0];
+      return d >= prevFrom && d <= prevTo && (e.type ?? "expense") === "expense";
+    });
   }, [expenses, from]);
 
   const lastMonthTotal = useMemo(() => {
@@ -141,9 +153,10 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
   const byDay = useMemo(() => {
     const map = new Map<string, Expense[]>();
     monthAllTransactions.forEach((e) => {
-      const list = map.get(e.date) || [];
+      const dPart = e.date.split("T")[0];
+      const list = map.get(dPart) || [];
       list.push(e);
-      map.set(e.date, list);
+      map.set(dPart, list);
     });
     return map;
   }, [monthAllTransactions]);
@@ -154,7 +167,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
     let runningTotal = 0;
     for (let i = 1; i <= daysInMonth; i++) {
       const dateStr = `${from.slice(0, 8)}${String(i).padStart(2, "0")}`;
-      const dayTotal = monthExpenses.filter(e => e.date === dateStr).reduce((a, b) => a + b.amount, 0);
+      const dayTotal = monthExpenses.filter(e => e.date.split("T")[0] === dateStr).reduce((a, b) => a + b.amount, 0);
       runningTotal += dayTotal;
       data.push({
         day: i,

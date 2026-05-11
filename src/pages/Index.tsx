@@ -184,7 +184,10 @@ const Index = () => {
   const monthSpendForBudgets = useMemo(() => {
     const ms = startOfMonthISO();
     return expenses
-      .filter((e) => e.date >= ms && e.date <= today && (e.type ?? "expense") === "expense")
+      .filter((e) => {
+        const d = e.date.split("T")[0];
+        return d >= ms && d <= today && (e.type ?? "expense") === "expense";
+      })
       .reduce((a, e) => a + baseAmountOf(e), 0);
   }, [expenses, today]);
 
@@ -352,20 +355,20 @@ const Index = () => {
   const sumIn = (rows: Expense[]) => rows.filter(isInc).reduce((a, b) => a + baseAmountOf(b), 0);
 
   const dayExpenses = useMemo(
-    () => expenses.filter((e) => e.date === dayAnchor),
+    () => expenses.filter((e) => e.date.split("T")[0] === dayAnchor),
     [expenses, dayAnchor]
   );
   const dayTotal = sumOut(dayExpenses);
   const dayIncome = sumIn(dayExpenses);
 
-  const expensesByDate = (d: string) => expenses.filter((e) => e.date === d);
+  const expensesByDate = (d: string) => expenses.filter((e) => e.date.split("T")[0] === d);
   const sumByDate = (d: string) => sumOut(expensesByDate(d));
 
   const monthStart = startOfMonthISO();
   const spentByCategory = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((e) => {
-      if (e.date >= monthStart && isExp(e)) map[e.category] = (map[e.category] || 0) + baseAmountOf(e);
+      if (e.date.split("T")[0] >= monthStart && isExp(e)) map[e.category] = (map[e.category] || 0) + baseAmountOf(e);
     });
     return map;
   }, [expenses, monthStart]);
@@ -553,13 +556,19 @@ const Index = () => {
   } else if (view === "week") {
     const r = weekRangeOf(weekAnchor);
     heroLabel = "Week total";
-    const rows = expenses.filter((e) => e.date >= r.from && e.date <= r.to);
+    const rows = expenses.filter((e) => {
+      const d = e.date.split("T")[0];
+      return d >= r.from && d <= r.to;
+    });
     heroTotal = sumOut(rows);
     heroIncome = sumIn(rows);
   } else {
     const r = monthRangeOf(monthAnchor);
     heroLabel = "Month total";
-    const rows = expenses.filter((e) => e.date >= r.from && e.date <= r.to);
+    const rows = expenses.filter((e) => {
+      const d = e.date.split("T")[0];
+      return d >= r.from && d <= r.to;
+    });
     heroTotal = sumOut(rows);
     heroIncome = sumIn(rows);
   }

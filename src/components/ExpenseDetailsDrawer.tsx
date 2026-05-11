@@ -85,6 +85,7 @@ export function ExpenseDetailsDrawer({
   const [isSplitting, setIsSplitting] = useState(false);
   const [splitRows, setSplitRows] = useState<Array<{ category: string; amount: string; note: string }>>([]);
   const [splitSaving, setSplitSaving] = useState(false);
+  const normalizedDate = date.trim().split("T")[0];
 
   const open = !!expense;
   const subs = categories.find((c) => c.name === category)?.subcategories ?? [];
@@ -165,13 +166,13 @@ export function ExpenseDetailsDrawer({
     if (!amount.trim() || Number.isNaN(num) || num <= 0)
       return setError("Enter a valid amount greater than zero.");
     if (!category.trim()) return setError("Pick a category.");
-    if (!date) return setError("Date is required.");
-    if (date > todayISO()) return setError("Date can't be in the future.");
+    if (!normalizedDate) return setError("Date is required.");
+    if (normalizedDate > todayISO()) return setError("Date can't be in the future.");
     onUpdate(expense.id, {
       amount: num,
       category,
       subcategory: subcategory || undefined,
-      date,
+      date: normalizedDate,
       note: note.trim() || undefined,
       split_note: splitNote.trim() || undefined,
     });
@@ -829,7 +830,7 @@ export function ExpenseDetailsDrawer({
                       <RollingDatePicker
                         value={date}
                         max={todayISO()}
-                        showTime={true}
+                        showTime={false}
                         onChange={(val) => { setDate(val); setError(null); }}
                       />
                     </div>
