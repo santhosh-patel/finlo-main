@@ -115,6 +115,34 @@ export function isoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+const YMD_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Normalize DB (timestamptz) or UI strings to a calendar yyyy-mm-dd in the user's local timezone.
+ * Plain yyyy-mm-dd is returned unchanged — do not parse it as UTC midnight.
+ */
+export function normalizeExpenseDate(value: string): string {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return "";
+  if (YMD_ONLY.test(trimmed)) return trimmed;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) {
+    const i = trimmed.indexOf("T");
+    return i > 0 ? trimmed.slice(0, i) : trimmed.slice(0, 10);
+  }
+  return isoDate(d);
+}
+
+/**
+ * Persist a ledger calendar day in `expenses.date` (timestamptz). Noon UTC keeps the UTC date aligned
+ * with the chosen day so reads are stable; midnight local/UTC would otherwise shift the calendar day.
+ */
+export function expenseDateToDbIso(value: string): string {
+  const ymd = normalizeExpenseDate(value);
+  if (!YMD_ONLY.test(ymd)) return `${todayISO()}T12:00:00.000Z`;
+  return `${ymd}T12:00:00.000Z`;
+}
+
 export function startOfMonthISO(): string {
   const d = new Date();
   return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));

@@ -4,6 +4,8 @@ import {
   CategoryDef,
   DEFAULT_CATEGORIES,
   Expense,
+  expenseDateToDbIso,
+  normalizeExpenseDate,
 } from "@/lib/expenses";
 import { toast } from "@/hooks/use-toast";
 import { vibrate } from "@/lib/utils";
@@ -58,10 +60,6 @@ interface DBExpenseRow {
   split_note: string | null;
   reimbursed_at: string | null;
   client_updated_at: string | null;
-}
-
-function normalizeExpenseDate(value: string): string {
-  return value.trim().split("T")[0];
 }
 
 function normalizeExpense<T extends Expense>(expense: T): T {
@@ -181,7 +179,7 @@ export function useExpenses(userId: string | null) {
             category: op.row.category,
             subcategory: op.row.subcategory ?? null,
             note: op.row.note ?? null,
-            date: normalizeExpenseDate(op.row.date),
+            date: expenseDateToDbIso(op.row.date),
             payment_method: op.row.payment_method,
             type: op.row.type ?? "expense",
             currency: op.row.currency ?? "INR",
@@ -198,7 +196,7 @@ export function useExpenses(userId: string | null) {
             ...(op.patch.category !== undefined && { category: op.patch.category }),
             ...(op.patch.subcategory !== undefined && { subcategory: op.patch.subcategory ?? null }),
             ...(op.patch.note !== undefined && { note: op.patch.note ?? null }),
-            ...(op.patch.date !== undefined && { date: normalizeExpenseDate(op.patch.date) }),
+            ...(op.patch.date !== undefined && { date: expenseDateToDbIso(op.patch.date) }),
             ...(op.patch.payment_method !== undefined && { payment_method: op.patch.payment_method }),
             ...(op.patch.type !== undefined && { type: op.patch.type }),
             ...(op.patch.currency !== undefined && { currency: op.patch.currency }),
@@ -366,6 +364,30 @@ export function useExpenses(userId: string | null) {
   const syncRef = useRef(sync);
   syncRef.current = sync;
 
+  // Reconcile with the server when the user comes back to the tab so every client
+  // (localhost, prod, phone) that shares the same Supabase project + account converges quickly.
+  useEffect(() => {
+    if (!userId) return;
+    let lastPullAt = 0;
+    const throttleMs = 45_000;
+
+    const maybeRefresh = () => {
+      if (!navigator.onLine) return;
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastPullAt < throttleMs) return;
+      lastPullAt = now;
+      void syncRef.current({ silentToast: true });
+    };
+
+    document.addEventListener("visibilitychange", maybeRefresh);
+    window.addEventListener("focus", maybeRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", maybeRefresh);
+      window.removeEventListener("focus", maybeRefresh);
+    };
+  }, [userId]);
+
   // Initial sync + realtime
   useEffect(() => {
     if (!userId) {
@@ -495,7 +517,7 @@ export function useExpenses(userId: string | null) {
           const { error } = await supabase.from("expenses").insert({
             id: newE.id, user_id: userId, amount: newE.amount, category: newE.category,
             subcategory: newE.subcategory ?? null, note: newE.note ?? null,
-            date: newE.date, payment_method: newE.payment_method,
+            date: expenseDateToDbIso(newE.date), payment_method: newE.payment_method,
             type: newE.type ?? "expense",
             currency: newE.currency ?? "INR",
             fx_rate: fx,
@@ -556,6 +578,7 @@ export function useExpenses(userId: string | null) {
               const forcedTime = new Date().toISOString();
               await supabase.from("expenses").update({
                 ...patch,
+                ...(patch.date !== undefined ? { date: expenseDateToDbIso(patch.date) } : {}),
                 client_updated_at: forcedTime,
               }).eq("id", id);
               setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, ...patch, client_updated_at: forcedTime } : e));
@@ -648,7 +671,7 @@ export function useExpenses(userId: string | null) {
           ...(normalizedPatch.category !== undefined && { category: normalizedPatch.category }),
           ...(normalizedPatch.subcategory !== undefined && { subcategory: normalizedPatch.subcategory ?? null }),
           ...(normalizedPatch.note !== undefined && { note: normalizedPatch.note ?? null }),
-          ...(normalizedPatch.date !== undefined && { date: normalizedPatch.date }),
+          ...(normalizedPatch.date !== undefined && { date: expenseDateToDbIso(normalizedPatch.date) }),
           ...(normalizedPatch.payment_method !== undefined && { payment_method: normalizedPatch.payment_method }),
           ...(normalizedPatch.type !== undefined && { type: normalizedPatch.type }),
           ...(normalizedPatch.currency !== undefined && { currency: normalizedPatch.currency }),
@@ -845,7 +868,7 @@ export function useExpenses(userId: string | null) {
         category: r.category,
         subcategory: r.subcategory ?? null,
         note: r.note ?? null,
-        date: r.date,
+        date: expenseDateToDbIso(r.date),
         payment_method: r.payment_method,
         import_hash: r.import_hash ?? null,
       }));
@@ -921,7 +944,7 @@ export function useExpenses(userId: string | null) {
       const expRows = exp.map((r) => ({
         id: r.id, user_id: userId, amount: r.amount, category: r.category,
         subcategory: r.subcategory ?? null, note: r.note ?? null,
-        date: normalizeExpenseDate(r.date), payment_method: r.payment_method,
+        date: expenseDateToDbIso(r.date), payment_method: r.payment_method,
       }));
       for (let i = 0; i < expRows.length; i += 200) {
         await supabase.from("expenses").upsert(expRows.slice(i, i + 200), { onConflict: "id" });
