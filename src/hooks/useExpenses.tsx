@@ -59,29 +59,55 @@ interface DBExpenseRow {
 }
 
 export function useExpenses(userId: string | null) {
-  const [expenses, setExpenses] = useState<Expense[]>(() => readJSON<Expense[]>(EXP_KEY, []));
+  const expKey = userId ? `finlo.expenses.${userId}.v1` : EXP_KEY;
+  const catKey = userId ? `finlo.categories.${userId}.v1` : CAT_KEY;
+  const budKey = userId ? `finlo.budgets.${userId}.v1` : BUD_KEY;
+  const lastSyncKey = userId ? `finlo.last_sync.${userId}.v1` : LAST_SYNC_KEY;
+
+  const [expenses, setExpenses] = useState<Expense[]>(() => readJSON<Expense[]>(expKey, []));
   const [categories, setCategories] = useState<CategoryDef[]>(() =>
-    readJSON<CategoryDef[]>(CAT_KEY, DEFAULT_CATEGORIES)
+    readJSON<CategoryDef[]>(catKey, DEFAULT_CATEGORIES)
   );
-  const [budgets, setBudgets] = useState<Budgets>(() => readJSON<Budgets>(BUD_KEY, {}));
+  const [budgets, setBudgets] = useState<Budgets>(() => readJSON<Budgets>(budKey, {}));
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(
-    () => localStorage.getItem(LAST_SYNC_KEY)
+    () => localStorage.getItem(lastSyncKey)
   );
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingHydrated, setPendingHydrated] = useState(false);
   const [initialDataReady, setInitialDataReady] = useState(false);
   const pendingRef = useRef<PendingOp[]>([]);
-  const expensesRef = useRef<Expense[]>(readJSON<Expense[]>(EXP_KEY, []));
-  expensesRef.current = expenses;
+  const expensesRef = useRef<Expense[]>([]);
 
   const syncInFlightRef = useRef(false);
   const didInitialSyncRef = useRef<string | null>(null);
   const skipNextRealtimePullRef = useRef(false);
 
-  useEffect(() => writeJSON(EXP_KEY, expenses), [expenses]);
-  useEffect(() => writeJSON(CAT_KEY, categories), [categories]);
-  useEffect(() => writeJSON(BUD_KEY, budgets), [budgets]);
+  // Dynamic state hydration on login/logout/impersonation session switch
+  useEffect(() => {
+    setExpenses(readJSON<Expense[]>(expKey, []));
+    setCategories(readJSON<CategoryDef[]>(catKey, DEFAULT_CATEGORIES));
+    setBudgets(readJSON<Budgets>(budKey, {}));
+    setLastSync(localStorage.getItem(lastSyncKey));
+  }, [userId, expKey, catKey, budKey, lastSyncKey]);
+
+  // Keep references updated
+  useEffect(() => {
+    expensesRef.current = expenses;
+  }, [expenses]);
+
+  // Dynamic writing back to user-scoped storage
+  useEffect(() => {
+    if (userId) writeJSON(expKey, expenses);
+  }, [expenses, userId, expKey]);
+
+  useEffect(() => {
+    if (userId) writeJSON(catKey, categories);
+  }, [categories, userId, catKey]);
+
+  useEffect(() => {
+    if (userId) writeJSON(budKey, budgets);
+  }, [budgets, userId, budKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,8 +260,8 @@ export function useExpenses(userId: string | null) {
     }
     const ts = new Date().toISOString();
     setLastSync(ts);
-    localStorage.setItem(LAST_SYNC_KEY, ts);
-  }, [userId]);
+    localStorage.setItem(lastSyncKey, ts);
+  }, [userId, lastSyncKey]);
 
   /** Full sync (default). Pass `{ skipIfNoPending: true }` for pull-to-refresh: no network if the offline queue is empty. `silentToast` skips the success toast (e.g. pull-to-refresh). Returns whether a sync ran. */
   const sync = useCallback(async (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => {
@@ -284,13 +310,16 @@ export function useExpenses(userId: string | null) {
     const hasPendingChanges = pendingRef.current.length > 0;
     const bootstrap = async () => {
       try {
-        // Push offline queue only; do not pull from server on every app open when cache exists.
-        if (hasPendingChanges) {
+        if (navigator.onLine) {
           await flushPending();
-        }
-        if (!hasLocalExpenses) {
           await pullFromServer();
+        } else {
+          if (hasPendingChanges) {
+            await flushPending();
+          }
         }
+      } catch (err) {
+        console.error("Bootstrap sync failed:", err);
       } finally {
         if (!cancelled) setInitialDataReady(true);
       }
@@ -382,41 +411,55 @@ export function useExpenses(userId: string | null) {
       created_at: new Date().toISOString(),
     };
     setExpenses((prev) => [newE, ...prev]);
+
     if (userId) {
-      supabase.from("expenses").insert({
-        id: newE.id, user_id: userId, amount: newE.amount, category: newE.category,
-        subcategory: newE.subcategory ?? null, note: newE.note ?? null,
-        date: newE.date, payment_method: newE.payment_method,
-        type: newE.type ?? "expense",
-        currency: newE.currency ?? "INR",
-        fx_rate: fx,
-        base_amount: newE.base_amount ?? Number(newE.amount) * fx,
-        is_reimbursable: newE.is_reimbursable ?? false,
-        split_note: newE.split_note ?? null,
-        receipt_url: newE.receipt_url ?? null,
-      }).then(({ error }) => { 
-        if (error) queue({ kind: "insert", row: newE });
-        else if (newE.category.toLowerCase() === "lending") {
-          const counterparty = newE.note?.trim() || "Someone";
-          const direction = newE.type === "income" ? "borrowed" : "lent";
-          supabase.from("loans").insert({
-            user_id: userId,
-            counterparty,
-            amount: newE.amount,
-            direction,
-            date: newE.date,
-            note: newE.note ? `Auto-created from transaction: ${newE.note}` : "Auto-created from transaction",
-            expense_id: newE.id,
-            status: "open",
-          }).then(({ error: loanErr }) => {
-            if (loanErr) console.error("Failed to auto-create loan:", loanErr);
-            else {
-              toast({ title: "Loan tracker updated", description: `Added ${direction === "lent" ? "lent to" : "borrowed from"} ${counterparty}.` });
-            }
+      (async () => {
+        try {
+          const { error } = await supabase.from("expenses").insert({
+            id: newE.id, user_id: userId, amount: newE.amount, category: newE.category,
+            subcategory: newE.subcategory ?? null, note: newE.note ?? null,
+            date: newE.date, payment_method: newE.payment_method,
+            type: newE.type ?? "expense",
+            currency: newE.currency ?? "INR",
+            fx_rate: fx,
+            base_amount: newE.base_amount ?? Number(newE.amount) * fx,
+            is_reimbursable: newE.is_reimbursable ?? false,
+            split_note: newE.split_note ?? null,
+            receipt_url: newE.receipt_url ?? null,
           });
+
+          if (error) {
+            console.error("Failed to insert expense:", error);
+            queue({ kind: "insert", row: newE });
+          } else if (newE.category.toLowerCase() === "lending") {
+            const counterparty = newE.note?.trim() || "Someone";
+            const direction = newE.type === "income" ? "borrowed" : "lent";
+            try {
+              const { error: loanErr } = await supabase.from("loans").insert({
+                user_id: userId,
+                counterparty,
+                amount: newE.amount,
+                direction,
+                date: newE.date,
+                note: newE.note ? `Auto-created from transaction: ${newE.note}` : "Auto-created from transaction",
+                expense_id: newE.id,
+                status: "open",
+              });
+              if (loanErr) console.error("Failed to auto-create loan:", loanErr);
+              else {
+                toast({ title: "Loan tracker updated", description: `Added ${direction === "lent" ? "lent to" : "borrowed from"} ${counterparty}.` });
+              }
+            } catch (lErr) {
+              console.error("Failed to auto-create loan due to exception:", lErr);
+            }
+          }
+        } catch (err) {
+          console.error("Exception during expense insert:", err);
+          queue({ kind: "insert", row: newE });
+        } finally {
+          vibrate([28, 42, 28]);
         }
-        vibrate([28, 42, 28]);
-      });
+      })();
     } else {
       queue({ kind: "insert", row: newE });
       vibrate([28, 42, 28]);
@@ -542,9 +585,18 @@ export function useExpenses(userId: string | null) {
   const deleteExpense = useCallback((id: string) => {
     setExpenses((prev) => prev.filter((x) => x.id !== id));
     if (userId) {
-      supabase.from("expenses").update({ deleted_at: new Date().toISOString() }).eq("id", id).then(({ error }) => {
-        if (error) queue({ kind: "delete", id });
-      });
+      (async () => {
+        try {
+          const { error } = await supabase.from("expenses").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+          if (error) {
+            console.error("Failed to soft-delete expense:", error);
+            queue({ kind: "delete", id });
+          }
+        } catch (err) {
+          console.error("Exception during expense delete:", err);
+          queue({ kind: "delete", id });
+        }
+      })();
     } else {
       queue({ kind: "delete", id });
     }

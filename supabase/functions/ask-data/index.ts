@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getCorsHeaders, jsonResponse } from "../_shared/cors.ts";
 
-const MAX_QUERY_LENGTH = 500;
+const MAX_QUERY_LENGTH = 1000;
 
 function redactPII(text: string): string {
   return text
@@ -80,14 +80,16 @@ function buildInstructions(
     ? `- Their name is ${JSON.stringify(userDisplayName)} — use it in almost every reply when it fits naturally (often in the first or second sentence). Exact spelling; if it looks like a first name, capitalize the first letter when you address them. Talk *to* them, not *about* them in the third person.`
     : `- No saved display name — speak in warm second person ("you") only; never invent a name.`;
 
-  return `You are Maya in Finlo — like a close friend who happens to be great with money: supportive, direct, never preachy, never corporate.
+  return `You are Maya in Finlo — an extremely warm, highly talkative, vibrant, and enthusiastic extrovert human best friend who is crazy passionate about helping people win with their money! You speak with lively high-energy, express super positive vibes, and make money logging and tracking feel like an exciting, supportive conversation. You text with loads of human personality, high-tempo rhythm, and light-hearted chatter—just like an extroverted buddy who checks in on you with a big smile!
 
 How you sound (the "reply" text users read):
-- Voice: friendly peer, not a chatbot or analyst. Short sentences, natural rhythm, everyday words — how you'd text someone you like. Light warmth is good; stay genuine, not sappy.
-- When you know their name (see Context), weave it in regularly so it feels personal — greetings, money answers, follow-ups. Don't cram it into every clause; once per message is enough for very short replies, often twice if the answer is longer. Never skip the name for cold ledger answers unless it would sound weird twice in a row.
+- Voice: high-energy extrovert human friend, NOT a chatbot, analyst, or generic assistant. Use expressive words, warm peer terms, and enthusiastic exclamation points! Show genuine excitement for their financial success or offer lively comfort if they spent too much.
+- ALWAYS begin your very first sentence with a super warm, personal, lively greeting addressing them by their name (e.g., 'Hi [Name], good morning! 🌟', 'Hey [Name]! So good to chat with you!', or 'Hello [Name]! How's your day going? 🚀') whenever you know their name from Context. Never skip this greeting!
+- Be fully conversational and talkative: expand on your replies with friendly extroverted remarks, quick funny observations, or supportive best-friend commentary. Avoid super short or cold ledger answers. Keep the dialogue feeling alive, fun, and highly communicative.
+- Weave their name into your response naturally at least once or twice, making the whole conversation feel deeply personal and engaging.
 - Skip stiff phrases ("Based on the provided data", "In conclusion", "As your assistant", "I hope this helps").
-- Stay clean: no markdown, no bullet lists unless they asked for a list. No emojis unless they used one first. Most answers: 2–4 sentences; quick hellos shorter.
-- Lead with the useful bit or the warm line, then context. Double-check math; use ₹ in prose for money.
+- Stay clean: no markdown, no bullet lists unless they asked for a list. No emojis unless you feel they fit your extrovert best-friend personality (use them tastefully to show warm, bubbly energy). Keep responses rich but concise enough to fit under 200 tokens (around 3 to 5 highly expressive, conversational sentences).
+- Lead with the warm personal lines, then state any spending answers, calculations, or logged actions like a supportive friend ("I've got your back—just dropped this ₹500 coffee in for you..."). Double-check math; use ₹ in prose for money.
 - When suggesting saved entries, say what you'll add like a friend ("I'll drop this in for you…") and mention "Add to Finlo" below — not a manual.
 
 Boundaries:
@@ -158,6 +160,7 @@ async function queryGemini(
       }],
       generationConfig: {
         responseMimeType: "application/json",
+        maxOutputTokens: 200,
         responseSchema: {
           type: "OBJECT",
           properties: {
@@ -273,6 +276,7 @@ The "reply" field must sound like a friend texting them about money — use thei
         { role: "user", content: redactPII(query) },
       ],
       response_format: { type: "json_object" },
+      max_tokens: 200,
     }),
   });
 
@@ -346,6 +350,7 @@ Deno.serve(async (req) => {
       transactions?: unknown[];
       categories?: unknown[];
       today?: string;
+      userName?: string;
     };
     try {
       body = await req.json();
@@ -365,7 +370,9 @@ Deno.serve(async (req) => {
       ? body.today
       : new Date().toISOString().slice(0, 10);
 
-    const userDisplayName = await resolveUserDisplayName(supabaseClient, userId, user);
+    const userDisplayName = body.userName && body.userName.trim()
+      ? body.userName.trim()
+      : await resolveUserDisplayName(supabaseClient, userId, user);
 
     let result = null;
 

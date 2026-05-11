@@ -627,14 +627,27 @@ const Index = () => {
   }
 
   return (
-    <main
-      ref={mainRef}
-      className="min-h-dvh bg-background text-foreground font-sans overscroll-y-contain"
-      style={{
-        transform: pullPx > 0 ? `translateY(${pullPx}px)` : undefined,
-        willChange: pullPx > 0 ? "transform" : undefined,
-      }}
-    >
+    <>
+      {(pullPx > 1 || pullPhase === "refreshing") && (
+        <div className="fixed top-0 left-0 right-0 z-[90] pointer-events-none">
+          {pullPhase === "refreshing" && (
+            <span className="sr-only" role="status">
+              Refreshing
+            </span>
+          )}
+          <PullRefreshIndicator phase={pullPhase} pullPx={pullPx} />
+        </div>
+      )}
+
+      <main
+        ref={mainRef}
+        className="min-h-dvh bg-background text-foreground font-sans overscroll-y-contain"
+        style={{
+          transform: pullPx > 0 ? `translateY(${pullPx}px)` : undefined,
+          willChange: pullPx > 0 ? "transform" : undefined,
+          transition: pullPhase !== "pulling" ? "transform 330ms cubic-bezier(0.2, 0.8, 0.2, 1)" : undefined,
+        }}
+      >
       {impersonatedUserId && (
         <div className="bg-amber-500 text-amber-950 px-4 py-2.5 text-center text-xs font-semibold flex items-center justify-center gap-2 select-none sticky top-0 z-[60] shadow-md border-b border-amber-600/20">
           <ShieldCheck className="h-4 w-4 shrink-0" />
@@ -675,16 +688,6 @@ const Index = () => {
       )}
 
       <InstallAppBanner className="sticky top-0 z-[55]" />
-      {(pullPx > 1 || pullPhase === "refreshing") && (
-        <div className="fixed top-0 left-0 right-0 z-[90] pointer-events-none">
-          {pullPhase === "refreshing" && (
-            <span className="sr-only" role="status">
-              Refreshing
-            </span>
-          )}
-          <PullRefreshIndicator phase={pullPhase} pullPx={pullPx} />
-        </div>
-      )}
 
       <div className="w-full max-w-[640px] mx-auto px-4 sm:px-6 pt-0 pb-[var(--finlo-mobile-tab-clearance)] md:pb-24">
         <header className="sticky z-40 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 sm:pt-5 pb-3 mb-6 border-b border-border/40 flex items-center justify-between gap-2 top-[env(safe-area-inset-top,0px)]">
@@ -1358,7 +1361,8 @@ const Index = () => {
         </button>
       )}
     </main>
-  );
+  </>
+);
 };
 
 export default Index;

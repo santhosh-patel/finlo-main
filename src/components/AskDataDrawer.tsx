@@ -90,7 +90,7 @@ export function AskDataDrawer({
   addExpense,
   addCategory,
 }: Props) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -103,6 +103,27 @@ export function AskDataDrawer({
   // Mobile sidebar drawer trigger
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
+  // Dynamic visual viewport height to prevent mobile keyboard layout breaking/off-screening
+  const [visualHeight, setVisualHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined" || !window.visualViewport) return;
+
+    const vv = window.visualViewport;
+    const handleResize = () => {
+      setVisualHeight(vv.height);
+    };
+
+    vv.addEventListener("resize", handleResize);
+    vv.addEventListener("scroll", handleResize);
+    handleResize();
+
+    return () => {
+      vv.removeEventListener("resize", handleResize);
+      vv.removeEventListener("scroll", handleResize);
+    };
+  }, [open]);
+
   // Inline rename state
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -345,6 +366,15 @@ export function AskDataDrawer({
   const handleSend = async (textToSend: string) => {
     if (!textToSend.trim() || loading || !user?.id) return;
 
+    if (textToSend.trim().length > 1000) {
+      toast({
+        title: "Message Too Long 🛑",
+        description: "To keep our conversation lightning-fast and focused, please limit your message to under 1,000 characters (about 250 tokens). Let's trim it down slightly!",
+        variant: "destructive",
+      });
+      return;
+    }
+
     let targetSessionId = activeSessionId;
     vibrate();
 
@@ -419,6 +449,7 @@ export function AskDataDrawer({
           transactions: minimizedData,
           categories: categoryPayload,
           today: localTodayISO(),
+          userName: profile?.name || user?.email?.split("@")[0],
         },
       });
 
@@ -499,7 +530,12 @@ export function AskDataDrawer({
       <SheetContent
         side="bottom"
         hideCloseButton
-        className="bg-background border-border rounded-t-[32px] h-[90vh] md:h-[80vh] flex flex-col p-0 overflow-hidden"
+        className="bg-background border-border rounded-t-[32px] h-[90dvh] md:h-[80vh] flex flex-col p-0 overflow-hidden"
+        style={
+          typeof window !== "undefined" && window.innerWidth < 768 && visualHeight
+            ? { height: `${Math.min(visualHeight, window.innerHeight * 0.9)}px` }
+            : undefined
+        }
       >
         <div className="flex flex-1 overflow-hidden h-full">
           {/* ================= DESKTOP HISTORY SIDEBAR ================= */}
