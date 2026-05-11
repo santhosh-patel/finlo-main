@@ -45,7 +45,7 @@ interface Props {
   theme: ThemeSettings;
   onUpdateTheme: (patch: Partial<ThemeSettings>) => void;
   onLogout: () => void;
-  onSync: (opts?: { skipIfNoPending?: boolean }) => Promise<boolean>;
+  onSync: (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => Promise<boolean>;
   syncing: boolean;
   lastSync: string | null;
   onExportData: () => { version: number; exported_at: string; expenses: Expense[]; categories: CategoryDef[]; budgets: Budgets };

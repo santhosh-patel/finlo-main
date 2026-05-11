@@ -130,13 +130,18 @@ export function lastNDays(n: number): string[] {
   return out;
 }
 
+function cleanISO(iso: string): string {
+  if (!iso) return "";
+  return iso.split("T")[0];
+}
+
 export function dayLabel(iso: string): string {
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(cleanISO(iso) + "T00:00:00");
   return d.toLocaleDateString("en-US", { weekday: "short" });
 }
 
 export function fullDateLabel(iso: string): string {
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(cleanISO(iso) + "T00:00:00");
   return d.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -153,13 +158,13 @@ export function startOfWeekISO(): string {
 }
 
 export function addDays(iso: string, n: number): string {
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(cleanISO(iso) + "T00:00:00");
   d.setDate(d.getDate() + n);
   return isoDate(d);
 }
 
 export function weekRangeOf(iso: string): { from: string; to: string; label: string } {
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(cleanISO(iso) + "T00:00:00");
   const day = d.getDay();
   const diff = (day + 6) % 7;
   const from = new Date(d); from.setDate(d.getDate() - diff);
@@ -172,7 +177,7 @@ export function weekRangeOf(iso: string): { from: string; to: string; label: str
 }
 
 export function monthRangeOf(iso: string): { from: string; to: string; label: string } {
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(cleanISO(iso) + "T00:00:00");
   const from = new Date(d.getFullYear(), d.getMonth(), 1);
   const to = new Date(d.getFullYear(), d.getMonth() + 1, 0);
   return {
@@ -186,19 +191,20 @@ export function shiftWeek(iso: string, n: number): string {
   return addDays(iso, n * 7);
 }
 export function shiftMonth(iso: string, n: number): string {
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(cleanISO(iso) + "T00:00:00");
   d.setMonth(d.getMonth() + n);
   return isoDate(d);
 }
 
 export function dayLabelRich(iso: string): string {
   const today = todayISO();
-  if (iso === today) return "Today";
-  if (iso === addDays(today, -1)) return "Yesterday";
-  if (iso === addDays(today, -2)) {
-    return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
+  const cleaned = cleanISO(iso);
+  if (cleaned === today) return "Today";
+  if (cleaned === addDays(today, -1)) return "Yesterday";
+  if (cleaned === addDays(today, -2)) {
+    return new Date(cleaned + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
   }
-  return fullDateLabel(iso);
+  return fullDateLabel(cleaned);
 }
 
 export function rangeDays(from: string, to: string): string[] {

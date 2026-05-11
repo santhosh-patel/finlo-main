@@ -22,7 +22,7 @@ import {
   todayISO,
 } from "@/lib/expenses";
 import { Check, Pencil, Trash2, X, Tag, GitMerge, Plus, AlertCircle, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RollingDatePicker } from "./RollingDatePicker";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -78,6 +78,7 @@ export function ExpenseDetailsDrawer({
 
   const [tags, setTags] = useState<string[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const lastExpenseIdRef = useRef<string | null>(null);
   const [newTag, setNewTag] = useState("");
   const [showTagInput, setShowTagInput] = useState(false);
   const [splits, setSplits] = useState<Split[]>([]);
@@ -122,8 +123,19 @@ export function ExpenseDetailsDrawer({
     else { setTags([]); setSplits([]); setIsSplitting(false); }
   }, [open, userId, loadTagsAndSplits]);
 
+  // Sync local fields from props when the row changes, or when server data updates while not editing.
+  // Avoid resetting while the user is editing or splitting — same pattern as AddExpenseSheet + categories.
   useEffect(() => {
-    if (expense) {
+    if (!expense) {
+      lastExpenseIdRef.current = null;
+      setEditing(false);
+      return;
+    }
+
+    const idChanged = lastExpenseIdRef.current !== expense.id;
+    lastExpenseIdRef.current = expense.id;
+
+    const applyFromServer = () => {
       setAmount(String(expense.amount));
       setCategory(expense.category);
       setSubcategory(expense.subcategory ?? "");
@@ -133,10 +145,19 @@ export function ExpenseDetailsDrawer({
       setError(null);
       setShowAddSub(false);
       setNewSub("");
-    } else {
+    };
+
+    if (idChanged) {
+      applyFromServer();
       setEditing(false);
+      setIsSplitting(false);
+      return;
     }
-  }, [expense]);
+
+    if (editing || isSplitting) return;
+
+    applyFromServer();
+  }, [expense, editing, isSplitting]);
 
   const save = () => {
     if (!expense) return;
@@ -379,6 +400,7 @@ export function ExpenseDetailsDrawer({
                           <span key={t} className="group inline-flex items-center gap-1 bg-surface/60 border border-border/30 px-2.5 py-1 rounded-full text-xs text-foreground capitalize">
                             {t}
                             <button
+                              type="button"
                               onClick={() => handleRemoveTag(t)}
                               className="opacity-0 group-hover:opacity-100 hover:text-destructive text-ink-muted/40 transition-opacity ml-0.5"
                               aria-label={`Remove tag ${t}`}
@@ -389,6 +411,7 @@ export function ExpenseDetailsDrawer({
                         ))}
                         {!showTagInput ? (
                           <button
+                            type="button"
                             onClick={() => setShowTagInput(true)}
                             className="inline-flex items-center gap-1 text-[11px] text-ink-muted/60 hover:text-foreground border border-dashed border-border/40 hover:border-foreground/30 px-2.5 py-1 rounded-full transition-all bg-transparent"
                           >
@@ -400,12 +423,18 @@ export function ExpenseDetailsDrawer({
                               autoFocus
                               value={newTag}
                               onChange={(e) => setNewTag(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === "Enter") handleAddTag(); if (e.key === "Escape") setShowTagInput(false); }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  void handleAddTag();
+                                }
+                                if (e.key === "Escape") setShowTagInput(false);
+                              }}
                               placeholder="Tag name"
                               className="h-7 px-2.5 rounded-full text-xs bg-background border-border/50 w-28"
                             />
-                            <Button size="sm" className="h-7 px-2.5 rounded-full text-[11px]" onClick={handleAddTag}>Add</Button>
-                            <button onClick={() => setShowTagInput(false)} className="text-ink-muted/40 hover:text-foreground transition-colors">
+                            <Button type="button" size="sm" className="h-7 px-2.5 rounded-full text-[11px]" onClick={() => void handleAddTag()}>Add</Button>
+                            <button type="button" onClick={() => setShowTagInput(false)} className="text-ink-muted/40 hover:text-foreground transition-colors">
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -441,6 +470,7 @@ export function ExpenseDetailsDrawer({
                         <div className="flex items-center justify-between">
                           <p className="text-[10px] uppercase tracking-[0.15em] text-ink-muted/60 font-semibold">Reimbursement</p>
                           <button
+                            type="button"
                             onClick={handleToggleReimbursable}
                             className="relative h-[22px] w-[40px] rounded-full transition-colors duration-300"
                             style={{ backgroundColor: expense.is_reimbursable ? "hsl(var(--foreground))" : "hsl(var(--border) / 0.8)" }}
@@ -449,7 +479,7 @@ export function ExpenseDetailsDrawer({
                             aria-label="Toggle reimbursable"
                           >
                             <div className={cn(
-                              "absolute top-[3px] left-[3px] h-4 w-4 rounded-full bg-background shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                              "absolute top-[3px] left-[3px] h-4 w-4 rounded-full bg-background shadow-sm transition-transform duration-300 ease-out-soft",
                               expense.is_reimbursable && "translate-x-[18px]",
                             )} />
                           </button>
@@ -755,7 +785,18 @@ export function ExpenseDetailsDrawer({
                                 autoFocus
                                 value={newSub}
                                 onChange={(e) => setNewSub(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === "Escape") setShowAddSub(false); }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    const v = newSub.trim();
+                                    if (!v || !onAddSubcategory) return;
+                                    onAddSubcategory(category, v);
+                                    setSubcategory(v.toLowerCase());
+                                    setNewSub("");
+                                    setShowAddSub(false);
+                                  }
+                                  if (e.key === "Escape") setShowAddSub(false);
+                                }}
                                 placeholder="Subcategory"
                                 maxLength={20}
                                 className="h-7 rounded-full bg-transparent border-border/40 text-xs w-28"
@@ -788,6 +829,7 @@ export function ExpenseDetailsDrawer({
                       <RollingDatePicker
                         value={date}
                         max={todayISO()}
+                        showTime={true}
                         onChange={(val) => { setDate(val); setError(null); }}
                       />
                     </div>

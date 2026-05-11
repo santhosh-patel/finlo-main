@@ -507,6 +507,7 @@ export function AskDataDrawer({
             <div className="flex items-center justify-between border-b border-border/20 pb-3 shrink-0">
               <span className="text-xs font-semibold text-ink-muted tracking-wider uppercase">Saved Chats</span>
               <button
+                type="button"
                 onClick={handleNewChat}
                 className="p-1.5 rounded-full hover:bg-surface border border-border/40 text-foreground transition-all active:scale-95"
                 title="New Conversation"
@@ -546,7 +547,10 @@ export function AskDataDrawer({
                             value={renameValue}
                             onChange={(e) => setRenameValue(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") handleRenameSession(s.id);
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleRenameSession(s.id);
+                              }
                               if (e.key === "Escape") setRenamingId(null);
                             }}
                             autoFocus
@@ -566,6 +570,7 @@ export function AskDataDrawer({
                         {isRenaming ? (
                           <div className="flex items-center gap-0.5">
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleRenameSession(s.id);
@@ -575,6 +580,7 @@ export function AskDataDrawer({
                               <Check className="h-3 w-3" />
                             </button>
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setRenamingId(null);
@@ -587,6 +593,7 @@ export function AskDataDrawer({
                         ) : (
                           <div className="flex items-center gap-0.5">
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setRenamingId(s.id);
@@ -597,6 +604,7 @@ export function AskDataDrawer({
                               <Edit3 className="h-3 w-3" />
                             </button>
                             <button
+                              type="button"
                               onClick={(e) => handleDeleteSession(s.id, e)}
                               className="p-1 rounded-md hover:bg-background/20"
                             >
@@ -620,6 +628,7 @@ export function AskDataDrawer({
                 <SheetTitle className="font-serif text-xl font-normal text-foreground flex items-center gap-3">
                   {/* Menu burger on Mobile */}
                   <button
+                    type="button"
                     onClick={() => setSidebarOpen(!sidebarOpen)}
                     className="md:hidden p-1.5 rounded-lg border border-border/40 text-foreground transition-all shrink-0"
                   >
@@ -641,6 +650,7 @@ export function AskDataDrawer({
 
               {/* Desktop quick new thread action */}
               <button
+                type="button"
                 onClick={handleNewChat}
                 className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/40 text-xs font-semibold hover:bg-surface transition-all active:scale-95 text-foreground"
               >
@@ -899,12 +909,14 @@ export function AskDataDrawer({
                 <span className="text-xs font-semibold text-ink-muted tracking-wider uppercase">Saved Chats</span>
                 <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={handleNewChat}
                     className="p-1.5 rounded-full hover:bg-surface border border-border/40 text-foreground transition-all active:scale-95"
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
                   <button
+                    type="button"
                     onClick={() => setSidebarOpen(false)}
                     className="p-1.5 rounded-full hover:bg-surface text-ink-muted transition-all"
                   >
@@ -949,7 +961,10 @@ export function AskDataDrawer({
                               value={renameValue}
                               onChange={(e) => setRenameValue(e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") handleRenameSession(s.id);
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleRenameSession(s.id);
+                                }
                                 if (e.key === "Escape") setRenamingId(null);
                               }}
                               autoFocus
@@ -965,6 +980,7 @@ export function AskDataDrawer({
                           {isRenaming ? (
                             <div className="flex items-center gap-0.5">
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleRenameSession(s.id);
@@ -974,6 +990,7 @@ export function AskDataDrawer({
                                 <Check className="h-3 w-3" />
                               </button>
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setRenamingId(null);
@@ -986,6 +1003,7 @@ export function AskDataDrawer({
                           ) : (
                             <div className="flex items-center gap-0.5">
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setRenamingId(s.id);
@@ -996,6 +1014,7 @@ export function AskDataDrawer({
                                 <Edit3 className="h-3 w-3" />
                               </button>
                               <button
+                                type="button"
                                 onClick={(e) => handleDeleteSession(s.id, e)}
                                 className="p-1 rounded-md hover:bg-background/20"
                               >

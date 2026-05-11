@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Sparkles, Loader2, Camera } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { vibrate } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 import { todayISO, addDays, getCurrencySymbol, formatINR, CategoryDef } from "@/lib/expenses";
 import { supabase } from "@/integrations/supabase/client";
 import type { ReceiptScanPrefill } from "@/components/AddExpenseSheet";
@@ -144,8 +145,13 @@ export function QuickAddBar({ categories, defaultDate, ai, registerTranscriptSin
         });
         vibrate([38, 52, 38]);
       }
-    } catch {
-      /* minimal UX — errors surface when add sheet opens empty */
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not read the receipt.";
+      toast({
+        title: "Receipt scan failed",
+        description: msg,
+        variant: "destructive",
+      });
     } finally {
       setScanBusy(false);
     }

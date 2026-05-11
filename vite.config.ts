@@ -24,7 +24,11 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: false,
-      devOptions: { enabled: true },
+      devOptions: {
+        enabled: true,
+        /** Avoid workbox glob warning when `dev-dist` only contains ignored SW assets */
+        suppressWarnings: true,
+      },
       manifest: {
         name: "Finlo",
         short_name: "Finlo",

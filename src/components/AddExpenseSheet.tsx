@@ -42,6 +42,7 @@ interface Props {
   /** From quick-add receipt scan: applied when sheet opens (add mode only) */
   receiptScanPrefill?: ReceiptScanPrefill | null;
   onReceiptScanPrefillConsumed?: () => void;
+  defaultDate?: string;
 }
 
 export function AddExpenseSheet({ 
@@ -49,6 +50,7 @@ export function AddExpenseSheet({
   budgets = {}, spentByCategory = {},
   receiptScanPrefill = null,
   onReceiptScanPrefillConsumed,
+  defaultDate,
 }: Props) {
   const isEdit = !!editing;
   const [txnType, setTxnType] = useState<TxnType>("expense");
@@ -123,6 +125,27 @@ export function AddExpenseSheet({
     return errs;
   }, [amount, category, date]);
 
+  const commitNewCategory = useCallback(() => {
+    const v = newCat.trim();
+    if (!v) return;
+    onAddCategory(v);
+    setCategory(v);
+    setNewCat("");
+    setShowAddCat(false);
+  }, [newCat, onAddCategory]);
+
+  const commitNewSubcategory = useCallback(() => {
+    if (!onAddSubcategory) return;
+    const v = newSub.trim();
+    if (!v) return;
+    onAddSubcategory(category, v);
+    setSubcategory(v.toLowerCase());
+    setNewSub("");
+    setShowAddSub(false);
+  }, [newSub, onAddSubcategory, category]);
+
+  // Reset form when the sheet opens or the edited row changes — not when `categories` updates
+  // (adding a category would otherwise reset fields and could confuse navigation / history).
   useEffect(() => {
     if (!open) return undefined;
     setSubSearch("");
@@ -143,7 +166,7 @@ export function AddExpenseSheet({
       setCategory(categories[0]?.name ?? "Food");
       setSubcategory("");
       setNote("");
-      setDate(todayISO());
+      setDate(defaultDate || todayISO());
       setPayment("upi");
       setCurrency(baseCurrency);
       setReimbursable(false);
@@ -156,7 +179,7 @@ export function AddExpenseSheet({
     setSubmitted(false);
     const focusTimer = window.setTimeout(() => amountRef.current?.focus(), 80);
     return () => window.clearTimeout(focusTimer);
-  }, [open, editing, categories, baseCurrency]);
+  }, [open, editing?.id, baseCurrency]);
 
   useEffect(() => {
     if (!open || editing || !receiptScanPrefill) return;
@@ -497,6 +520,11 @@ export function AddExpenseSheet({
                     autoFocus
                     value={newCat}
                     onChange={(e) => setNewCat(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      commitNewCategory();
+                    }}
                     placeholder="Category name"
                     maxLength={24}
                     className="h-9 rounded-full bg-transparent border-border text-sm w-40"
@@ -505,14 +533,7 @@ export function AddExpenseSheet({
                     type="button"
                     size="sm"
                     variant="secondary"
-                    onClick={() => {
-                      const v = newCat.trim();
-                      if (!v) return;
-                      onAddCategory(v);
-                      setCategory(v);
-                      setNewCat("");
-                      setShowAddCat(false);
-                    }}
+                    onClick={commitNewCategory}
                   >
                     Add
                   </Button>
@@ -572,6 +593,11 @@ export function AddExpenseSheet({
                       autoFocus
                       value={newSub}
                       onChange={(e) => setNewSub(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        commitNewSubcategory();
+                      }}
                       placeholder="Subcategory"
                       maxLength={20}
                       className="h-8 rounded-full bg-transparent border-border text-xs w-32"
@@ -580,14 +606,7 @@ export function AddExpenseSheet({
                       type="button"
                       size="sm"
                       variant="secondary"
-                      onClick={() => {
-                        const v = newSub.trim();
-                        if (!v) return;
-                        onAddSubcategory(category, v);
-                        setSubcategory(v.toLowerCase());
-                        setNewSub("");
-                        setShowAddSub(false);
-                      }}
+                      onClick={commitNewSubcategory}
                     >
                       Add
                     </Button>
@@ -628,6 +647,7 @@ export function AddExpenseSheet({
               <RollingDatePicker
                 value={date}
                 max={todayISO()}
+                showTime={true}
                 onChange={(val) => setDate(val)}
                 className={errors.date ? "border-destructive focus-visible:ring-destructive" : ""}
               />

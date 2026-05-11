@@ -138,6 +138,7 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
     touch-action: manipulation;
+    overscroll-behavior-y: contain;
   }
 
   @media (max-width: 767px) {

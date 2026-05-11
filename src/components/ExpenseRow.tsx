@@ -57,7 +57,7 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories, 
         </span>
         <span className="text-ink-muted/60 text-[11px] w-10 text-right tabular-nums tracking-wider shrink-0 self-center">
           {showDate
-            ? new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", {
+            ? new Date(expense.date.split("T")[0] + "T00:00:00").toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
               })

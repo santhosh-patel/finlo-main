@@ -6,6 +6,15 @@ const RUBBER = 0.45;
 
 type Phase = "idle" | "pulling" | "refreshing";
 
+function windowScrollTop(): number {
+  if (typeof window === "undefined") return 0;
+  return Math.max(
+    window.scrollY ?? 0,
+    document.documentElement.scrollTop ?? 0,
+    document.body.scrollTop ?? 0,
+  );
+}
+
 /**
  * Pull down from the top of the page (when scrollY is 0) to refresh.
  *
@@ -44,11 +53,13 @@ export function usePullToRefresh(
   useEffect(() => {
     if (!enabled) return;
 
+    /** Document scrolls the window; `main` often has scrollTop 0 even when the user scrolled down. */
     const isAtTop = () => {
-      if (containerRef?.current) {
-        return containerRef.current.scrollTop <= 1;
-      }
-      return window.scrollY <= 1;
+      if (!containerRef?.current) return windowScrollTop() <= 1;
+      const el = containerRef.current;
+      const usesInternalScroll = el.scrollHeight > el.clientHeight + 2;
+      if (usesInternalScroll) return el.scrollTop <= 1;
+      return windowScrollTop() <= 1;
     };
 
     const isInsideOverlay = (target: EventTarget | null) => {

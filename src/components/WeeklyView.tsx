@@ -175,7 +175,7 @@ export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpe
               <CollapsibleTrigger className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-surface/50 hover:bg-surface transition-colors text-left">
                 <span className="flex items-center gap-2 text-sm text-foreground">
                   <ChevronDown className={cn("h-3.5 w-3.5 text-ink-muted transition-transform", isOpen && "rotate-180")} />
-                  {new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                  {new Date(d.split("T")[0] + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
                   <span className="text-ink-muted text-xs">({items.length})</span>
                 </span>
                 <span className="font-serif text-base text-foreground tabular-nums flex items-baseline gap-2 shrink-0">

@@ -462,7 +462,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                       {e.note || e.category}
                     </p>
                     <p className="text-[11px] text-ink-muted truncate">
-                      {e.category}{e.subcategory ? ` · ${e.subcategory}` : ""} · {new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      {e.category}{e.subcategory ? ` · ${e.subcategory}` : ""} · {new Date(e.date.split("T")[0] + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                     </p>
                   </div>
                   <span className="font-serif text-lg text-foreground tabular-nums shrink-0">
@@ -584,7 +584,7 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                             isOpen && "rotate-180"
                           )}
                         />
-                        {new Date(d + "T00:00:00").toLocaleDateString("en-US", {
+                        {new Date(d.split("T")[0] + "T00:00:00").toLocaleDateString("en-US", {
                           weekday: "short",
                           month: "short",
                           day: "numeric",

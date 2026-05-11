@@ -2,7 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { SearchFilters, FilterState } from "@/components/SearchFilters";
 import { ExpenseRow } from "@/components/ExpenseRow";
 import { getCurrencySymbol, CategoryDef, Expense, downloadCSV, expensesToCSV, formatINR, todayISO } from "@/lib/expenses";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Trash2, X, CheckSquare, Square } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,11 @@ export function SearchOverlay({
   username = "finlo",
 }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open) setSelectedIds(new Set());
+  }, [open]);
+
   const filtered = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
     const isReimbursableQuery = q.includes("/reimbursable");

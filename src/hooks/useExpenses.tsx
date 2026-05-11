@@ -237,8 +237,8 @@ export function useExpenses(userId: string | null) {
     localStorage.setItem(LAST_SYNC_KEY, ts);
   }, [userId]);
 
-  /** Full sync (default). Pass `{ skipIfNoPending: true }` for pull-to-refresh: no network if the offline queue is empty. Returns whether a sync ran. */
-  const sync = useCallback(async (opts?: { skipIfNoPending?: boolean }) => {
+  /** Full sync (default). Pass `{ skipIfNoPending: true }` for pull-to-refresh: no network if the offline queue is empty. `silentToast` skips the success toast (e.g. pull-to-refresh). Returns whether a sync ran. */
+  const sync = useCallback(async (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => {
     if (!userId) return false;
     if (syncInFlightRef.current) return false;
     const hadPending = pendingRef.current.length > 0;
@@ -251,7 +251,9 @@ export function useExpenses(userId: string | null) {
       await flushPending();
       skipNextRealtimePullRef.current = true;
       await pullFromServer();
-      toast({ title: "Synced", description: "All changes are up to date." });
+      if (!opts?.silentToast) {
+        toast({ title: "Synced", description: "All changes are up to date." });
+      }
       return true;
     } catch (e) {
       console.error(e);

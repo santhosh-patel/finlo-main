@@ -1,4 +1,4 @@
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, Loader2, HandCoins, ChevronRight } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, HandCoins, ChevronRight } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
@@ -33,13 +33,14 @@ import { useTheme } from "@/hooks/useTheme";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { useOverlayHistorySync } from "@/hooks/useOverlayHistorySync";
 import { InstallAppBanner } from "@/components/InstallAppBanner";
+import { PullRefreshIndicator } from "@/components/PullRefreshIndicator";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Expense, addDays, formatINR, fullDateLabel, getCurrencySymbol,
   monthRangeOf, shiftMonth, shiftWeek, startOfMonthISO, todayISO, weekRangeOf,
   baseAmountOf,
 } from "@/lib/expenses";
-import { cn } from "@/lib/utils";
+import { cn, vibrate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ReceiptScanPrefill } from "@/components/AddExpenseSheet";
 
@@ -95,6 +96,43 @@ const Index = () => {
 
   const clearReceiptPrefill = useCallback(() => setReceiptScanPrefill(null), []);
 
+  const touchStartXRef = useRef<number>(0);
+  const touchStartYRef = useRef<number>(0);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+    touchStartYRef.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const startX = touchStartXRef.current;
+    const startY = touchStartYRef.current;
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+
+    const diffX = endX - startX;
+    const diffY = endY - startY;
+
+    // Must be horizontal (X delta is greater than Y delta) and cross threshold (55px)
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 55) {
+      if (diffX > 0) {
+        // Swiped right -> go to previous view (Month -> Week -> Today)
+        setView((prev) => {
+          if (prev === "month") { vibrate(15); return "week"; }
+          if (prev === "week") { vibrate(15); return "today"; }
+          return prev;
+        });
+      } else {
+        // Swiped left -> go to next view (Today -> Week -> Month)
+        setView((prev) => {
+          if (prev === "today") { vibrate(15); return "week"; }
+          if (prev === "week") { vibrate(15); return "month"; }
+          return prev;
+        });
+      }
+    }
+  }, []);
+
   const anomalyExpenseIds = useMemo(() => {
     const ids = new Set<string>();
     const byCat: Record<string, Expense[]> = {};
@@ -123,7 +161,7 @@ const Index = () => {
   const today = todayISO();
   const yesterday = addDays(today, -1);
   const dayBefore = addDays(today, -2);
-  const dayBeforeName = new Date(dayBefore + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
+  const dayBeforeName = new Date(dayBefore.split("T")[0] + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
 
   const [dayAnchor, setDayAnchor] = useState(today);
   const [weekAnchor, setWeekAnchor] = useState(today);
@@ -323,7 +361,7 @@ const Index = () => {
   });
 
   const handlePullRefresh = useCallback(async () => {
-    const didSync = await sync({ skipIfNoPending: true });
+    const didSync = await sync({ skipIfNoPending: true, silentToast: true });
     if (didSync) await loadLoans();
   }, [sync, loadLoans]);
 
@@ -466,7 +504,7 @@ const Index = () => {
       ? (dayAnchor === today ? "Today"
         : dayAnchor === yesterday ? "Yesterday"
         : dayAnchor === dayBefore ? dayBeforeName
-        : new Date(dayAnchor + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }))
+        : new Date(dayAnchor.split("T")[0] + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }))
       : view === "week" ? weekRangeOf(weekAnchor).label
       : monthRangeOf(monthAnchor).label;
 
@@ -492,32 +530,24 @@ const Index = () => {
     : view === "week" ? weekRangeOf(shiftWeek(weekAnchor, 1)).from <= today
     : monthRangeOf(shiftMonth(monthAnchor, 1)).from <= today;
 
-  const pullProgressPct =
-    pullPhase === "refreshing"
-      ? 100
-      : Math.min(100, (pullPx / 72) * 100);
-
   return (
-    <main ref={mainRef} className="min-h-dvh bg-background text-foreground font-sans overscroll-y-contain">
+    <main
+      ref={mainRef}
+      className="min-h-dvh bg-background text-foreground font-sans overscroll-y-contain"
+      style={{
+        transform: pullPx > 0 ? `translateY(${pullPx}px)` : undefined,
+        willChange: pullPx > 0 ? "transform" : undefined,
+      }}
+    >
       <InstallAppBanner className="sticky top-0 z-[55]" />
       {(pullPx > 1 || pullPhase === "refreshing") && (
-        <div
-          className="fixed top-0 left-0 right-0 z-[90] pointer-events-none flex flex-col items-center gap-1 pt-[calc(env(safe-area-inset-top,0px)+8px)]"
-          aria-hidden
-        >
-          {pullPhase === "refreshing" ? (
-            <Loader2 className="h-5 w-5 animate-spin text-foreground/85" aria-label="Refreshing" />
-          ) : (
-            <span className="text-[10px] font-medium text-ink-muted tracking-wide">
-              {pullPx >= 72 ? "Release to refresh" : "Pull to refresh"}
+        <div className="fixed top-0 left-0 right-0 z-[90] pointer-events-none">
+          {pullPhase === "refreshing" && (
+            <span className="sr-only" role="status">
+              Refreshing
             </span>
           )}
-          <div className="h-0.5 w-24 rounded-full bg-border/80 overflow-hidden">
-            <div
-              className="h-full bg-foreground/55 rounded-full transition-[width] duration-75 ease-out"
-              style={{ width: `${pullProgressPct}%` }}
-            />
-          </div>
+          <PullRefreshIndicator phase={pullPhase} pullPx={pullPx} />
         </div>
       )}
 
@@ -605,8 +635,8 @@ const Index = () => {
           </div>
         ) : (
           <>
-        <section className="rounded-2xl border border-border/50 bg-card p-3 mb-6">
-          <p className="text-[10px] tracking-[0.18em] uppercase text-ink-muted font-medium px-2 pt-1">Quick capture</p>
+        <div className="mb-6">
+          <p className="text-[10px] tracking-[0.18em] uppercase text-ink-muted font-semibold px-1.5 mb-2">Quick capture</p>
           <QuickAddBar
             key={quickAddCycle}
             registerTranscriptSink={(fn) => {
@@ -626,7 +656,7 @@ const Index = () => {
               setOpen(true);
             }}
           />
-        </section>
+        </div>
 
         <div className="hidden sm:flex justify-center mb-12">
           <Button
@@ -685,97 +715,103 @@ const Index = () => {
           </div>
         )}
 
-        {view === "today" && (
-          <section>
-            <h3 className="text-ink-muted/80 text-[10px] tracking-[0.2em] uppercase font-medium mb-4">
-              {dayExpenses.length === 0 ? "Nothing logged" : "Recorded"}
-            </h3>
-            {dayExpenses.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 px-6 bg-surface/30 rounded-[32px] border border-dashed border-border/60">
-                <div className="h-12 w-12 rounded-full bg-surface flex items-center justify-center mb-4">
-                  <Plus className="h-6 w-6 text-ink-muted/40" />
+        <div
+          className="relative min-h-[250px] touch-pan-y"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {view === "today" && (
+            <section>
+              <h3 className="text-ink-muted/80 text-[10px] tracking-[0.2em] uppercase font-medium mb-4">
+                {dayExpenses.length === 0 ? "Nothing logged" : "Recorded"}
+              </h3>
+              {dayExpenses.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 px-6 bg-surface/30 rounded-[32px] border border-dashed border-border/60">
+                  <div className="h-12 w-12 rounded-full bg-surface flex items-center justify-center mb-4">
+                    <Plus className="h-6 w-6 text-ink-muted/40" />
+                  </div>
+                  <p className="text-center text-foreground text-sm font-medium">No entries for this day</p>
+                  <p className="text-center text-ink-muted text-xs mt-1 max-w-[200px]">
+                    Tap <span className="text-foreground font-medium">Add transaction</span> to start tracking your cash flow.
+                  </p>
                 </div>
-                <p className="text-center text-foreground text-sm font-medium">No entries for this day</p>
-                <p className="text-center text-ink-muted text-xs mt-1 max-w-[200px]">
-                  Tap <span className="text-foreground font-medium">Add transaction</span> to start tracking your cash flow.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col divide-y divide-border/50">
-                {dayExpenses.map((e) => (
-                  <ExpenseRow
-                    key={e.id} expense={e} onSelect={setDetails}
-                    onDelete={() => handleAskDelete(e)}
-                    categories={categories}
-                    showAnomaly={anomalyExpenseIds.has(e.id)}
-                  />
-                ))}
-              </div>
-            )}
+              ) : (
+                <div className="flex flex-col divide-y divide-border/50">
+                  {dayExpenses.map((e) => (
+                    <ExpenseRow
+                      key={e.id} expense={e} onSelect={setDetails}
+                      onDelete={() => handleAskDelete(e)}
+                      categories={categories}
+                      showAnomaly={anomalyExpenseIds.has(e.id)}
+                    />
+                  ))}
+                </div>
+              )}
 
-            {dayAnchor === today && (
-              <div className="mt-10 space-y-3">
-                {[
-                  { date: yesterday, label: "Yesterday" },
-                  { date: dayBefore, label: dayBeforeName },
-                ].map(({ date, label }) => {
-                  const items = expensesByDate(date);
-                  const total = sumByDate(date);
-                  return (
-                    <Collapsible key={date}>
-                      <CollapsibleTrigger className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-surface/50 hover:bg-surface transition-colors text-left border border-border/40">
-                        <span className="flex items-center gap-2 text-sm text-foreground">
-                          <ChevronDown className="h-3.5 w-3.5 text-ink-muted" />
-                          {label}
-                          <span className="text-ink-muted text-xs">({items.length})</span>
-                        </span>
-                        <span className="font-serif text-base text-foreground tabular-nums">
-                          {getCurrencySymbol()}{formatINR(total)}
-                        </span>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        {items.length === 0 ? (
-                          <p className="text-xs text-ink-muted text-center py-3">No expenses logged.</p>
-                        ) : (
-                          <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
-                            {items.map((e) => (
-                              <ExpenseRow
-                                key={e.id}
-                                expense={e}
-                                onSelect={setDetails}
-                                categories={categories}
-                                showAnomaly={anomalyExpenseIds.has(e.id)}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        )}
+              {dayAnchor === today && (
+                <div className="mt-10 space-y-3">
+                  {[
+                    { date: yesterday, label: "Yesterday" },
+                    { date: dayBefore, label: dayBeforeName },
+                  ].map(({ date, label }) => {
+                    const items = expensesByDate(date);
+                    const total = sumByDate(date);
+                    return (
+                      <Collapsible key={date}>
+                        <CollapsibleTrigger className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-surface/50 hover:bg-surface transition-colors text-left border border-border/40">
+                          <span className="flex items-center gap-2 text-sm text-foreground">
+                            <ChevronDown className="h-3.5 w-3.5 text-ink-muted" />
+                            {label}
+                            <span className="text-ink-muted text-xs">({items.length})</span>
+                          </span>
+                          <span className="font-serif text-base text-foreground tabular-nums">
+                            {getCurrencySymbol()}{formatINR(total)}
+                          </span>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          {items.length === 0 ? (
+                            <p className="text-xs text-ink-muted text-center py-3">No expenses logged.</p>
+                          ) : (
+                            <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
+                              {items.map((e) => (
+                                <ExpenseRow
+                                  key={e.id}
+                                  expense={e}
+                                  onSelect={setDetails}
+                                  categories={categories}
+                                  showAnomaly={anomalyExpenseIds.has(e.id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
 
-        {view === "week" && (
-          <WeeklyView
-            expenses={expenses}
-            categories={categories}
-            anchor={weekAnchor}
-            onSelect={setDetails}
-            anomalyExpenseIds={anomalyExpenseIds}
-          />
-        )}
+          {view === "week" && (
+            <WeeklyView
+              expenses={expenses}
+              categories={categories}
+              anchor={weekAnchor}
+              onSelect={setDetails}
+              anomalyExpenseIds={anomalyExpenseIds}
+            />
+          )}
 
-        {view === "month" && (
-          <MonthlyView
-            expenses={expenses} budgets={budgets}
-            onOpenBudgets={() => setBudgetsOpen(true)}
-            anchor={monthAnchor} onSelect={setDetails} categories={categories}
-            anomalyExpenseIds={anomalyExpenseIds}
-          />
-        )}
+          {view === "month" && (
+            <MonthlyView
+              expenses={expenses} budgets={budgets}
+              onOpenBudgets={() => setBudgetsOpen(true)}
+              anchor={monthAnchor} onSelect={setDetails} categories={categories}
+              anomalyExpenseIds={anomalyExpenseIds}
+            />
+          )}
+        </div>
           </>
         )}
       </div>
@@ -788,6 +824,7 @@ const Index = () => {
         budgets={budgets} spentByCategory={spentByCategory}
         receiptScanPrefill={receiptScanPrefill}
         onReceiptScanPrefillConsumed={clearReceiptPrefill}
+        defaultDate={view === "today" ? dayAnchor : todayISO()}
       />
 
       <SearchOverlay
@@ -956,6 +993,7 @@ const Index = () => {
         <div className="bg-background/90 backdrop-blur-xl border border-border/60 shadow-[0_8px_32px_-8px_hsl(var(--foreground)/0.15)] rounded-full flex items-center justify-between px-2 py-1.5 pointer-events-auto w-[calc(100%-2rem)] max-w-[380px]">
           <button
             onClick={() => {
+              vibrate(10);
               setSettingsOpen(false);
               setLoansOpen(false);
               setBudgetsOpen(false);
@@ -966,7 +1004,12 @@ const Index = () => {
               setDetails(null);
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="flex items-center justify-center text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            className={cn(
+              "flex items-center justify-center p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all",
+              (!budgetsOpen && !loansOpen && !settingsOpen && !recurringOpen && !trashOpen && !importOpen) 
+                ? "text-foreground bg-surface/45" 
+                : "text-ink-muted hover:text-foreground"
+            )}
             aria-label="Home"
             title="Home"
           >
@@ -975,6 +1018,7 @@ const Index = () => {
 
           <button
             onClick={() => {
+              vibrate(10);
               setSettingsOpen(false);
               setLoansOpen(false);
               setSearchOpen(false);
@@ -984,7 +1028,10 @@ const Index = () => {
               setDetails(null);
               setBudgetsOpen(true);
             }}
-            className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            className={cn(
+              "flex items-center justify-center p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all",
+              budgetsOpen ? "text-foreground bg-surface/45" : "text-ink-muted hover:text-foreground"
+            )}
             aria-label="Budgets"
             title="Budgets"
           >
@@ -1014,6 +1061,7 @@ const Index = () => {
 
           <button
             onClick={() => {
+              vibrate(10);
               setSettingsOpen(false);
               setBudgetsOpen(false);
               setSearchOpen(false);
@@ -1023,7 +1071,10 @@ const Index = () => {
               setDetails(null);
               setLoansOpen(true);
             }}
-            className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            className={cn(
+              "flex items-center justify-center p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all",
+              loansOpen ? "text-foreground bg-surface/45" : "text-ink-muted hover:text-foreground"
+            )}
             aria-label="Loans"
             title="Loans"
           >
@@ -1032,6 +1083,7 @@ const Index = () => {
 
           <button
             onClick={() => {
+              vibrate(10);
               setLoansOpen(false);
               setBudgetsOpen(false);
               setSearchOpen(false);
@@ -1041,7 +1093,10 @@ const Index = () => {
               setDetails(null);
               setSettingsOpen(true);
             }}
-            className="flex items-center justify-center text-ink-muted hover:text-foreground p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all"
+            className={cn(
+              "flex items-center justify-center p-3 rounded-full hover:bg-surface/60 active:scale-95 transition-all",
+              settingsOpen ? "text-foreground bg-surface/45" : "text-ink-muted hover:text-foreground"
+            )}
             aria-label="Settings"
             title="Settings"
           >

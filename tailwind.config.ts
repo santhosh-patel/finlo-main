@@ -67,6 +67,13 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      transitionDuration: {
+        350: "350ms",
+      },
+      transitionTimingFunction: {
+        /** Avoid ambiguous `ease-[cubic-bezier(...)]` arbitrary utilities */
+        "out-soft": "cubic-bezier(0.16, 1, 0.3, 1)",
+      },
       fontFamily: {
         serif: ['Newsreader', 'ui-serif', 'Georgia', 'serif'],
         sans: ['Outfit', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -88,12 +95,17 @@ export default {
           "0%": { opacity: "0", transform: "scale(0.97)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        "finlo-refresh-spin": {
+          from: { transform: "rotate(0deg)" },
+          to: { transform: "rotate(360deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 200ms cubic-bezier(0.22,1,0.36,1)",
         "accordion-up": "accordion-up 200ms cubic-bezier(0.22,1,0.36,1)",
         "fade-in": "fade-in 320ms cubic-bezier(0.22,1,0.36,1)",
         "scale-in": "scale-in 200ms cubic-bezier(0.22,1,0.36,1)",
+        "finlo-refresh-spin": "finlo-refresh-spin 0.65s linear infinite",
       },
     },
   },
