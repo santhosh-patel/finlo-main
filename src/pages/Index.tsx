@@ -586,6 +586,33 @@ const Index = () => {
         willChange: pullPx > 0 ? "transform" : undefined,
       }}
     >
+      {/* Premium Native-Style Animated Splash Screen Loader */}
+      {!initialDataReady && expenseUserId && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background select-none pointer-events-auto animate-in fade-in duration-300">
+          <div className="flex flex-col items-center justify-center">
+            <div className="relative">
+              <img 
+                src="/finlo-logo.png" 
+                alt="Finlo" 
+                className="h-16 w-16 sm:h-20 sm:w-20 rounded-[22px] object-contain shadow-[0_8px_32px_-8px_rgba(0,0,0,0.2)] animate-pulse" 
+                style={{ animationDuration: "1.8s" }}
+              />
+            </div>
+            <h2 className="font-serif text-2xl font-normal text-foreground tracking-tight mt-6 leading-none">
+              Finlo AI
+            </h2>
+            <p className="text-[9px] tracking-[0.25em] text-ink-muted/40 font-bold uppercase mt-2">
+              Secure Ledger
+            </p>
+            <div className="mt-8 flex items-center justify-center gap-1.5 text-ink-muted">
+              <div className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce [animation-delay:-0.3s]" />
+              <div className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce [animation-delay:-0.15s]" />
+              <div className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce" />
+            </div>
+          </div>
+        </div>
+      )}
+
       <InstallAppBanner className="sticky top-0 z-[55]" />
       {(pullPx > 1 || pullPhase === "refreshing") && (
         <div className="fixed top-0 left-0 right-0 z-[90] pointer-events-none">
@@ -619,17 +646,29 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <nav className="flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1 border border-border/50" role="tablist" aria-label="Ledger view">
+            <nav className="relative flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1 border border-border/50 overflow-hidden" role="tablist" aria-label="Ledger view">
+              {/* Sliding background pill */}
+              <div 
+                className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1.1)]"
+                style={{
+                  width: "calc((100% - 8px) / 3)",
+                  transform: `translateX(${
+                    view === "today" ? "0%" 
+                    : view === "week" ? "calc(100% + 4px)" 
+                    : "calc(200% + 8px)"
+                  })`
+                }}
+              />
               {(["today", "week", "month"] as View[]).map((v) => (
                 <button
                   key={v}
                   type="button"
                   role="tab"
                   aria-selected={view === v}
-                  onClick={() => setView(v)}
+                  onClick={() => { vibrate(10); setView(v); }}
                   className={cn(
-                    "px-2.5 sm:px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors",
-                    view === v ? "bg-background text-foreground shadow-sm" : "text-ink-muted hover:text-foreground"
+                    "relative z-10 px-2 sm:px-3 py-1 rounded-full uppercase tracking-wider transition-colors duration-200 w-14 sm:w-16 text-center select-none",
+                    view === v ? "text-foreground font-semibold" : "text-ink-muted hover:text-foreground"
                   )}
                 >{v}</button>
               ))}
