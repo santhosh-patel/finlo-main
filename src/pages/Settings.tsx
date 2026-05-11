@@ -109,6 +109,15 @@ export default function Settings(props: Props) {
           >
             <LogOut className="h-4 w-4 mr-2" /> Sign out
           </Button>
+
+          <div className="mt-8 pt-4 border-t border-border/10 text-center select-none pb-2">
+            <p className="text-[9px] tracking-[0.25em] text-ink-muted/30 font-bold uppercase">
+              Finlo Personal
+            </p>
+            <p className="text-[11px] text-ink-muted/45 font-medium mt-1.5 tracking-tight">
+              v1.0.11
+            </p>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
