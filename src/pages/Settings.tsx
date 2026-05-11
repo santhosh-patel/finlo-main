@@ -2,7 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CategoryDef, Expense } from "@/lib/expenses";
+import { CategoryDef, Expense, expensesToCSV, downloadCSV } from "@/lib/expenses";
 import { useRef, useState } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn, vibrate } from "@/lib/utils";
@@ -458,6 +458,7 @@ function DataSection({
   const [restoring, setRestoring] = useState(false);
   const [exportFrom, setExportFrom] = useState<string>("");
   const [exportTo, setExportTo] = useState<string>("");
+  const [exportFormat, setExportFormat] = useState<"json" | "csv">("json");
 
   const item = (label: string, desc: string, onClick: () => void, icon?: React.ReactNode) => (
     <button onClick={onClick}
@@ -470,13 +471,13 @@ function DataSection({
     </button>
   );
 
-  const handleExportJSON = () => {
+  const handleExportData = () => {
     const data = onExportData();
     const username = (profile.name || profile.email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g, "-");
     let filtered = data.expenses;
     if (exportFrom) filtered = filtered.filter((e) => e.date.split("T")[0] >= exportFrom);
     if (exportTo) filtered = filtered.filter((e) => e.date.split("T")[0] <= exportTo);
-    const payload = { ...data, expenses: filtered, range: { from: exportFrom || null, to: exportTo || null } };
+    
     let suffix: string;
     if (exportFrom && exportTo) {
       suffix = exportFrom === exportTo ? exportFrom
@@ -485,12 +486,20 @@ function DataSection({
     } else {
       suffix = new Date().toISOString().slice(0, 10);
     }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `finlo-${username}-${suffix}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+    if (exportFormat === "json") {
+      const payload = { ...data, expenses: filtered, range: { from: exportFrom || null, to: exportTo || null } };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `finlo-${username}-${suffix}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      const csv = expensesToCSV(filtered);
+      downloadCSV(`finlo-${username}-${suffix}.csv`, csv);
+    }
+
     toast({ title: "Backup downloaded", description: `${filtered.length} expense(s)` });
   };
 
@@ -548,7 +557,29 @@ function DataSection({
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">
         <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Backup</p>
         <div className="px-4 py-4 rounded-2xl border border-border/40 bg-surface/30 space-y-3">
-          <p className="text-foreground text-sm">Export JSON</p>
+          <p className="text-foreground text-sm">Export Data</p>
+          
+          <div className="space-y-2">
+            <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Format</Label>
+            <div className="flex bg-background border border-border/40 rounded-full p-0.5">
+              {(["json", "csv"] as const).map((format) => (
+                <button
+                  type="button"
+                  key={format}
+                  onClick={() => { vibrate(10); setExportFormat(format); }}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-full text-xs uppercase tracking-wider transition-all font-medium",
+                    exportFormat === format
+                      ? "bg-foreground text-background shadow-sm font-semibold"
+                      : "text-ink-muted hover:text-foreground"
+                  )}
+                >
+                  {format}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">From</Label>
@@ -560,9 +591,9 @@ function DataSection({
             </div>
           </div>
           <p className="text-[11px] text-ink-muted">Leave both blank to export everything.</p>
-          <Button size="sm" onClick={handleExportJSON}
-            className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-9">
-            Download JSON backup
+          <Button size="sm" onClick={handleExportData}
+            className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-9 capitalize">
+            Download {exportFormat} backup
           </Button>
         </div>
 
