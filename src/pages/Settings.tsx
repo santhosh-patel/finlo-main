@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { CategoryDef, Expense } from "@/lib/expenses";
 import { useRef, useState } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
-import { cn } from "@/lib/utils";
+import { cn, vibrate } from "@/lib/utils";
 import { ArrowLeft, Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import {
@@ -82,13 +82,26 @@ export default function Settings(props: Props) {
             </SheetHeader>
           </div>
 
-          <nav className="flex gap-1 bg-surface/60 rounded-full p-1 text-xs">
+          <nav className="relative flex gap-1 bg-surface/60 rounded-full p-1 text-xs overflow-hidden">
+            {/* Sliding background pill */}
+            <div 
+              className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1.1)]"
+              style={{
+                width: "calc((100% - 8px) / 4)",
+                transform: `translateX(${
+                  section === "profile" ? "0%"
+                  : section === "categories" ? "calc(100% + 4px)"
+                  : section === "appearance" ? "calc(200% + 8px)"
+                  : "calc(300% + 12px)"
+                })`
+              }}
+            />
             {(["profile", "categories", "appearance", "data"] as const).map((s) => (
               <button
-                key={s} onClick={() => setSection(s)}
+                key={s} onClick={() => { vibrate(10); setSection(s); }}
                 className={cn(
-                  "flex-1 px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors capitalize",
-                  section === s ? "bg-background text-foreground shadow-sm" : "text-ink-muted hover:text-foreground"
+                  "relative z-10 flex-1 px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors capitalize",
+                  section === s ? "text-foreground font-semibold" : "text-ink-muted hover:text-foreground"
                 )}
               >{s}</button>
             ))}
@@ -115,7 +128,7 @@ export default function Settings(props: Props) {
               Finlo AI
             </p>
             <p className="text-[11px] text-ink-muted/60 dark:text-ink-muted/50 font-medium mt-1.5 tracking-tight font-sans">
-              v1.0.12
+              v1.1.0
             </p>
           </div>
         </div>
@@ -511,7 +524,7 @@ function DataSection({
       {item("Monthly budgets", "Set per-category limits & alerts", () => { onOpenBudgets(); onOpenChange(false); })}
       {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
       {item("Lending", "Track money you've lent or borrowed", () => { onOpenLoans(); onOpenChange(false); }, <HandCoins className="h-4 w-4" />)}
-      {item("Trash bin", "Restore soft-deleted items within 30 days", () => { onOpenTrash(); onOpenChange(false); }, <Trash2 className="h-4 w-4 text-destructive/80" />)}
+      {item("Trash bin", "Restore soft-deleted items within 7 days", () => { onOpenTrash(); onOpenChange(false); }, <Trash2 className="h-4 w-4 text-destructive/80" />)}
       {item("Import CSV / Excel", "Upload spreadsheet of expenses", () => { onOpenImport(); onOpenChange(false); })}
 
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">
