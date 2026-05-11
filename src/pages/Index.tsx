@@ -396,7 +396,8 @@ const Index = () => {
   });
 
   const handlePullRefresh = useCallback(async () => {
-    const didSync = await sync({ skipIfNoPending: true, silentToast: true });
+    // Always pull from Supabase so prod/phone/other tabs stay aligned, not only when offline queue has items.
+    const didSync = await sync({ silentToast: true });
     if (didSync) await loadLoans();
   }, [sync, loadLoans]);
 

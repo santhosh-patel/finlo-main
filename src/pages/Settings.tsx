@@ -439,6 +439,16 @@ function AppearanceSection({ theme, onUpdateTheme }: Props) {
   );
 }
 
+function supabaseHostFromEnv(): string {
+  const raw = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  if (!raw?.trim()) return "(not set in this build)";
+  try {
+    return new URL(raw.trim()).host;
+  } catch {
+    return "(invalid VITE_SUPABASE_URL)";
+  }
+}
+
 function DataSection({
   onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenLoans, onOpenTrash, onOpenChange,
   onSync, syncing, lastSync, onExportData, onRestoreData, profile,
@@ -512,6 +522,14 @@ function DataSection({
           <p className="text-foreground text-sm">Sync</p>
           <p className="text-[11px] text-ink-muted mt-0.5">
             {lastSync ? `Last synced ${new Date(lastSync).toLocaleString()}` : "Never synced yet"}
+          </p>
+          <p className="text-[10px] text-ink-muted/80 mt-2 font-mono leading-relaxed break-all">
+            This app build → <span className="text-foreground/80">{supabaseHostFromEnv()}</span>
+            <br />
+            Signed-in user id → <span className="text-foreground/80">{profile.user_id || "—"}</span>
+          </p>
+          <p className="text-[10px] text-ink-muted/70 mt-1.5 leading-snug">
+            Your ledger lives in Supabase, not in this browser. Every install (localhost, prod, mobile) must show the same host and the same user id to share one ledger. Redeploy after changing env vars so the new URL is baked into the build.
           </p>
         </div>
         <Button size="sm" onClick={() => void onSync()} disabled={syncing}
