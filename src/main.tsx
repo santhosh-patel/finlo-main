@@ -26,6 +26,17 @@ if ("serviceWorker" in navigator) {
   if (isInIframe || isPreviewHost) {
     navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
   } else {
-    registerSW({ immediate: true });
+    registerSW({
+      immediate: true,
+      onRegistered(r) {
+        if (r) {
+          // Check for updates every hour
+          setInterval(() => {
+            if (r.installing || !navigator.onLine) return;
+            r.update().catch(() => {});
+          }, 60 * 60 * 1000);
+        }
+      },
+    });
   }
 }
