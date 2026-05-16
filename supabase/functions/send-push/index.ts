@@ -16,7 +16,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { user_id, title, body, url } = await req.json();
+    const { user_id, title, body, url: rawUrl, link } = await req.json();
+    const url = rawUrl || link || "/";
     if (!user_id) throw new Error("Missing user_id");
 
     // Fetch subscriptions
