@@ -34,7 +34,7 @@ serve(async (req) => {
 
     // Configure web-push
     // These should be set in Supabase Secrets
-    const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY") || "BPY58mE69GzO6yR9S2qD8G5N3C1F4B7V9W3Q5P8M2L0K1J4H7G9F8D5S3A1Q";
+    const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY") || "BOxxH6qoOFBckNg2dLFnyhsY_XF4_7kDQOgb6bN-EbkSvk-DrIw2agFOQzOHYQg43xFw3ItxfMV2gKyFS52YWLg";
     const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY");
     const mailTo = Deno.env.get("VAPID_MAILTO") || "mailto:admin@finlo.ai";
 

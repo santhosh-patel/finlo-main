@@ -20,11 +20,12 @@ BEGIN
             WHERE user_id = NEW.user_id;
 
             -- Insert into internal notifications table
-            INSERT INTO public.notifications (user_id, title, body, url)
+            INSERT INTO public.notifications (user_id, title, body, kind, link)
             VALUES (
                 partner_id,
                 'New Shared Expense',
                 adder_name || ' added ' || NEW.category || ': ₹' || NEW.amount,
+                'expense',
                 '/?view=household'
             );
 
@@ -51,7 +52,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- DROP TRIGGER IF EXISTS on_shared_expense_added ON public.expenses;
--- CREATE TRIGGER on_shared_expense_added
--- AFTER INSERT ON public.expenses
--- FOR EACH ROW EXECUTE FUNCTION public.notify_shared_expense();
+DROP TRIGGER IF EXISTS on_shared_expense_added ON public.expenses;
+CREATE TRIGGER on_shared_expense_added
+AFTER INSERT ON public.expenses
+FOR EACH ROW EXECUTE FUNCTION public.notify_shared_expense();

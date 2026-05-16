@@ -17,9 +17,10 @@ interface Activity {
   id: string;
   title: string;
   body: string;
-  url?: string;
+  kind: string;
+  link?: string;
   created_at: string;
-  is_read: boolean;
+  read_at: string | null;
 }
 
 interface Props {
