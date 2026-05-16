@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      households: {
+        Row: {
+          id: string
+          name: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      household_invites: {
+        Row: {
+          id: string
+          household_id: string
+          inviter_id: string
+          email: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          household_id: string
+          inviter_id: string
+          email: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          inviter_id?: string
+          email?: string
+          status?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      daily_pulses: {
+        Row: {
+          id: string
+          user_id: string
+          type: string
+          title: string
+          content: string
+          metrics: Json | null
+          actions: Json | null
+          is_read: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          type: string
+          title: string
+          content: string
+          metrics?: Json | null
+          actions?: Json | null
+          is_read?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          type?: string
+          title?: string
+          content?: string
+          metrics?: Json | null
+          actions?: Json | null
+          is_read?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       admin_audit_log: {
         Row: {
           action: string
@@ -103,6 +184,7 @@ export type Database = {
           amount_monthly: number
           category: string
           created_at: string
+          household_id: string | null
           id: string
           updated_at: string
           user_id: string
@@ -111,6 +193,7 @@ export type Database = {
           amount_monthly: number
           category: string
           created_at?: string
+          household_id?: string | null
           id?: string
           updated_at?: string
           user_id: string
@@ -119,6 +202,7 @@ export type Database = {
           amount_monthly?: number
           category?: string
           created_at?: string
+          household_id?: string | null
           id?: string
           updated_at?: string
           user_id?: string
@@ -129,6 +213,7 @@ export type Database = {
         Row: {
           color: string | null
           created_at: string
+          household_id: string | null
           icon: string | null
           id: string
           name: string
@@ -139,6 +224,7 @@ export type Database = {
         Insert: {
           color?: string | null
           created_at?: string
+          household_id?: string | null
           icon?: string | null
           id?: string
           name: string
@@ -149,6 +235,7 @@ export type Database = {
         Update: {
           color?: string | null
           created_at?: string
+          household_id?: string | null
           icon?: string | null
           id?: string
           name?: string
@@ -298,11 +385,13 @@ export type Database = {
           date: string
           deleted_at: string | null
           fx_rate: number
+          household_id: string | null
           id: string
           import_hash: string | null
           is_reimbursable: boolean
           note: string | null
           payment_method: string
+          reactions: Json | null
           receipt_url: string | null
           split_note: string | null
           reimbursed_at: string | null
@@ -322,11 +411,13 @@ export type Database = {
           date: string
           deleted_at?: string | null
           fx_rate?: number
+          household_id?: string | null
           id?: string
           import_hash?: string | null
           is_reimbursable?: boolean
           note?: string | null
           payment_method?: string
+          reactions?: Json | null
           receipt_url?: string | null
           reimbursed_at?: string | null
           split_note?: string | null
@@ -346,11 +437,13 @@ export type Database = {
           date?: string
           deleted_at?: string | null
           fx_rate?: number
+          household_id?: string | null
           id?: string
           import_hash?: string | null
           is_reimbursable?: boolean
           note?: string | null
           payment_method?: string
+          reactions?: Json | null
           receipt_url?: string | null
           reimbursed_at?: string | null
           split_note?: string | null
@@ -417,6 +510,8 @@ export type Database = {
           due_date: string | null
           expense_id: string | null
           id: string
+          interest_rate: number | null
+          interest_type: string | null
           note: string | null
           status: string
           updated_at: string
@@ -432,6 +527,8 @@ export type Database = {
           due_date?: string | null
           expense_id?: string | null
           id?: string
+          interest_rate?: number | null
+          interest_type?: string | null
           note?: string | null
           status?: string
           updated_at?: string
@@ -447,6 +544,8 @@ export type Database = {
           due_date?: string | null
           expense_id?: string | null
           id?: string
+          interest_rate?: number | null
+          interest_type?: string | null
           note?: string | null
           status?: string
           updated_at?: string
@@ -458,6 +557,47 @@ export type Database = {
             columns: ["expense_id"]
             isOneToOne: false
             referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loan_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          date: string
+          id: string
+          loan_id: string
+          note: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          date?: string
+          id?: string
+          loan_id: string
+          note?: string | null
+          type?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          date?: string
+          id?: string
+          loan_id?: string
+          note?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loan_payments_loan_id_fkey"
+            columns: ["loan_id"]
+            isOneToOne: false
+            referencedRelation: "loans"
             referencedColumns: ["id"]
           },
         ]
@@ -500,6 +640,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string | null
+          household_id: string | null
           id: string
           updated_at: string
           user_id: string
@@ -508,6 +649,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          household_id?: string | null
           id?: string
           updated_at?: string
           user_id: string
@@ -516,6 +658,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          household_id?: string | null
           id?: string
           updated_at?: string
           user_id?: string
@@ -596,6 +739,51 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          active: boolean
+          alert_days_before: number
+          amount: number
+          billing_cycle: string
+          category: string
+          created_at: string
+          currency: string
+          id: string
+          next_billing_date: string
+          service_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          alert_days_before?: number
+          amount: number
+          billing_cycle?: string
+          category: string
+          created_at?: string
+          currency?: string
+          id?: string
+          next_billing_date: string
+          service_name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          alert_days_before?: number
+          amount?: number
+          billing_cycle?: string
+          category?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          next_billing_date?: string
+          service_name?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

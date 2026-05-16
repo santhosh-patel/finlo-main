@@ -20,13 +20,15 @@ interface Props {
   onSelect?: (e: Expense) => void;
   categories?: CategoryDef[];
   anomalyExpenseIds?: Set<string>;
+  currentUserId?: string | null;
+  onToggleReaction?: (id: string, emoji: string) => void;
 }
 
 interface Insight {
   text: string;
 }
 
-export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect, categories, anomalyExpenseIds }: Props) {
+export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect, categories, anomalyExpenseIds, currentUserId, onToggleReaction }: Props) {
   const { from, to, label } = useMemo(() => monthRangeOf(anchor), [anchor]);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -622,6 +624,8 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                             onSelect={onSelect}
                             categories={categories}
                             showAnomaly={anomalyExpenseIds?.has(e.id)}
+                            currentUserId={currentUserId}
+                            onToggleReaction={onToggleReaction}
                           />
                         ))}
                       </div>
@@ -668,6 +672,8 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                     }} 
                     categories={categories}
                     showAnomaly={anomalyExpenseIds?.has(e.id)}
+                    currentUserId={currentUserId}
+                    onToggleReaction={onToggleReaction}
                   />
                 ))}
             </div>

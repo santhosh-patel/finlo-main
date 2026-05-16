@@ -41,6 +41,16 @@ function writeJSON(key: string, value: unknown) {
   }
 }
 
+function formatSupabaseErr(err: unknown): string {
+  if (err && typeof err === "object") {
+    const o = err as { message?: string; details?: string; hint?: string };
+    const parts = [o.message, o.details, o.hint].filter((x): x is string => typeof x === "string" && x.length > 0);
+    if (parts.length) return parts.join(" — ");
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 interface DBExpenseRow {
   id: string;
   amount: number;
@@ -60,6 +70,9 @@ interface DBExpenseRow {
   split_note: string | null;
   reimbursed_at: string | null;
   client_updated_at: string | null;
+  user_id: string;
+  household_id: string | null;
+  reactions: { user_id: string; emoji: string }[] | null;
 }
 
 function normalizeExpense<T extends Expense>(expense: T): T {
@@ -70,7 +83,7 @@ function normalizeExpenses(expenses: Expense[]): Expense[] {
   return expenses.map(normalizeExpense);
 }
 
-export function useExpenses(userId: string | null) {
+export function useExpenses(userId: string | null, householdId?: string | null) {
   const expKey = userId ? `finlo.expenses.${userId}.v1` : EXP_KEY;
   const catKey = userId ? `finlo.categories.${userId}.v1` : CAT_KEY;
   const budKey = userId ? `finlo.budgets.${userId}.v1` : BUD_KEY;
@@ -103,7 +116,7 @@ export function useExpenses(userId: string | null) {
     setCategories(readJSON<CategoryDef[]>(catKey, DEFAULT_CATEGORIES));
     setBudgets(readJSON<Budgets>(budKey, {}));
     setLastSync(localStorage.getItem(lastSyncKey));
-  }, [userId, expKey, catKey, budKey, lastSyncKey]);
+  }, [userId, householdId, expKey, catKey, budKey, lastSyncKey]);
 
   // Keep references updated
   useEffect(() => {
@@ -225,10 +238,22 @@ export function useExpenses(userId: string | null) {
 
   const pullFromServer = useCallback(async () => {
     if (!userId) return;
+    const expQuery = householdId 
+      ? supabase.from("expenses").select("*").eq("household_id", householdId)
+      : supabase.from("expenses").select("*").eq("user_id", userId);
+    
+    const catQuery = householdId
+      ? supabase.from("categories").select("*").eq("household_id", householdId)
+      : supabase.from("categories").select("*").eq("user_id", userId);
+
+    const budQuery = householdId
+      ? supabase.from("budgets").select("*").eq("household_id", householdId)
+      : supabase.from("budgets").select("*").eq("user_id", userId);
+
     const [{ data: exp }, { data: cat }, { data: bud }] = await Promise.all([
-      supabase.from("expenses").select("*").eq("user_id", userId).is("deleted_at", null).order("date", { ascending: false }).order("created_at", { ascending: false }),
-      supabase.from("categories").select("*").eq("user_id", userId),
-      supabase.from("budgets").select("*").eq("user_id", userId),
+      expQuery.is("deleted_at", null).order("date", { ascending: false }).order("created_at", { ascending: false }),
+      catQuery,
+      budQuery,
     ]);
     if (exp) {
       const serverExpenses = (exp as unknown as DBExpenseRow[]).map((r) => ({
@@ -250,6 +275,9 @@ export function useExpenses(userId: string | null) {
         split_note: r.split_note ?? undefined,
         reimbursed_at: r.reimbursed_at ?? null,
         client_updated_at: r.client_updated_at ?? undefined,
+        user_id: r.user_id,
+        household_id: r.household_id,
+        reactions: r.reactions || [],
       }));
 
       // Merge offline additions that have not synced yet
@@ -345,9 +373,16 @@ export function useExpenses(userId: string | null) {
     setSyncing(true);
     try {
       await flushPending();
+      const stillPending = pendingRef.current.length > 0;
       skipNextRealtimePullRef.current = true;
       await pullFromServer();
-      if (!opts?.silentToast) {
+      if (stillPending) {
+        toast({
+          title: "Could not save all changes",
+          description: "Some updates are still queued. Check your connection, then tap Sync again. If this persists, open the browser console for details.",
+          variant: "destructive",
+        });
+      } else if (!opts?.silentToast) {
         toast({ title: "Synced", description: "All changes are up to date." });
       }
       return true;
@@ -419,11 +454,14 @@ export function useExpenses(userId: string | null) {
       }
     };
     void bootstrap();
+    const realtimeFilter = householdId
+      ? `household_id=eq.${householdId}`
+      : `user_id=eq.${userId}`;
     const ch = supabase
-      .channel(`expenses-${userId}`)
+      .channel(`expenses-${userId}-${householdId ?? "solo"}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "expenses", filter: `user_id=eq.${userId}` },
+        { event: "*", schema: "public", table: "expenses", filter: realtimeFilter },
         (payload) => {
           if (skipNextRealtimePullRef.current) {
             skipNextRealtimePullRef.current = false;
@@ -452,6 +490,9 @@ export function useExpenses(userId: string | null) {
                 client_updated_at: row.client_updated_at ?? undefined,
                 split_note: row.split_note ?? undefined,
                 receipt_url: row.receipt_url ?? undefined,
+                user_id: row.user_id,
+                household_id: row.household_id,
+                reactions: row.reactions || [],
               };
               return [mapped, ...prev].sort((a, b) => b.date.localeCompare(a.date));
             });
@@ -476,6 +517,9 @@ export function useExpenses(userId: string | null) {
                 client_updated_at: row.client_updated_at ?? undefined,
                 split_note: row.split_note ?? undefined,
                 receipt_url: row.receipt_url ?? undefined,
+                user_id: row.user_id,
+                household_id: row.household_id,
+                reactions: row.reactions || [],
               };
             }));
           } else if (eventType === "DELETE") {
@@ -492,7 +536,7 @@ export function useExpenses(userId: string | null) {
       supabase.removeChannel(ch);
       window.removeEventListener("online", onOnline);
     };
-  }, [userId, pullFromServer, flushPending, pendingHydrated]);
+  }, [userId, householdId, pullFromServer, flushPending, pendingHydrated]);
 
   // ------- mutators (optimistic local + queue/server) -------
   const addExpense = useCallback((e: Omit<Expense, "id" | "created_at">) => {
@@ -504,6 +548,8 @@ export function useExpenses(userId: string | null) {
       base_amount: e.base_amount ?? Number(e.amount) * fx,
       id: crypto.randomUUID(),
       created_at: new Date().toISOString(),
+      user_id: e.user_id || userId || "",
+      reactions: e.reactions ?? [],
     };
     setExpenses((prev) => [newE, ...prev]);
 
@@ -553,9 +599,19 @@ export function useExpenses(userId: string | null) {
             }
           } else {
             console.error("Failed to insert expense:", error);
+            toast({
+              title: "Could not save transaction",
+              description: formatSupabaseErr(error),
+              variant: "destructive",
+            });
           }
         } catch (err) {
           console.error("Exception during expense insert:", err);
+          toast({
+            title: "Could not save transaction",
+            description: formatSupabaseErr(err),
+            variant: "destructive",
+          });
         } finally {
           vibrate([28, 42, 28]);
         }
@@ -686,9 +742,19 @@ export function useExpenses(userId: string | null) {
           dequeue(id);
         } else {
           console.error("Failed to update expense:", error);
+          toast({
+            title: "Could not update transaction",
+            description: formatSupabaseErr(error),
+            variant: "destructive",
+          });
         }
       } catch (err) {
         console.error("Exception during expense update:", err);
+        toast({
+          title: "Could not update transaction",
+          description: formatSupabaseErr(err),
+          variant: "destructive",
+        });
       }
     }
   }, [userId, showConflictToast]);
@@ -706,11 +772,51 @@ export function useExpenses(userId: string | null) {
             dequeue(id);
           } else {
             console.error("Failed to soft-delete expense:", error);
+            toast({
+              title: "Could not delete transaction",
+              description: formatSupabaseErr(error),
+              variant: "destructive",
+            });
           }
         } catch (err) {
           console.error("Exception during expense delete:", err);
+          toast({
+            title: "Could not delete transaction",
+            description: formatSupabaseErr(err),
+            variant: "destructive",
+          });
         }
       })();
+    }
+  }, [userId]);
+
+  const toggleReaction = useCallback(async (id: string, emoji: string) => {
+    if (!userId) return;
+    setExpenses((prev) => prev.map((e) => {
+      if (e.id !== id) return e;
+      const reactions = e.reactions || [];
+      const existingIdx = reactions.findIndex((r) => r.user_id === userId && r.emoji === emoji);
+      let nextReactions = [...reactions];
+      if (existingIdx !== -1) {
+        nextReactions.splice(existingIdx, 1);
+      } else {
+        nextReactions.push({ user_id: userId, emoji });
+      }
+      return { ...e, reactions: nextReactions };
+    }));
+
+    // Optimistically update DB
+    const { data: current } = await supabase.from("expenses").select("reactions").eq("id", id).single();
+    if (current) {
+      const reactions = (current.reactions as any[]) || [];
+      const existingIdx = reactions.findIndex((r) => r.user_id === userId && r.emoji === emoji);
+      let nextReactions = [...reactions];
+      if (existingIdx !== -1) {
+        nextReactions.splice(existingIdx, 1);
+      } else {
+        nextReactions.push({ user_id: userId, emoji });
+      }
+      await supabase.from("expenses").update({ reactions: nextReactions }).eq("id", id);
     }
   }, [userId]);
 
@@ -972,5 +1078,6 @@ export function useExpenses(userId: string | null) {
     addSubcategory, deleteSubcategory,
     importExpenses, setBudget,
     exportData, restoreData,
+    toggleReaction,
   };
 }

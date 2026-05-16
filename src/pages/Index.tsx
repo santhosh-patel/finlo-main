@@ -12,9 +12,11 @@ import { AskDataDrawer } from "@/components/AskDataDrawer";
 import { ImportSheet } from "@/components/ImportSheet";
 import { BudgetsSheet } from "@/components/BudgetsSheet";
 import { RecurringSheet } from "@/components/RecurringSheet";
+import { SubscriptionsSheet } from "@/components/SubscriptionsSheet";
 import { LoansSheet } from "@/components/LoansSheet";
 import { TrashSheet } from "@/components/TrashSheet";
 import { PeriodNav } from "@/components/PeriodNav";
+import { PulseCard } from "@/components/PulseCard";
 import { ExpenseDetailsDrawer } from "@/components/ExpenseDetailsDrawer";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
@@ -49,6 +51,7 @@ type View = "today" | "week" | "month";
 
 const FILTERS_KEY = "finlo.filters.v1";
 const EMPTY_FILTERS: FilterState = { query: "", category: "", from: "", to: "", reimbursableOnly: false };
+const PULSE_FETCHED_KEY = "finlo.pulse_fetched.v1";
 
 function readFilters(): FilterState {
   try {
@@ -62,17 +65,17 @@ const Index = () => {
   const navigate = useNavigate();
   const { logout, profile, updateProfile, isAdmin, user, impersonatedUserId, impersonatedEmail, stopImpersonating } = useAuth();
   const { theme, update: updateTheme } = useTheme();
-  // Admins never use the consumer app unless they are active in Impersonated Support mode.
-  const expenseUserId = impersonatedUserId ? impersonatedUserId : (!isAdmin ? user?.id ?? null : null);
+  // Impersonation targets another user's ledger; otherwise use the signed-in account (including admins).
+  const expenseUserId = impersonatedUserId ?? user?.id ?? null;
   const {
     expenses, categories, budgets,
-    syncing, lastSync, sync, initialDataReady,
+    syncing, lastSync, sync, initialDataReady, pendingCount,
     addExpense, updateExpense, deleteExpense,
     addCategory, renameCategory, deleteCategory, setCategoryStyle,
     addSubcategory, deleteSubcategory,
     importExpenses, setBudget,
-    exportData, restoreData,
-  } = useExpenses(expenseUserId);
+    exportData, restoreData, toggleReaction,
+  } = useExpenses(expenseUserId, profile.household_id);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -83,6 +86,7 @@ const Index = () => {
   const [budgetsOpen, setBudgetsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
+  const [subscriptionsOpen, setSubscriptionsOpen] = useState(false);
   const [loansOpen, setLoansOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
@@ -395,6 +399,44 @@ const Index = () => {
     onAfterExpenseLogged: () => setQuickAddCycle((c) => c + 1),
   });
 
+  const handlePulseNavigate = (target: string, params?: any) => {
+    vibrate(10);
+    switch (target) {
+      case "budgets": setBudgetsOpen(true); break;
+      case "search": setSearchOpen(true); break;
+      case "subscriptions": setSubscriptionsOpen(true); break;
+      case "loans": setLoansOpen(true); break;
+      case "add_expense": 
+        if (params?.edit && params?.data) {
+          setReceiptScanPrefill({
+            amount: params.data.amount,
+            merchant: params.data.note,
+            categoryGuess: params.data.category,
+            date: params.data.date
+          });
+        }
+        setOpen(true); 
+        break;
+    }
+  };
+
+  const handlePulseAction = async (handler: string, data: any): Promise<boolean> => {
+    if (handler === "log_recurring") {
+      try {
+        const { error } = await supabase.from("expenses").insert(data);
+        if (error) throw error;
+        toast({ title: "Expense logged", description: `${data.category}: ${getCurrencySymbol()}${formatINR(data.amount)}` });
+        sync();
+        return true;
+      } catch (err) {
+        console.error("Failed to log recurring expense:", err);
+        toast({ title: "Failed to log", variant: "destructive" });
+        return false;
+      }
+    }
+    return false;
+  };
+
   const handlePullRefresh = useCallback(async () => {
     // Always pull from Supabase so prod/phone/other tabs stay aligned, not only when offline queue has items.
     const didSync = await sync({ silentToast: true });
@@ -406,6 +448,31 @@ const Index = () => {
     handlePullRefresh,
     mainRef,
   );
+
+  // Household Ambient AI Pulses
+  useEffect(() => {
+    if (!profile.household_id || !initialDataReady) return;
+    
+    const lastFetched = localStorage.getItem(PULSE_FETCHED_KEY);
+    const today = todayISO();
+    if (lastFetched === today) return;
+
+    const fetchHouseholdPulse = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("household-pulse", {
+          body: { household_id: profile.household_id },
+        });
+        if (error) throw error;
+        if (data?.pulses) {
+          localStorage.setItem(PULSE_FETCHED_KEY, today);
+        }
+      } catch (err) {
+        console.error("Household pulse fetch failed:", err);
+      }
+    };
+
+    fetchHouseholdPulse();
+  }, [profile.household_id, initialDataReady]);
 
   const overlayCount = useMemo(
     () =>
@@ -470,6 +537,10 @@ const Index = () => {
     }
     if (recurringOpen) {
       setRecurringOpen(false);
+      return;
+    }
+    if (subscriptionsOpen) {
+      setSubscriptionsOpen(false);
       return;
     }
     if (loansOpen) {
@@ -795,6 +866,12 @@ const Index = () => {
           )}
         </section>
 
+        <PulseCard 
+          userId={expenseUserId} 
+          onNavigate={handlePulseNavigate} 
+          onAction={handlePulseAction}
+        />
+
         <PeriodNav label={periodLabel} onPrev={onPrev} onNext={onNext} canNext={canNext} />
 
         {!initialDataReady && expenseUserId ? (
@@ -1018,6 +1095,8 @@ const Index = () => {
                                   onSelect={setDetails}
                                   categories={categories}
                                   showAnomaly={anomalyExpenseIds.has(e.id)}
+                                  currentUserId={user?.id}
+                                  onToggleReaction={toggleReaction}
                                 />
                               ))}
                             </div>
@@ -1038,6 +1117,8 @@ const Index = () => {
               anchor={weekAnchor}
               onSelect={setDetails}
               anomalyExpenseIds={anomalyExpenseIds}
+              currentUserId={user?.id}
+              onToggleReaction={toggleReaction}
             />
           )}
 
@@ -1047,6 +1128,8 @@ const Index = () => {
               onOpenBudgets={() => setBudgetsOpen(true)}
               anchor={monthAnchor} onSelect={setDetails} categories={categories}
               anomalyExpenseIds={anomalyExpenseIds}
+              currentUserId={user?.id}
+              onToggleReaction={toggleReaction}
             />
           )}
         </div>
@@ -1093,6 +1176,9 @@ const Index = () => {
       <RecurringSheet open={recurringOpen} onOpenChange={setRecurringOpen}
         categories={categories} userId={user?.id ?? null} />
 
+      <SubscriptionsSheet open={subscriptionsOpen} onOpenChange={setSubscriptionsOpen} 
+        categories={categories} userId={user?.id ?? null} expenses={expenses} />
+
       <LoansSheet open={loansOpen} onOpenChange={setLoansOpen} userId={user?.id ?? null} />
 
       <AskDataDrawer
@@ -1114,12 +1200,13 @@ const Index = () => {
         onOpenImport={() => setImportOpen(true)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenRecurring={() => setRecurringOpen(true)}
+        onOpenSubscriptions={() => setSubscriptionsOpen(true)}
         onOpenLoans={() => setLoansOpen(true)}
         onOpenTrash={() => setTrashOpen(true)}
         profile={profile} onUpdateProfile={updateProfile}
         theme={theme} onUpdateTheme={updateTheme}
         onLogout={logout}
-        onSync={sync} syncing={syncing} lastSync={lastSync}
+        onSync={sync} syncing={syncing} lastSync={lastSync} pendingCount={pendingCount}
         onExportData={exportData} onRestoreData={restoreData}
         isAdmin={isAdmin}
       />

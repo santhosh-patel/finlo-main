@@ -14,6 +14,7 @@ export interface Profile {
   user_id: string;
   email: string;
   name: string;
+  household_id?: string | null;
 }
 
 export interface AuthState {
@@ -77,7 +78,7 @@ function useProvideAuth(): AuthState {
 
     const loadProfileAndRole = async (uid: string, email: string) => {
       const [{ data: prof }, { data: roleData }] = await Promise.all([
-        supabase.from("profiles").select("display_name,email,user_id").eq("user_id", uid).maybeSingle(),
+        supabase.from("profiles").select("display_name,email,user_id,household_id").eq("user_id", uid).maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", uid),
       ]);
       if (!mountedRef.current) return;
@@ -85,6 +86,7 @@ function useProvideAuth(): AuthState {
         user_id: uid,
         email: prof?.email ?? email,
         name: prof?.display_name ?? email.split("@")[0],
+        household_id: prof?.household_id,
       });
       setIsAdmin((roleData ?? []).some((r) => r.role === "admin"));
     };
