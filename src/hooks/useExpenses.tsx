@@ -179,9 +179,10 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
   const flushPending = useCallback(async () => {
     if (!userId || !navigator.onLine) return;
     const ops = [...pendingRef.current];
-    if (ops.length === 0) return;
+    if (ops.length === 0) return null;
 
     const remaining: PendingOp[] = [];
+    let lastError: any = null;
     for (const op of ops) {
       try {
         if (op.kind === "insert") {
@@ -202,7 +203,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
             split_note: op.row.split_note ?? null,
             receipt_url: op.row.receipt_url ?? null,
           });
-          if (error) remaining.push(op);
+          if (error) { remaining.push(op); lastError = error; }
         } else if (op.kind === "update") {
           const { error } = await supabase.from("expenses").update({
             ...(op.patch.amount !== undefined && { amount: op.patch.amount }),
@@ -219,21 +220,23 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
             ...(op.patch.split_note !== undefined && { split_note: op.patch.split_note ?? null }),
             ...(op.patch.receipt_url !== undefined && { receipt_url: op.patch.receipt_url ?? null }),
           }).eq("id", op.id);
-          if (error) remaining.push(op);
+          if (error) { remaining.push(op); lastError = error; }
         } else if (op.kind === "delete") {
           const { error } = await supabase
             .from("expenses")
             .update({ deleted_at: new Date().toISOString() })
             .eq("id", op.id);
-          if (error) remaining.push(op);
+          if (error) { remaining.push(op); lastError = error; }
         }
-      } catch {
+      } catch (err) {
         remaining.push(op);
+        lastError = err;
       }
     }
     pendingRef.current = remaining;
     void idbSetPending(remaining);
     setPendingCount(remaining.length);
+    return lastError;
   }, [userId]);
 
   const pullFromServer = useCallback(async () => {
@@ -372,14 +375,20 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     syncInFlightRef.current = true;
     setSyncing(true);
     try {
-      await flushPending();
+      const flushError = await flushPending();
       const stillPending = pendingRef.current.length > 0;
       skipNextRealtimePullRef.current = true;
       await pullFromServer();
       if (stillPending) {
+        let msg = "Check your connection, then tap Sync again.";
+        if (flushError) {
+          msg = typeof flushError === 'object' && flushError !== null && 'message' in flushError 
+            ? `Sync failed: ${flushError.message}` 
+            : `Sync failed: ${JSON.stringify(flushError)}`;
+        }
         toast({
           title: "Could not save all changes",
-          description: "Some updates are still queued. Check your connection, then tap Sync again. If this persists, open the browser console for details.",
+          description: msg,
           variant: "destructive",
         });
       } else if (!opts?.silentToast) {
