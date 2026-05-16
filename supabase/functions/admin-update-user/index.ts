@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
       type: linkType,
       email,
       options: body.redirectTo ? { redirectTo: body.redirectTo } : undefined,
-    } as unknown as Record<string, unknown>);
+    } as any);
     if (error) return jsonResponse(req, { error: error.message }, 400);
 
     const props = (data as unknown as { properties?: Record<string, unknown> | null })?.properties ?? null;

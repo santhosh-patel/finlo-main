@@ -319,26 +319,32 @@ export function AddExpenseSheet({
     }
   };
 
-  const handleNoteBlur = async () => {
-    if (!note.trim() || txnType !== "expense") return;
-    setIsSuggestingCategory(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("suggest-category", {
-        body: { note, categories: categories.map(c => c.name) }
-      });
-      if (!error && data?.category) {
-        const matched = categories.find(c => c.name.toLowerCase() === data.category.toLowerCase());
-        if (matched) {
-          setCategory(matched.name);
-          vibrate(); // Gentle touch signal
+  // Real-time Auto-categorization
+  useEffect(() => {
+    if (!open || isEdit || !note.trim() || txnType !== "expense") return;
+
+    const timer = setTimeout(async () => {
+      setIsSuggestingCategory(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("suggest-category", {
+          body: { note, categories: categories.map(c => c.name) }
+        });
+        if (!error && data?.category) {
+          const matched = categories.find(c => c.name.toLowerCase() === data.category.toLowerCase());
+          if (matched && matched.name !== category) {
+            setCategory(matched.name);
+            vibrate(); // Gentle tactile feedback
+          }
         }
+      } catch (err) {
+        console.error("Auto recommendation category failed:", err);
+      } finally {
+        setIsSuggestingCategory(false);
       }
-    } catch (err) {
-      console.error("Auto recommendation category failed:", err);
-    } finally {
-      setIsSuggestingCategory(false);
-    }
-  };
+    }, 1200); // 1.2s debounce to avoid over-calling the AI while typing
+
+    return () => clearTimeout(timer);
+  }, [note, txnType, categories, open, isEdit]);
 
 
   return (
@@ -472,7 +478,6 @@ export function AddExpenseSheet({
                 maxLength={120}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                onBlur={handleNoteBlur}
                 placeholder="Add a note…"
                 className="border-0 border-b border-border rounded-none bg-transparent px-0 pr-6 text-base text-foreground placeholder:text-ink-muted shadow-none focus-visible:ring-0 focus-visible:border-foreground"
               />

@@ -13,9 +13,11 @@ interface Props {
   anchor: string;
   onSelect?: (e: Expense) => void;
   anomalyExpenseIds?: Set<string>;
+  currentUserId?: string | null;
+  onToggleReaction?: (id: string, emoji: string) => void;
 }
 
-export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpenseIds }: Props) {
+export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpenseIds, currentUserId, onToggleReaction }: Props) {
   const { from, to, label } = useMemo(() => weekRangeOf(anchor), [anchor]);
   const days = useMemo(() => rangeDays(from, to), [from, to]);
   const [openDay, setOpenDay] = useState<string | null>(null);
@@ -200,6 +202,8 @@ export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpe
                       onSelect={onSelect}
                       categories={categories}
                       showAnomaly={anomalyExpenseIds?.has(e.id)}
+                      currentUserId={currentUserId}
+                      onToggleReaction={onToggleReaction}
                     />
                   ))}
                 </div>

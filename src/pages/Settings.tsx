@@ -2,12 +2,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CategoryDef, Expense } from "@/lib/expenses";
-import { useRef, useState } from "react";
+import { CategoryDef, Expense, expensesToCSV, downloadCSV } from "@/lib/expenses";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn, vibrate } from "@/lib/utils";
 import { ArrowLeft, Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
+import { Users, Heart, Share2, Mail, CheckCircle2, Clock } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +40,7 @@ interface Props {
   onOpenImport: () => void;
   onOpenSearch: () => void;
   onOpenRecurring: () => void;
+  onOpenSubscriptions: () => void;
   onOpenLoans: () => void;
   onOpenTrash: () => void;
   profile: Profile;
@@ -48,6 +51,8 @@ interface Props {
   onSync: (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => Promise<boolean>;
   syncing: boolean;
   lastSync: string | null;
+  /** Offline or failed writes still queued for Supabase */
+  pendingCount: number;
   onExportData: () => { version: number; exported_at: string; expenses: Expense[]; categories: CategoryDef[]; budgets: Budgets };
   onRestoreData: (data: { expenses?: Expense[]; categories?: CategoryDef[]; budgets?: Budgets }, mode: "replace" | "merge") => Promise<void>;
   isAdmin: boolean;
@@ -55,7 +60,7 @@ interface Props {
 
 export default function Settings(props: Props) {
   const { open, onOpenChange } = props;
-  const [section, setSection] = useState<"profile" | "categories" | "appearance" | "data">("profile");
+  const [section, setSection] = useState<"profile" | "household" | "categories" | "appearance" | "data">("profile");
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -87,16 +92,17 @@ export default function Settings(props: Props) {
             <div 
               className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1.1)]"
               style={{
-                width: "calc((100% - 8px) / 4)",
+                width: "calc((100% - 16px) / 5)",
                 transform: `translateX(${
                   section === "profile" ? "0%"
-                  : section === "categories" ? "calc(100% + 4px)"
-                  : section === "appearance" ? "calc(200% + 8px)"
-                  : "calc(300% + 12px)"
+                  : section === "household" ? "calc(100% + 4px)"
+                  : section === "categories" ? "calc(200% + 8px)"
+                  : section === "appearance" ? "calc(300% + 12px)"
+                  : "calc(400% + 16px)"
                 })`
               }}
             />
-            {(["profile", "categories", "appearance", "data"] as const).map((s) => (
+            {(["profile", "household", "categories", "appearance", "data"] as const).map((s) => (
               <button
                 key={s} onClick={() => { vibrate(10); setSection(s); }}
                 className={cn(
@@ -111,6 +117,7 @@ export default function Settings(props: Props) {
         {/* Scrollable Contents Container */}
         <div className="flex-1 overflow-y-auto p-6 pt-4 max-md:pb-[var(--finlo-mobile-tab-clearance)] md:pb-6 space-y-6 scrollbar-none">
           {section === "profile" && <ProfileSection {...props} />}
+          {section === "household" && <HouseholdSection profile={props.profile} onSync={props.onSync} />}
           {section === "categories" && <CategoriesSection {...props} />}
           {section === "appearance" && <AppearanceSection {...props} />}
           {section === "data" && <DataSection {...props} />}
@@ -128,7 +135,7 @@ export default function Settings(props: Props) {
               Finlo AI
             </p>
             <p className="text-[11px] text-ink-muted/60 dark:text-ink-muted/50 font-medium mt-1.5 tracking-tight font-sans">
-              v1.1.2
+              v1.1.3
             </p>
           </div>
         </div>
@@ -450,14 +457,15 @@ function supabaseHostFromEnv(): string {
 }
 
 function DataSection({
-  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenLoans, onOpenTrash, onOpenChange,
-  onSync, syncing, lastSync, onExportData, onRestoreData, profile,
+  onOpenBudgets, onOpenImport, onOpenSearch, onOpenRecurring, onOpenSubscriptions, onOpenLoans, onOpenTrash, onOpenChange,
+  onSync, syncing, lastSync, pendingCount, onExportData, onRestoreData, profile,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [restoreMode, setRestoreMode] = useState<"merge" | "replace">("merge");
   const [restoring, setRestoring] = useState(false);
   const [exportFrom, setExportFrom] = useState<string>("");
   const [exportTo, setExportTo] = useState<string>("");
+  const [exportFormat, setExportFormat] = useState<"json" | "csv">("json");
 
   const item = (label: string, desc: string, onClick: () => void, icon?: React.ReactNode) => (
     <button onClick={onClick}
@@ -470,13 +478,13 @@ function DataSection({
     </button>
   );
 
-  const handleExportJSON = () => {
+  const handleExportData = () => {
     const data = onExportData();
     const username = (profile.name || profile.email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g, "-");
     let filtered = data.expenses;
     if (exportFrom) filtered = filtered.filter((e) => e.date.split("T")[0] >= exportFrom);
     if (exportTo) filtered = filtered.filter((e) => e.date.split("T")[0] <= exportTo);
-    const payload = { ...data, expenses: filtered, range: { from: exportFrom || null, to: exportTo || null } };
+    
     let suffix: string;
     if (exportFrom && exportTo) {
       suffix = exportFrom === exportTo ? exportFrom
@@ -485,12 +493,20 @@ function DataSection({
     } else {
       suffix = new Date().toISOString().slice(0, 10);
     }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `finlo-${username}-${suffix}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+    if (exportFormat === "json") {
+      const payload = { ...data, expenses: filtered, range: { from: exportFrom || null, to: exportTo || null } };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `finlo-${username}-${suffix}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      const csv = expensesToCSV(filtered);
+      downloadCSV(`finlo-${username}-${suffix}.csv`, csv);
+    }
+
     toast({ title: "Backup downloaded", description: `${filtered.length} expense(s)` });
   };
 
@@ -522,6 +538,11 @@ function DataSection({
           <p className="text-foreground text-sm">Sync</p>
           <p className="text-[11px] text-ink-muted mt-0.5">
             {lastSync ? `Last synced ${new Date(lastSync).toLocaleString()}` : "Never synced yet"}
+            {pendingCount > 0 && (
+              <span className="block mt-1 text-amber-600 dark:text-amber-400 font-medium">
+                {pendingCount} change{pendingCount === 1 ? "" : "s"} waiting to sync — stay online and tap Sync now.
+              </span>
+            )}
           </p>
           <p className="text-[10px] text-ink-muted/80 mt-2 font-mono leading-relaxed break-all">
             This app build → <span className="text-foreground/80">{supabaseHostFromEnv()}</span>
@@ -540,7 +561,8 @@ function DataSection({
 
       {item("Manage transactions", "Search, edit, delete, export", () => { onOpenSearch(); onOpenChange(false); })}
       {item("Monthly budgets", "Set per-category limits & alerts", () => { onOpenBudgets(); onOpenChange(false); })}
-      {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
+      {item("Subscriptions", "Manage recurring bills & alerts", () => { onOpenSubscriptions(); onOpenChange(false); }, <Repeat className="h-4 w-4" />)}
+      {item("Recurring expenses", "Auto-create monthly bills", () => { onOpenRecurring(); onOpenChange(false); }, <RefreshCcw className="h-4 w-4" />)}
       {item("Lending", "Track money you've lent or borrowed", () => { onOpenLoans(); onOpenChange(false); }, <HandCoins className="h-4 w-4" />)}
       {item("Trash bin", "Restore soft-deleted items within 7 days", () => { onOpenTrash(); onOpenChange(false); }, <Trash2 className="h-4 w-4 text-destructive/80" />)}
       {item("Import CSV / Excel", "Upload spreadsheet of expenses", () => { onOpenImport(); onOpenChange(false); })}
@@ -548,7 +570,29 @@ function DataSection({
       <div className="pt-4 mt-4 border-t border-border/40 space-y-3">
         <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Backup</p>
         <div className="px-4 py-4 rounded-2xl border border-border/40 bg-surface/30 space-y-3">
-          <p className="text-foreground text-sm">Export JSON</p>
+          <p className="text-foreground text-sm">Export Data</p>
+          
+          <div className="space-y-2">
+            <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Format</Label>
+            <div className="flex bg-background border border-border/40 rounded-full p-0.5">
+              {(["json", "csv"] as const).map((format) => (
+                <button
+                  type="button"
+                  key={format}
+                  onClick={() => { vibrate(10); setExportFormat(format); }}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-full text-xs uppercase tracking-wider transition-all font-medium",
+                    exportFormat === format
+                      ? "bg-foreground text-background shadow-sm font-semibold"
+                      : "text-ink-muted hover:text-foreground"
+                  )}
+                >
+                  {format}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">From</Label>
@@ -560,9 +604,9 @@ function DataSection({
             </div>
           </div>
           <p className="text-[11px] text-ink-muted">Leave both blank to export everything.</p>
-          <Button size="sm" onClick={handleExportJSON}
-            className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-9">
-            Download JSON backup
+          <Button size="sm" onClick={handleExportData}
+            className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-9 capitalize">
+            Download {exportFormat} backup
           </Button>
         </div>
 
@@ -591,6 +635,332 @@ function DataSection({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () => Promise<boolean> }) {
+  const [household, setHousehold] = useState<any>(null);
+  const [partner, setPartner] = useState<any>(null);
+  const [invites, setInvites] = useState<any[]>([]);
+  const [incomingInvite, setIncomingInvite] = useState<any>(null);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const loadHousehold = useCallback(async () => {
+    setLoading(true);
+
+    // If the user has a household, load it and find partner
+    if (profile.household_id) {
+      const { data: hh } = await supabase
+        .from("households")
+        .select("*")
+        .eq("id", profile.household_id)
+        .single();
+
+      if (hh) {
+        setHousehold(hh);
+        const { data: members } = await supabase
+          .from("profiles")
+          .select("display_name, email, user_id")
+          .eq("household_id", hh.id)
+          .neq("user_id", profile.user_id);
+        setPartner(members?.[0] ?? null);
+      }
+
+      // Also load outgoing invites the user has sent
+      const { data: invs } = await supabase
+        .from("household_invites")
+        .select("*")
+        .eq("inviter_id", profile.user_id)
+        .eq("status", "pending");
+      setInvites(invs || []);
+    } else {
+      // No household — check if someone invited this user
+      const { data: incoming } = await supabase
+        .from("household_invites")
+        .select("id, household_id, email, inviter_id, profiles:inviter_id(display_name)")
+        .eq("email", profile.email.toLowerCase())
+        .eq("status", "pending")
+        .maybeSingle();
+      setIncomingInvite(incoming ?? null);
+    }
+
+    setLoading(false);
+  }, [profile.household_id, profile.user_id, profile.email]);
+
+  useEffect(() => { loadHousehold(); }, [loadHousehold]);
+
+  const acceptInvite = async () => {
+    if (!incomingInvite) return;
+    setBusy(true);
+    try {
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .update({ household_id: incomingInvite.household_id })
+        .eq("user_id", profile.user_id);
+      if (profileErr) throw profileErr;
+
+      const { error: invErr } = await supabase
+        .from("household_invites")
+        .update({ status: "accepted" })
+        .eq("id", incomingInvite.id);
+      if (invErr) throw invErr;
+
+      await onSync();
+      toast({ title: "Joined household!", description: "You and your partner are now connected." });
+      window.location.reload();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createHousehold = async () => {
+    setBusy(true);
+    try {
+      const householdName = `${profile.name}'s Household`;
+      const { data: hh, error } = await supabase
+        .from("households")
+        .insert({ name: householdName })
+        .select()
+        .single();
+      if (error) throw error;
+
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .update({ household_id: hh.id })
+        .eq("user_id", profile.user_id);
+      if (profileErr) throw profileErr;
+
+      await onSync();
+      toast({ title: "Household created", description: "Invite your partner to get started." });
+      window.location.reload();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const invitePartner = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) return;
+
+    // Prevent inviting yourself
+    if (trimmedEmail === profile.email.toLowerCase()) {
+      toast({ title: "Invalid email", description: "You can't invite yourself.", variant: "destructive" });
+      return;
+    }
+
+    // Prevent duplicate invites
+    if (invites.some((inv) => inv.email === trimmedEmail)) {
+      toast({ title: "Already invited", description: `${trimmedEmail} already has a pending invite.` });
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("household_invites")
+        .insert({
+          household_id: profile.household_id!,
+          inviter_id: profile.user_id,
+          email: trimmedEmail,
+        });
+      if (error) throw error;
+
+      toast({ title: "Invite sent", description: `${trimmedEmail} will see it when they open the Household tab.` });
+      setEmail("");
+      await loadHousehold();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelInvite = async (inviteId: string) => {
+    try {
+      await supabase.from("household_invites").update({ status: "cancelled" }).eq("id", inviteId);
+      setInvites((prev) => prev.filter((i) => i.id !== inviteId));
+      toast({ title: "Invite cancelled" });
+    } catch {
+      toast({ title: "Failed to cancel invite", variant: "destructive" });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-16">
+        <Loader2 className="animate-spin h-6 w-6 text-ink-muted" />
+      </div>
+    );
+  }
+
+  // === No household yet ===
+  if (!profile.household_id) {
+    return (
+      <div className="space-y-6 text-center py-4">
+        <div className="mx-auto w-16 h-16 rounded-3xl bg-surface flex items-center justify-center">
+          <Users className="h-8 w-8 text-foreground" />
+        </div>
+
+        {incomingInvite ? (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <h3 className="font-serif text-2xl">You're invited</h3>
+              <p className="text-sm text-ink-muted leading-relaxed px-4">
+                <span className="font-medium text-foreground">
+                  {(incomingInvite as any).profiles?.display_name || "Your partner"}
+                </span>{" "}
+                invited you to manage finances together.
+              </p>
+            </div>
+            <Button
+              onClick={acceptInvite}
+              disabled={busy}
+              className="w-full rounded-full bg-foreground text-background h-11"
+            >
+              {busy ? <Loader2 className="animate-spin h-4 w-4" /> : "Accept Invitation"}
+            </Button>
+            <p className="text-[10px] text-ink-muted uppercase tracking-widest">or start your own</p>
+            <Button
+              variant="ghost"
+              onClick={createHousehold}
+              disabled={busy}
+              className="w-full rounded-full h-11 text-ink-muted"
+            >
+              Create New Household
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <h3 className="font-serif text-2xl">Manage together</h3>
+              <p className="text-sm text-ink-muted leading-relaxed px-4">
+                Create a shared household to track spending with your partner — privately and clearly.
+              </p>
+            </div>
+            <Button
+              onClick={createHousehold}
+              disabled={busy}
+              className="w-full rounded-full bg-foreground text-background h-11"
+            >
+              {busy ? <Loader2 className="animate-spin h-4 w-4" /> : "Start Household"}
+            </Button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // === Has household ===
+  return (
+    <div className="space-y-5">
+      {/* Household card */}
+      <div className="p-5 rounded-3xl bg-surface/30 border border-border/40 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-2xl bg-foreground text-background flex items-center justify-center shrink-0">
+            <Heart className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h4 className="font-medium text-foreground truncate">{household?.name || "Household"}</h4>
+            <p className="text-[10px] text-ink-muted uppercase tracking-wider">Shared space · active</p>
+          </div>
+        </div>
+
+        {/* Partner section */}
+        {partner ? (
+          <div className="pt-4 border-t border-border/20 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-wash-sage flex items-center justify-center text-sm font-bold uppercase shrink-0">
+              {(partner.display_name?.[0] || partner.email?.[0] || "?").toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{partner.display_name || partner.email}</p>
+              <p className="text-xs text-ink-muted">Partner · connected</p>
+            </div>
+            <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+          </div>
+        ) : (
+          <div className="pt-4 border-t border-border/20 space-y-3">
+            <p className="text-sm text-ink-muted">No partner connected yet. Invite them:</p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted pointer-events-none" />
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") invitePartner(); }}
+                  placeholder="Partner's email"
+                  type="email"
+                  autoComplete="email"
+                  className="rounded-full bg-background border-border pl-9 h-10 text-sm"
+                />
+              </div>
+              <Button
+                onClick={invitePartner}
+                disabled={busy || !email.trim()}
+                size="sm"
+                className="rounded-full px-4 h-10 shrink-0"
+                aria-label="Send invite"
+              >
+                {busy ? <Loader2 className="animate-spin h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+              </Button>
+            </div>
+
+            {/* Pending outgoing invites */}
+            {invites.length > 0 && (
+              <div className="space-y-2">
+                {invites.map((inv) => (
+                  <div key={inv.id} className="flex items-center gap-3 px-3 py-2.5 rounded-2xl bg-background/50 border border-border/20">
+                    <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{inv.email}</p>
+                      <p className="text-[10px] text-ink-muted">Waiting for them to join</p>
+                    </div>
+                    <button
+                      onClick={() => cancelInvite(inv.id)}
+                      className="text-ink-muted hover:text-destructive transition-colors p-1"
+                      aria-label="Cancel invite"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Feature status badges */}
+      <div className="grid grid-cols-1 gap-2">
+        <div className="px-4 py-3 rounded-2xl border border-border/20 bg-surface/20 flex items-center gap-3">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm text-foreground">Shared transactions</p>
+            <p className="text-[11px] text-ink-muted">Both partners see each other's logged expenses</p>
+          </div>
+        </div>
+        <div className="px-4 py-3 rounded-2xl border border-border/20 bg-surface/20 flex items-center gap-3">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm text-foreground">Shared budgets &amp; goals</p>
+            <p className="text-[11px] text-ink-muted">Monthly limits apply to your combined spending</p>
+          </div>
+        </div>
+        <div className="px-4 py-3 rounded-2xl border border-border/20 bg-surface/20 flex items-center gap-3">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm text-foreground">Individual privacy preserved</p>
+            <p className="text-[11px] text-ink-muted">Each transaction still belongs to its owner</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

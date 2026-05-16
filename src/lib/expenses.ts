@@ -22,6 +22,9 @@ export interface Expense {
   import_hash?: string;
   receipt_url?: string;
   deleted_at?: string;
+  user_id: string;
+  household_id?: string | null;
+  reactions?: { user_id: string; emoji: string }[];
 }
 
 /** Returns the amount of the expense converted to the user's base currency. */

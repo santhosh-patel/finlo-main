@@ -41,17 +41,45 @@ async function processRules(
         const isIncome =
           ["salary", "freelance", "refund", "other income"].includes(category.toLowerCase()) ||
           category.toLowerCase().includes("income");
-        const { error: insErr } = await supabase.from("expenses").insert({
+        
+        // Instead of direct insert, we create a pulse for confirmation
+        const { error: pulseErr } = await supabase.from("daily_pulses").insert({
           user_id: rule.user_id,
-          amount: rule.amount,
-          category: rule.category,
-          subcategory: rule.subcategory,
-          note: rule.note ? `${rule.note} (recurring)` : "Recurring",
-          date: next,
-          payment_method: rule.payment_method,
-          type: isIncome ? "income" : "expense",
+          type: "recurring_confirmation",
+          title: `Confirm ${rule.note || "Recurring Transaction"}`,
+          content: `Your ${rule.frequency} ${isIncome ? "income" : "expense"} of ₹${rule.amount} is due. Shall we log it?`,
+          metrics: { 
+            amount: rule.amount, 
+            category: rule.category, 
+            subcategory: rule.subcategory, 
+            note: rule.note, 
+            date: next, 
+            payment_method: rule.payment_method,
+            type: isIncome ? "income" : "expense"
+          },
+          actions: [
+            { 
+              label: "Confirm & Log", 
+              type: "action", 
+              payload: { 
+                handler: "log_recurring", 
+                data: {
+                  user_id: rule.user_id,
+                  amount: rule.amount,
+                  category: rule.category,
+                  subcategory: rule.subcategory,
+                  note: rule.note ? `${rule.note} (recurring)` : "Recurring",
+                  date: next,
+                  payment_method: rule.payment_method,
+                  type: isIncome ? "income" : "expense"
+                }
+              } 
+            },
+            { label: "Edit Details", type: "navigate", payload: { target: "add_expense", edit: true } }
+          ]
         });
-        if (!insErr) { created += 1; localCreated += 1; last = next; }
+
+        if (!pulseErr) { created += 1; localCreated += 1; last = next; }
       }
       next = advance(next, rule.frequency as string, rule.day_of_month as number | null | undefined);
       if (localCreated > 60) break;
