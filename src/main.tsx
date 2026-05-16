@@ -28,6 +28,9 @@ if ("serviceWorker" in navigator) {
   } else {
     registerSW({
       immediate: true,
+      onNeedRefresh() {
+        window.dispatchEvent(new CustomEvent("finlo:pwa-need-refresh"));
+      },
       onRegistered(r) {
         if (r) {
           // Check for updates every hour

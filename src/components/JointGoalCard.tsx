@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn, vibrate } from "@/lib/utils";
 import { formatINR, getCurrencySymbol } from "@/lib/expenses";
+import { goalColorClass } from "@/lib/goalColors";
 
 interface Props {
   title: string;
@@ -15,7 +16,8 @@ interface Props {
 
 export function JointGoalCard({ title, targetAmount, currentAmount, color = "primary", deadline, onAddContribution }: Props) {
   const percentage = targetAmount > 0 ? Math.min(100, (currentAmount / targetAmount) * 100) : 0;
-  
+  const barColor = goalColorClass(color);
+
   return (
     <Card className="relative overflow-hidden rounded-[24px] border border-border/40 p-5 bg-surface/20 backdrop-blur-sm group hover:border-primary/20 transition-all duration-500">
       <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
@@ -25,7 +27,7 @@ export function JointGoalCard({ title, targetAmount, currentAmount, color = "pri
       <div className="flex items-start justify-between mb-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className={cn("h-2 w-2 rounded-full animate-pulse", `bg-${color}`)} />
+            <span className={cn("h-2 w-2 rounded-full animate-pulse", barColor)} />
             <h4 className="text-xs font-bold uppercase tracking-widest text-ink-muted/80">{title}</h4>
           </div>
           <p className="text-2xl font-serif text-foreground">{getCurrencySymbol()}{formatINR(currentAmount)}</p>
@@ -39,7 +41,7 @@ export function JointGoalCard({ title, targetAmount, currentAmount, color = "pri
       <div className="space-y-3">
         <div className="relative h-2 w-full bg-surface/40 rounded-full overflow-hidden">
           <div 
-            className={cn("absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ease-out-soft", `bg-${color}`)}
+            className={cn("absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ease-out-soft", barColor)}
             style={{ width: `${percentage}%` }}
           />
         </div>

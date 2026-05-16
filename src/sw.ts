@@ -7,6 +7,12 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 const sw = self as any;
 
+sw.addEventListener("message", (event: ExtendableMessageEvent) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    void self.skipWaiting();
+  }
+});
+
 // Handle push notifications
 sw.addEventListener("push", (event: any) => {
   if (!event.data) return;
@@ -40,20 +46,22 @@ sw.addEventListener("notificationclick", (event: any) => {
 
   if (event.action === "close") return;
 
-  const urlToOpen = event.notification.data || "/";
+  const raw = event.notification.data || "/";
+  const urlToOpen = raw.startsWith("http") ? raw : `${self.location.origin}${raw.startsWith("/") ? raw : `/${raw}`}`;
 
   event.waitUntil(
     sw.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients: any[]) => {
-      // If a window is already open, focus it
       for (const client of windowClients) {
-        if (client.url.includes(urlToOpen) && "focus" in client) {
+        if ("focus" in client) {
+          if ("navigate" in client && typeof client.navigate === "function") {
+            return client.navigate(urlToOpen).then(() => client.focus());
+          }
           return client.focus();
         }
       }
-      // Otherwise open a new window
       if (sw.clients.openWindow) {
         return sw.clients.openWindow(urlToOpen);
       }
-    })
+    }),
   );
 });
