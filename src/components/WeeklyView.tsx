@@ -15,9 +15,10 @@ interface Props {
   anomalyExpenseIds?: Set<string>;
   currentUserId?: string | null;
   onToggleReaction?: (id: string, emoji: string) => void;
+  memberAttribution?: (expense: Expense) => { addedByName?: string; addedByInitials?: string };
 }
 
-export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpenseIds, currentUserId, onToggleReaction }: Props) {
+export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpenseIds, currentUserId, onToggleReaction, memberAttribution }: Props) {
   const { from, to, label } = useMemo(() => weekRangeOf(anchor), [anchor]);
   const days = useMemo(() => rangeDays(from, to), [from, to]);
   const [openDay, setOpenDay] = useState<string | null>(null);
@@ -195,17 +196,22 @@ export function WeeklyView({ expenses, categories, anchor, onSelect, anomalyExpe
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
-                  {items.map((e) => (
-                    <ExpenseRow
-                      key={e.id}
-                      expense={e}
-                      onSelect={onSelect}
-                      categories={categories}
-                      showAnomaly={anomalyExpenseIds?.has(e.id)}
-                      currentUserId={currentUserId}
-                      onToggleReaction={onToggleReaction}
-                    />
-                  ))}
+                  {items.map((e) => {
+                    const attribution = memberAttribution?.(e) ?? {};
+                    return (
+                      <ExpenseRow
+                        key={e.id}
+                        expense={e}
+                        onSelect={onSelect}
+                        categories={categories}
+                        showAnomaly={anomalyExpenseIds?.has(e.id)}
+                        currentUserId={currentUserId}
+                        onToggleReaction={onToggleReaction}
+                        addedByName={attribution.addedByName}
+                        addedByInitials={attribution.addedByInitials}
+                      />
+                    );
+                  })}
                 </div>
               </CollapsibleContent>
             </Collapsible>

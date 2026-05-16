@@ -21,12 +21,136 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { Profile } from "@/hooks/useAuth";
+import { useAuth, type Profile } from "@/hooks/useAuth";
 import type { Budgets } from "@/hooks/useExpenses";
 import { validatePassword } from "@/lib/passwordPolicy";
 import { toast } from "@/hooks/use-toast";
 import { RollingDatePicker } from "@/components/RollingDatePicker";
 import { APP_VERSION_LABEL } from "@/lib/appVersion";
+import { memberInitials } from "@/hooks/useHouseholdMembers";
+import {
+  fetchIncomingHouseholdInvites,
+  notifyHouseholdInviteDelivered,
+  type IncomingHouseholdInvite,
+} from "@/lib/householdInvites";
+
+type HouseholdMemberView = {
+  user_id: string;
+  name: string;
+  email: string;
+  initials: string;
+  joinedAt: string;
+  isCurrentUser: boolean;
+  isFounder: boolean;
+};
+
+function formatJoinedDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+type HouseholdInviteRow = {
+  id: string;
+  email: string;
+  created_at: string;
+  household_id?: string;
+  inviter_id?: string;
+  status?: string;
+};
+
+function IncomingInviteCards({
+  invites,
+  busy,
+  actingInviteId,
+  onAccept,
+  onDecline,
+  showSwitchHint,
+}: {
+  invites: IncomingHouseholdInvite[];
+  busy: boolean;
+  actingInviteId: string | null;
+  onAccept: (inviteId: string) => void;
+  onDecline: (inviteId: string) => void;
+  showSwitchHint?: boolean;
+}) {
+  if (invites.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      {invites.map((inv) => (
+        <div
+          key={inv.id}
+          className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/10 via-surface/80 to-transparent p-4 shadow-sm"
+        >
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+              <Bell className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-primary">
+                Household invitation
+              </p>
+              <p className="text-sm text-foreground leading-snug">
+                <span className="font-semibold">{inv.inviter_name}</span> invited you to join{" "}
+                <span className="font-semibold">"{inv.household_name}"</span>
+              </p>
+              <p className="text-[10px] text-ink-muted">
+                Sent {formatJoinedDate(inv.created_at)}
+              </p>
+              {showSwitchHint && (
+                <p className="text-[10px] text-amber-600/90 dark:text-amber-400/90 pt-0.5">
+                  Accepting will move you to this shared space.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <Button
+              onClick={() => onAccept(inv.id)}
+              disabled={busy}
+              className="flex-1 rounded-xl h-10 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium"
+            >
+              {busy && actingInviteId === inv.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Accept"
+              )}
+            </Button>
+            <Button
+              onClick={() => onDecline(inv.id)}
+              variant="outline"
+              disabled={busy}
+              className="flex-1 rounded-xl h-10 border-primary/20 text-sm"
+            >
+              Decline
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function dedupePendingInvites(rows: HouseholdInviteRow[]): HouseholdInviteRow[] {
+  const byEmail = new Map<string, HouseholdInviteRow>();
+  for (const inv of rows) {
+    const key = inv.email.trim().toLowerCase();
+    const prev = byEmail.get(key);
+    if (!prev || new Date(inv.created_at) > new Date(prev.created_at)) {
+      byEmail.set(key, inv);
+    }
+  }
+  return Array.from(byEmail.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
 
 interface Props {
   open: boolean;
@@ -738,94 +862,175 @@ function DataSection({
   );
 }
 
-function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () => Promise<boolean> }) {
+function HouseholdSection({
+  profile,
+  onSync,
+}: {
+  profile: Profile;
+  onSync: (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => Promise<boolean>;
+}) {
+  const { refreshProfile } = useAuth();
   const [household, setHousehold] = useState<any>(null);
-  const [partner, setPartner] = useState<any>(null);
-  const [invites, setInvites] = useState<any[]>([]);
-  const [incomingInvite, setIncomingInvite] = useState<any>(null);
+  const [members, setMembers] = useState<HouseholdMemberView[]>([]);
+  const [invites, setInvites] = useState<HouseholdInviteRow[]>([]);
+  const [incomingInvites, setIncomingInvites] = useState<IncomingHouseholdInvite[]>([]);
+  const [actingInviteId, setActingInviteId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+  const [justLeftHousehold, setJustLeftHousehold] = useState(false);
+  const [leftLocally, setLeftLocally] = useState(false);
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
+
+  const hasHousehold = !!profile.household_id && !leftLocally;
+
+  useEffect(() => {
+    if (profile.household_id) {
+      setLeftLocally(false);
+      setJustLeftHousehold(false);
+    }
+  }, [profile.household_id]);
+
+  const loadIncomingInvites = useCallback(async () => {
+    const incoming = await fetchIncomingHouseholdInvites();
+    setIncomingInvites(incoming);
+    return incoming;
+  }, []);
 
   const loadHousehold = useCallback(async () => {
     setLoading(true);
 
-    // If the user has a household, load it and find partner
-    if (profile.household_id) {
+    await loadIncomingInvites();
+
+    if (profile.household_id && !leftLocally) {
       const { data: hh } = await supabase
         .from("households")
-        .select("*")
+        .select("id, name, created_at")
         .eq("id", profile.household_id)
         .single();
 
       if (hh) {
         setHousehold(hh);
-        const { data: members } = await supabase
-          .from("profiles")
-          .select("display_name, email, user_id")
-          .eq("household_id", hh.id)
-          .neq("user_id", profile.user_id);
-        setPartner(members?.[0] ?? null);
+
+        const [{ data: memberRows }, { data: acceptedInvites }] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("user_id, display_name, email")
+            .eq("household_id", hh.id),
+          supabase
+            .from("household_invites")
+            .select("email, created_at")
+            .eq("household_id", hh.id)
+            .eq("status", "accepted"),
+        ]);
+
+        const inviteJoinByEmail = new Map<string, string>();
+        for (const inv of acceptedInvites ?? []) {
+          if (inv.email) inviteJoinByEmail.set(inv.email.toLowerCase(), inv.created_at);
+        }
+
+        const views: HouseholdMemberView[] = (memberRows ?? []).map((row) => {
+          const email = row.email ?? "";
+          const name = row.display_name?.trim() || email.split("@")[0] || "Member";
+          const inviteJoined = email ? inviteJoinByEmail.get(email.toLowerCase()) : undefined;
+          const isFounder = !inviteJoined;
+          return {
+            user_id: row.user_id,
+            name,
+            email,
+            initials: memberInitials(name),
+            joinedAt: inviteJoined ?? hh.created_at,
+            isCurrentUser: row.user_id === profile.user_id,
+            isFounder,
+          };
+        });
+
+        views.sort((a, b) => {
+          if (a.isCurrentUser !== b.isCurrentUser) return a.isCurrentUser ? -1 : 1;
+          return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+        });
+        setMembers(views);
       }
 
-      // Also load outgoing invites the user has sent
       const { data: invs } = await supabase
         .from("household_invites")
-        .select("*")
-        .eq("inviter_id", profile.user_id)
+        .select("id, email, created_at, household_id, inviter_id, status")
+        .eq("household_id", profile.household_id!)
         .eq("status", "pending");
-      setInvites(invs || []);
+      setInvites(dedupePendingInvites(invs ?? []));
     } else {
-      // No household — check if someone invited this user
-      const { data: incoming } = await supabase
-        .from("household_invites")
-        .select("id, household_id, email, inviter_id, profiles:inviter_id(display_name)")
-        .eq("email", profile.email.toLowerCase())
-        .eq("status", "pending")
-        .maybeSingle();
-      setIncomingInvite(incoming ?? null);
+      setHousehold(null);
+      setMembers([]);
+      setInvites([]);
     }
 
     setLoading(false);
-  }, [profile.household_id, profile.user_id, profile.email]);
+  }, [profile.household_id, profile.user_id, leftLocally, loadIncomingInvites]);
 
-  useEffect(() => { loadHousehold(); }, [loadHousehold]);
+  useEffect(() => { void loadHousehold(); }, [loadHousehold]);
 
-  const acceptInvite = async () => {
-    if (!incomingInvite) return;
+  useEffect(() => {
+    if (!profile.user_id) return;
+
+    const channel = supabase
+      .channel(`household-invites-${profile.user_id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "household_invites" },
+        () => { void loadIncomingInvites(); },
+      )
+      .subscribe();
+
+    const onFocus = () => { void loadIncomingInvites(); };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      void supabase.removeChannel(channel);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [profile.user_id, loadIncomingInvites]);
+
+  const acceptInvite = async (inviteId: string) => {
     setBusy(true);
+    setActingInviteId(inviteId);
     try {
       const { data, error } = await supabase.functions.invoke("respond-to-invite", {
-        body: { invite_id: incomingInvite.id, action: "accept" }
+        body: { invite_id: inviteId, action: "accept" },
       });
 
       if (error || data?.error) throw error || new Error(data.error);
 
-      await onSync();
-      toast({ title: "Joined household!", description: "You and your partner are now connected." });
-      setIncomingInvite(null);
+      setLeftLocally(false);
+      setJustLeftHousehold(false);
+      await refreshProfile();
+      await onSync({ silentToast: true });
+      await loadHousehold();
+      toast({ title: "Joined household!", description: "You are now in the shared space." });
     } catch (err: any) {
       console.error("Accept error:", err);
       toast({ title: "Failed to join", description: err.message, variant: "destructive" });
     } finally {
       setBusy(false);
+      setActingInviteId(null);
     }
   };
 
-  const rejectInvite = async () => {
-    if (!incomingInvite) return;
+  const rejectInvite = async (inviteId: string) => {
     setBusy(true);
+    setActingInviteId(inviteId);
     try {
-      const { error } = await supabase.functions.invoke("respond-to-invite", {
-        body: { invite_id: incomingInvite.id, action: "reject" }
+      const { data, error } = await supabase.functions.invoke("respond-to-invite", {
+        body: { invite_id: inviteId, action: "reject" },
       });
-      if (error) throw error;
-      setIncomingInvite(null);
+      if (error || data?.error) throw error || new Error(data.error);
+      setIncomingInvites((prev) => prev.filter((i) => i.id !== inviteId));
       toast({ title: "Invite declined" });
     } catch (err: any) {
       toast({ title: "Error", description: "Could not decline invite", variant: "destructive" });
     } finally {
       setBusy(false);
+      setActingInviteId(null);
     }
   };
 
@@ -846,9 +1051,10 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
         .eq("user_id", profile.user_id);
       if (profileErr) throw profileErr;
 
-      await onSync();
+      await refreshProfile();
+      await onSync({ silentToast: true });
       toast({ title: "Household created", description: "Invite your partner to get started." });
-      window.location.reload();
+      await loadHousehold();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -856,34 +1062,77 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
     }
   };
 
+  const resendInvite = async (inviteId: string, inviteEmail: string) => {
+    setResendingInviteId(inviteId);
+    try {
+      const { error } = await supabase
+        .from("household_invites")
+        .update({ created_at: new Date().toISOString() })
+        .eq("id", inviteId)
+        .eq("status", "pending");
+      if (error) throw error;
+      toast({
+        title: "Invite resent",
+        description: `${inviteEmail} will see the invitation in Household settings.`,
+      });
+      await notifyHouseholdInviteDelivered(inviteId);
+      await loadHousehold();
+    } catch (err: any) {
+      toast({ title: "Could not resend", description: err.message, variant: "destructive" });
+    } finally {
+      setResendingInviteId(null);
+    }
+  };
+
   const invitePartner = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail) return;
 
-    // Prevent inviting yourself
     if (trimmedEmail === profile.email.toLowerCase()) {
       toast({ title: "Invalid email", description: "You can't invite yourself.", variant: "destructive" });
       return;
     }
 
-    // Prevent duplicate invites
-    if (invites.some((inv) => inv.email === trimmedEmail)) {
-      toast({ title: "Already invited", description: `${trimmedEmail} already has a pending invite.` });
+    const existing = invites.find((inv) => inv.email.trim().toLowerCase() === trimmedEmail);
+    if (existing) {
+      await resendInvite(existing.id, existing.email);
       return;
     }
 
     setBusy(true);
     try {
-      const { error } = await supabase
+      const { data: dbPending } = await supabase
+        .from("household_invites")
+        .select("id, email, created_at, household_id, inviter_id, status")
+        .eq("household_id", profile.household_id!)
+        .eq("status", "pending");
+
+      const duplicate = (dbPending ?? []).find(
+        (inv) => inv.email.trim().toLowerCase() === trimmedEmail,
+      );
+      if (duplicate) {
+        setInvites(dedupePendingInvites(dbPending ?? []));
+        await resendInvite(duplicate.id, duplicate.email);
+        return;
+      }
+
+      const { data: inserted, error } = await supabase
         .from("household_invites")
         .insert({
           household_id: profile.household_id!,
           inviter_id: profile.user_id,
           email: trimmedEmail,
-        });
+        })
+        .select("id")
+        .single();
       if (error) throw error;
 
-      toast({ title: "Invite sent", description: `${trimmedEmail} will see it when they open the Household tab.` });
+      if (inserted?.id) await notifyHouseholdInviteDelivered(inserted.id);
+
+      toast({
+        title: "Invite sent",
+        description: `${trimmedEmail} will get a notification and see it under Household settings.`,
+      });
       setEmail("");
       await loadHousehold();
     } catch (err: any) {
@@ -895,7 +1144,7 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
 
   const cancelInvite = async (inviteId: string) => {
     try {
-      await supabase.from("household_invites").update({ status: "cancelled" }).eq("id", inviteId);
+      await supabase.from("household_invites").update({ status: "rejected" }).eq("id", inviteId);
       setInvites((prev) => prev.filter((i) => i.id !== inviteId));
       toast({ title: "Invite cancelled" });
     } catch {
@@ -903,20 +1152,35 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
     }
   };
 
-  const leaveHousehold = async () => {
-    if (!window.confirm("Are you sure you want to leave the household? You will lose access to shared expenses and budgets.")) return;
+  const confirmLeaveHousehold = async () => {
+    setConfirmLeaveOpen(false);
     setBusy(true);
     try {
-      const { error } = await supabase.functions.invoke("leave-household");
-      if (error) throw error;
-      await onSync();
-      toast({ title: "Left household", description: "You are now managing finances individually." });
+      const { data, error } = await supabase.functions.invoke("leave-household");
+      if (error || data?.error) throw error || new Error(data.error);
+
+      setLeftLocally(true);
+      setHousehold(null);
+      setMembers([]);
+      setInvites([]);
+      setJustLeftHousehold(true);
+
+      await refreshProfile();
+      await onSync({ silentToast: true });
+      await loadHousehold();
+
+      toast({ title: "Left household", description: "You can join another space or start your own." });
     } catch (err: any) {
       toast({ title: "Error", description: "Could not leave household", variant: "destructive" });
     } finally {
       setBusy(false);
     }
   };
+
+  const trimmedInviteEmail = email.trim().toLowerCase();
+  const pendingForInput = trimmedInviteEmail
+    ? invites.find((inv) => inv.email.trim().toLowerCase() === trimmedInviteEmail)
+    : null;
 
   if (loading) {
     return (
@@ -928,53 +1192,31 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
   }
 
   // === No household yet ===
-  if (!profile.household_id) {
+  if (!hasHousehold) {
     return (
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
-        {/* Incoming Invitation UI */}
-        {incomingInvite && (
-          <div className="relative overflow-hidden p-6 rounded-[2rem] bg-gradient-to-br from-primary/20 via-primary/5 to-transparent border border-primary/20 shadow-xl shadow-primary/5">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <Heart className="h-24 w-24 fill-primary" />
-            </div>
-
-            <div className="relative flex flex-col items-center text-center space-y-5">
-              <div className="h-16 w-16 rounded-3xl bg-primary/20 flex items-center justify-center shadow-inner">
-                <Heart className="h-8 w-8 text-primary fill-primary animate-pulse" />
-              </div>
-
-              <div className="space-y-1.5">
-                <h3 className="font-serif text-2xl tracking-tight text-foreground">You're invited</h3>
-                <p className="text-sm text-ink-muted px-6 leading-relaxed">
-                  <span className="font-semibold text-foreground">
-                    {incomingInvite.profiles?.display_name || "A partner"}
-                  </span>{" "}
-                  is asking to manage finances together with you.
-                </p>
-              </div>
-
-              <div className="flex gap-3 w-full pt-2">
-                <Button
-                  onClick={acceptInvite}
-                  className="flex-1 rounded-2xl h-12 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 font-medium"
-                  disabled={busy}
-                >
-                  {busy ? <Loader2 className="animate-spin h-4 w-4" /> : "Accept & Join"}
-                </Button>
-                <Button
-                  onClick={rejectInvite}
-                  variant="outline"
-                  className="flex-1 rounded-2xl h-12 border-primary/20 hover:bg-primary/5 text-primary"
-                  disabled={busy}
-                >
-                  Decline
-                </Button>
-              </div>
-            </div>
+        {justLeftHousehold && (
+          <div className="p-4 rounded-2xl border border-border/30 bg-surface/40 text-center space-y-1">
+            <p className="text-sm font-medium text-foreground">You left the household</p>
+            <p className="text-xs text-ink-muted leading-relaxed">
+              Accept a pending invite below or start a new shared space.
+            </p>
           </div>
         )}
 
-        {/* Start Household CTA */}
+        <IncomingInviteCards
+          invites={incomingInvites}
+          busy={busy}
+          actingInviteId={actingInviteId}
+          onAccept={acceptInvite}
+          onDecline={rejectInvite}
+        />
+
+        {incomingInvites.length > 0 && (
+          <p className="text-center text-[10px] text-ink-muted uppercase tracking-[0.2em] font-bold">or</p>
+        )}
+
+                {/* Start Household CTA */}
         <div className="flex flex-col items-center text-center space-y-6 py-8">
           <div className="relative">
             <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full" />
@@ -1009,7 +1251,17 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
 
   // === Has household ===
   return (
+    <>
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-700">
+      <IncomingInviteCards
+        invites={incomingInvites}
+        busy={busy}
+        actingInviteId={actingInviteId}
+        onAccept={acceptInvite}
+        onDecline={rejectInvite}
+        showSwitchHint
+      />
+
       {/* Household Header Card */}
       <div className="relative overflow-hidden p-6 rounded-[2.5rem] bg-surface/40 border border-border/40 backdrop-blur-sm shadow-sm">
         <div className="flex items-start justify-between">
@@ -1031,44 +1283,82 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
           <Button
             variant="ghost"
             size="sm"
-            onClick={leaveHousehold}
+            onClick={() => setConfirmLeaveOpen(true)}
             className="text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-full h-8 px-3 text-[11px] font-bold uppercase tracking-wider"
           >
             Leave
           </Button>
         </div>
 
-        {/* Member Avatars Overlap */}
-        <div className="mt-8 flex items-center justify-between">
-          <div className="flex -space-x-3">
-            <div className="h-12 w-12 rounded-2xl bg-foreground text-background flex items-center justify-center text-lg font-bold border-4 border-surface shadow-md">
-              {(profile.display_name?.[0] || profile.email?.[0] || "U").toUpperCase()}
-            </div>
-            {partner ? (
-              <div className="h-12 w-12 rounded-2xl bg-primary/20 text-primary flex items-center justify-center text-lg font-bold border-4 border-surface shadow-md ring-1 ring-primary/20">
-                {(partner.display_name?.[0] || partner.email?.[0] || "P").toUpperCase()}
-              </div>
-            ) : (
-              <div className="h-12 w-12 rounded-2xl bg-surface-dark border-4 border-surface flex items-center justify-center border-dashed text-ink-muted">
-                <Users className="h-5 w-5 opacity-40" />
-              </div>
-            )}
+        {/* Members */}
+        <div className="mt-8 space-y-3">
+          <div className="flex items-center justify-between">
+            <h5 className="text-sm font-semibold text-foreground">Members</h5>
+            <span className="text-[10px] text-ink-muted uppercase tracking-wider font-bold">
+              {members.length} {members.length === 1 ? "person" : "people"}
+            </span>
           </div>
 
-          <div className="text-right">
-            <p className="text-xs font-medium text-foreground">
-              {partner ? (partner.display_name || partner.email.split('@')[0]) : "Individual Mode"}
-            </p>
-            <p className="text-[10px] text-ink-muted">{partner ? "Partner joined" : "Waiting for partner"}</p>
+          <div className="space-y-2">
+            {members.map((member) => (
+              <div
+                key={member.user_id}
+                className={cn(
+                  "flex items-center gap-3 p-3.5 rounded-2xl border transition-colors",
+                  member.isCurrentUser
+                    ? "bg-primary/5 border-primary/20"
+                    : "bg-surface/50 border-border/25",
+                )}
+              >
+                <div
+                  className={cn(
+                    "h-12 w-12 rounded-2xl flex items-center justify-center text-sm font-bold shrink-0 shadow-sm",
+                    member.isCurrentUser
+                      ? "bg-foreground text-background"
+                      : "bg-primary/15 text-primary ring-1 ring-primary/20",
+                  )}
+                >
+                  {member.initials}
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-semibold text-foreground truncate">{member.name}</p>
+                    {member.isCurrentUser && (
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                        You
+                      </span>
+                    )}
+                    {member.isFounder && !member.isCurrentUser && (
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                        Founder
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ink-muted truncate">{member.email}</p>
+                  <p className="text-[10px] text-ink-muted/80 mt-1 flex items-center gap-1">
+                    <Clock className="h-3 w-3 shrink-0" />
+                    Joined {formatJoinedDate(member.joinedAt)}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
+
+          {household?.created_at && (
+            <p className="text-[10px] text-ink-muted text-center pt-1">
+              Household created {formatJoinedDate(household.created_at)}
+            </p>
+          )}
         </div>
 
         {/* Invite Flow inside the card */}
-        {!partner && (
+        {members.length < 2 && (
           <div className="mt-8 pt-6 border-t border-border/20 space-y-4">
             <div className="space-y-1.5">
               <h5 className="text-sm font-medium text-foreground">Invite your partner</h5>
-              <p className="text-xs text-ink-muted leading-relaxed">Send an invitation to their email to start managing together.</p>
+              <p className="text-xs text-ink-muted leading-relaxed">
+                Use the exact email they use to sign in. They will get a notification and see the invite here.
+              </p>
             </div>
 
             <div className="flex gap-2">
@@ -1085,12 +1375,31 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
               </div>
               <Button
                 onClick={invitePartner}
-                disabled={busy || !email.trim()}
-                className="rounded-2xl w-11 h-11 p-0 shrink-0 shadow-lg shadow-foreground/5"
+                disabled={busy || !trimmedInviteEmail || (!!pendingForInput && resendingInviteId === pendingForInput.id)}
+                title={pendingForInput ? "Resend invitation" : "Send invitation"}
+                className={cn(
+                  "rounded-2xl h-11 shrink-0 shadow-lg shadow-foreground/5 gap-1.5",
+                  pendingForInput ? "px-3" : "w-11 p-0",
+                )}
               >
-                {busy ? <Loader2 className="animate-spin h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+                {busy || (pendingForInput && resendingInviteId === pendingForInput.id) ? (
+                  <Loader2 className="animate-spin h-4 w-4" />
+                ) : pendingForInput ? (
+                  <>
+                    <RefreshCcw className="h-4 w-4" />
+                    <span className="text-xs font-medium">Resend</span>
+                  </>
+                ) : (
+                  <Share2 className="h-4 w-4" />
+                )}
               </Button>
             </div>
+
+            {pendingForInput && (
+              <p className="text-[10px] text-ink-muted">
+                An invite is already pending for this email. Tap Resend to send it again.
+              </p>
+            )}
 
             {/* Outgoing pending invites */}
             {invites.length > 0 && (
@@ -1104,6 +1413,19 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
                       <p className="text-xs font-semibold truncate text-foreground">{inv.email}</p>
                       <p className="text-[10px] text-ink-muted uppercase tracking-tight">Pending invitation</p>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => resendInvite(inv.id, inv.email)}
+                      disabled={resendingInviteId === inv.id}
+                      className="h-8 rounded-full text-[10px] font-bold uppercase tracking-wider text-foreground hover:bg-surface px-2.5"
+                    >
+                      {resendingInviteId === inv.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        "Resend"
+                      )}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1149,5 +1471,37 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
         ))}
       </div>
     </div>
+
+    <AlertDialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
+      <AlertDialogContent className="rounded-[1.75rem] border-border/40 bg-background/95 backdrop-blur-md max-w-[340px] p-6 gap-5">
+        <AlertDialogHeader className="space-y-2 text-left">
+          <AlertDialogTitle className="font-serif text-2xl font-normal tracking-tight text-foreground">
+            Leave household?
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-sm text-ink-muted leading-relaxed">
+            You will lose access to shared expenses and budgets. You can join another invite or start a new space anytime.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-2">
+          <AlertDialogCancel
+            disabled={busy}
+            className="rounded-full border-border/50 text-foreground hover:bg-surface mt-0 h-11"
+          >
+            Stay
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={busy}
+            onClick={(e) => {
+              e.preventDefault();
+              void confirmLeaveHousehold();
+            }}
+            className="rounded-full bg-foreground text-background hover:bg-foreground/90 h-11"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Leave household"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

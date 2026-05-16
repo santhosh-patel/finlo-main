@@ -6,7 +6,7 @@ import { Sparkles, Loader2, Mic, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { vibrate, cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { todayISO, addDays, getCurrencySymbol, Expense, CategoryDef, DEFAULT_CATEGORIES } from "@/lib/expenses";
+import { todayISO, addDays, getCurrencySymbol, Expense, CategoryDef, DEFAULT_CATEGORIES, ExpensePayload } from "@/lib/expenses";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -77,7 +77,7 @@ interface SpeechRecognitionInstance {
 export interface UseExpenseAIQuickFlowOpts {
   categories: CategoryDef[];
   defaultDate?: string;
-  onAdd: (e: Omit<Expense, "id" | "created_at">) => void;
+  onAdd: (e: ExpensePayload) => void;
   /** Filled server-side transcripts into the Quick Add input when parsing finishes */
   onParsedTranscript?: (text: string) => void;
   /** Opens the manual add expense sheet */

@@ -6,6 +6,7 @@ import {
   Expense,
   expenseDateToDbIso,
   normalizeExpenseDate,
+  ExpensePayload,
 } from "@/lib/expenses";
 import { toast } from "@/hooks/use-toast";
 import { vibrate } from "@/lib/utils";
@@ -15,6 +16,7 @@ import {
   migrateLegacyPendingFromLocalStorage,
   type PendingOp,
 } from "@/lib/pendingQueueIdb";
+import { normalizeReactions } from "@/lib/reactions";
 
 const EXP_KEY = "finlo.expenses.v1";
 const CAT_KEY = "finlo.categories.v1";
@@ -51,6 +53,17 @@ function formatSupabaseErr(err: unknown): string {
   return String(err);
 }
 
+/** Postgres unique_violation — row already exists (e.g. optimistic insert + pending queue race). */
+function isDuplicateKeyError(err: unknown): boolean {
+  if (err && typeof err === "object") {
+    const code = (err as { code?: string }).code;
+    if (code === "23505") return true;
+    const message = (err as { message?: string }).message ?? "";
+    if (message.includes("duplicate key") || message.includes("expenses_pkey")) return true;
+  }
+  return false;
+}
+
 interface DBExpenseRow {
   id: string;
   amount: number;
@@ -81,6 +94,32 @@ function normalizeExpense<T extends Expense>(expense: T): T {
 
 function normalizeExpenses(expenses: Expense[]): Expense[] {
   return expenses.map(normalizeExpense);
+}
+
+function mapDbExpenseRow(r: DBExpenseRow): Expense {
+  return {
+    id: r.id,
+    amount: Number(r.amount),
+    category: r.category,
+    subcategory: r.subcategory ?? undefined,
+    note: r.note ?? undefined,
+    date: normalizeExpenseDate(r.date),
+    payment_method: (r.payment_method as Expense["payment_method"]) ?? "upi",
+    created_at: r.created_at,
+    type: (r.type as Expense["type"]) ?? "expense",
+    currency: r.currency ?? "INR",
+    fx_rate: r.fx_rate != null ? Number(r.fx_rate) : 1,
+    base_amount: r.base_amount != null ? Number(r.base_amount) : undefined,
+    is_reimbursable: !!r.is_reimbursable,
+    import_hash: r.import_hash ?? undefined,
+    receipt_url: r.receipt_url ?? undefined,
+    split_note: r.split_note ?? undefined,
+    reimbursed_at: r.reimbursed_at ?? null,
+    client_updated_at: r.client_updated_at ?? undefined,
+    user_id: r.user_id,
+    household_id: r.household_id,
+    reactions: normalizeReactions(r.reactions),
+  };
 }
 
 export function useExpenses(userId: string | null, householdId?: string | null) {
@@ -211,8 +250,12 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
             is_reimbursable: op.row.is_reimbursable ?? false,
             split_note: op.row.split_note ?? null,
             receipt_url: op.row.receipt_url ?? null,
+            household_id: op.row.household_id ?? null,
           });
-          if (error) { remaining.push(op); lastError = error; }
+          if (error && !isDuplicateKeyError(error)) {
+            remaining.push(op);
+            lastError = error;
+          }
         } else if (op.kind === "update") {
           const { error } = await supabase.from("expenses").update({
             ...(op.patch.amount !== undefined && { amount: op.patch.amount }),
@@ -228,6 +271,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
             ...(op.patch.is_reimbursable !== undefined && { is_reimbursable: op.patch.is_reimbursable }),
             ...(op.patch.split_note !== undefined && { split_note: op.patch.split_note ?? null }),
             ...(op.patch.receipt_url !== undefined && { receipt_url: op.patch.receipt_url ?? null }),
+            ...(op.patch.household_id !== undefined && { household_id: op.patch.household_id }),
           }).eq("id", op.id);
           if (error) { remaining.push(op); lastError = error; }
         } else if (op.kind === "delete") {
@@ -255,9 +299,9 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     // If mode is household and we have a household, show shared data.
     const useHouseholdQuery = viewMode === "household" && householdId;
 
-    const expQuery = useHouseholdQuery 
+    const expQuery = useHouseholdQuery
       ? supabase.from("expenses").select("*").eq("household_id", householdId)
-      : supabase.from("expenses").select("*").eq("user_id", userId);
+      : supabase.from("expenses").select("*").eq("user_id", userId).is("household_id", null);
     
     const catQuery = useHouseholdQuery
       ? supabase.from("categories").select("*").eq("household_id", householdId)
@@ -273,29 +317,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
       budQuery,
     ]);
     if (exp) {
-      const serverExpenses = (exp as unknown as DBExpenseRow[]).map((r) => ({
-        id: r.id,
-        amount: Number(r.amount),
-        category: r.category,
-        subcategory: r.subcategory ?? undefined,
-        note: r.note ?? undefined,
-        date: normalizeExpenseDate(r.date),
-        payment_method: (r.payment_method as Expense["payment_method"]) ?? "upi",
-        created_at: r.created_at,
-        type: (r.type as Expense["type"]) ?? "expense",
-        currency: r.currency ?? "INR",
-        fx_rate: r.fx_rate != null ? Number(r.fx_rate) : 1,
-        base_amount: r.base_amount != null ? Number(r.base_amount) : undefined,
-        is_reimbursable: !!r.is_reimbursable,
-        import_hash: r.import_hash ?? undefined,
-        receipt_url: r.receipt_url ?? undefined,
-        split_note: r.split_note ?? undefined,
-        reimbursed_at: r.reimbursed_at ?? null,
-        client_updated_at: r.client_updated_at ?? undefined,
-        user_id: r.user_id,
-        household_id: r.household_id,
-        reactions: r.reactions || [],
-      }));
+      const serverExpenses = (exp as unknown as DBExpenseRow[]).map(mapDbExpenseRow);
 
       // Merge offline additions that have not synced yet
       const pendingInserts = pendingRef.current
@@ -376,7 +398,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     const ts = new Date().toISOString();
     setLastSync(ts);
     localStorage.setItem(lastSyncKey, ts);
-  }, [userId, lastSyncKey]);
+  }, [userId, lastSyncKey, viewMode, householdId]);
 
   /** Full sync (default). Pass `{ skipIfNoPending: true }` for pull-to-refresh: no network if the offline queue is empty. `silentToast` skips the success toast (e.g. pull-to-refresh). Returns whether a sync ran. */
   const sync = useCallback(async (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => {
@@ -477,11 +499,12 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
       }
     };
     void bootstrap();
-    const realtimeFilter = householdId
+    const useHouseholdRealtime = viewMode === "household" && householdId;
+    const realtimeFilter = useHouseholdRealtime
       ? `household_id=eq.${householdId}`
       : `user_id=eq.${userId}`;
     const ch = supabase
-      .channel(`expenses-${userId}-${householdId ?? "solo"}`)
+      .channel(`expenses-${userId}-${householdId ?? "solo"}-${viewMode}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "expenses", filter: realtimeFilter },
@@ -493,58 +516,17 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
           const eventType = payload.eventType;
           if (eventType === "INSERT") {
             const row = payload.new;
+            const mapped = mapDbExpenseRow(row as unknown as DBExpenseRow);
+            if (!useHouseholdRealtime && mapped.household_id) return;
             setExpenses((prev) => {
               if (prev.some((e) => e.id === row.id)) return prev;
-              const mapped: Expense = {
-                id: row.id,
-                amount: Number(row.amount),
-                category: row.category,
-                subcategory: row.subcategory ?? undefined,
-                note: row.note ?? undefined,
-                date: normalizeExpenseDate(row.date),
-                payment_method: (row.payment_method as Expense["payment_method"]) ?? "upi",
-                created_at: row.created_at,
-                type: (row.type as Expense["type"]) ?? "expense",
-                currency: row.currency ?? "INR",
-                fx_rate: row.fx_rate != null ? Number(row.fx_rate) : 1,
-                base_amount: row.base_amount != null ? Number(row.base_amount) : undefined,
-                is_reimbursable: !!row.is_reimbursable,
-                reimbursed_at: row.reimbursed_at ?? null,
-                client_updated_at: row.client_updated_at ?? undefined,
-                split_note: row.split_note ?? undefined,
-                receipt_url: row.receipt_url ?? undefined,
-                user_id: row.user_id,
-                household_id: row.household_id,
-                reactions: row.reactions || [],
-              };
               return [mapped, ...prev].sort((a, b) => b.date.localeCompare(a.date));
             });
           } else if (eventType === "UPDATE") {
             const row = payload.new;
-            setExpenses((prev) => prev.map((e) => {
-              if (e.id !== row.id) return e;
-              return {
-                ...e,
-                amount: Number(row.amount),
-                category: row.category,
-                subcategory: row.subcategory ?? undefined,
-                note: row.note ?? undefined,
-                date: normalizeExpenseDate(row.date),
-                payment_method: (row.payment_method as Expense["payment_method"]) ?? "upi",
-                type: (row.type as Expense["type"]) ?? "expense",
-                currency: row.currency ?? "INR",
-                fx_rate: row.fx_rate != null ? Number(row.fx_rate) : 1,
-                base_amount: row.base_amount != null ? Number(row.base_amount) : undefined,
-                is_reimbursable: !!row.is_reimbursable,
-                reimbursed_at: row.reimbursed_at ?? null,
-                client_updated_at: row.client_updated_at ?? undefined,
-                split_note: row.split_note ?? undefined,
-                receipt_url: row.receipt_url ?? undefined,
-                user_id: row.user_id,
-                household_id: row.household_id,
-                reactions: row.reactions || [],
-              };
-            }));
+            const mapped = mapDbExpenseRow(row as unknown as DBExpenseRow);
+            if (!useHouseholdRealtime && mapped.household_id) return;
+            setExpenses((prev) => prev.map((e) => (e.id === row.id ? mapped : e)));
           } else if (eventType === "DELETE") {
             const oldId = payload.old.id;
             setExpenses((prev) => prev.filter((e) => e.id !== oldId));
@@ -559,10 +541,18 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
       supabase.removeChannel(ch);
       window.removeEventListener("online", onOnline);
     };
-  }, [userId, householdId, pullFromServer, flushPending, pendingHydrated]);
+  }, [userId, householdId, viewMode, pullFromServer, flushPending, pendingHydrated]);
+
+  // Refetch when switching personal ↔ household ledger
+  useEffect(() => {
+    if (!userId || !pendingHydrated || !initialDataReady) return;
+    if (!navigator.onLine) return;
+    skipNextRealtimePullRef.current = true;
+    void pullFromServer();
+  }, [viewMode, householdId, userId, pendingHydrated, initialDataReady, pullFromServer]);
 
   // ------- mutators (optimistic local + queue/server) -------
-  const addExpense = useCallback((e: Omit<Expense, "id" | "created_at">) => {
+  const addExpense = useCallback((e: ExpensePayload & { user_id?: string }) => {
     const fx = e.fx_rate ?? 1;
     const newE: Expense = {
       ...e,
@@ -576,51 +566,58 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     };
     setExpenses((prev) => [newE, ...prev]);
 
-    // Queue first so the expense survives a page close/reload before the
-    // direct insert completes. Dequeue on success.
-    queue({ kind: "insert", row: newE });
+    const insertRow = {
+      id: newE.id,
+      user_id: userId,
+      amount: newE.amount,
+      category: newE.category,
+      subcategory: newE.subcategory ?? null,
+      note: newE.note ?? null,
+      date: expenseDateToDbIso(newE.date),
+      payment_method: newE.payment_method,
+      type: newE.type ?? "expense",
+      currency: newE.currency ?? "INR",
+      fx_rate: fx,
+      base_amount: newE.base_amount ?? Number(newE.amount) * fx,
+      is_reimbursable: newE.is_reimbursable ?? false,
+      split_note: newE.split_note ?? null,
+      receipt_url: newE.receipt_url ?? null,
+      household_id: newE.household_id ?? null,
+    };
+
+    const maybeCreateLoan = async () => {
+      if (newE.category.toLowerCase() !== "lending" || !userId) return;
+      const counterparty = newE.note?.trim() || "Someone";
+      const direction = newE.type === "income" ? "borrowed" : "lent";
+      try {
+        const { error: loanErr } = await supabase.from("loans").insert({
+          user_id: userId,
+          counterparty,
+          amount: newE.amount,
+          direction,
+          date: newE.date,
+          note: newE.note ? `Auto-created from transaction: ${newE.note}` : "Auto-created from transaction",
+          expense_id: newE.id,
+          status: "open",
+        });
+        if (loanErr) console.error("Failed to auto-create loan:", loanErr);
+        else {
+          toast({ title: "Loan tracker updated", description: `Added ${direction === "lent" ? "lent to" : "borrowed from"} ${counterparty}.` });
+        }
+      } catch (lErr) {
+        console.error("Failed to auto-create loan due to exception:", lErr);
+      }
+    };
 
     if (userId && navigator.onLine) {
       (async () => {
         try {
-          const { error } = await supabase.from("expenses").insert({
-            id: newE.id, user_id: userId, amount: newE.amount, category: newE.category,
-            subcategory: newE.subcategory ?? null, note: newE.note ?? null,
-            date: expenseDateToDbIso(newE.date), payment_method: newE.payment_method,
-            type: newE.type ?? "expense",
-            currency: newE.currency ?? "INR",
-            fx_rate: fx,
-            base_amount: newE.base_amount ?? Number(newE.amount) * fx,
-            is_reimbursable: newE.is_reimbursable ?? false,
-            split_note: newE.split_note ?? null,
-            receipt_url: newE.receipt_url ?? null,
-          });
+          const { error } = await supabase.from("expenses").insert(insertRow);
 
-          if (!error) {
-            dequeue(newE.id);
-            if (newE.category.toLowerCase() === "lending") {
-              const counterparty = newE.note?.trim() || "Someone";
-              const direction = newE.type === "income" ? "borrowed" : "lent";
-              try {
-                const { error: loanErr } = await supabase.from("loans").insert({
-                  user_id: userId,
-                  counterparty,
-                  amount: newE.amount,
-                  direction,
-                  date: newE.date,
-                  note: newE.note ? `Auto-created from transaction: ${newE.note}` : "Auto-created from transaction",
-                  expense_id: newE.id,
-                  status: "open",
-                });
-                if (loanErr) console.error("Failed to auto-create loan:", loanErr);
-                else {
-                  toast({ title: "Loan tracker updated", description: `Added ${direction === "lent" ? "lent to" : "borrowed from"} ${counterparty}.` });
-                }
-              } catch (lErr) {
-                console.error("Failed to auto-create loan due to exception:", lErr);
-              }
-            }
+          if (!error || isDuplicateKeyError(error)) {
+            await maybeCreateLoan();
           } else {
+            queue({ kind: "insert", row: newE });
             console.error("Failed to insert expense:", error);
             toast({
               title: "Could not save transaction",
@@ -629,6 +626,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
             });
           }
         } catch (err) {
+          queue({ kind: "insert", row: newE });
           console.error("Exception during expense insert:", err);
           toast({
             title: "Could not save transaction",
@@ -640,6 +638,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
         }
       })();
     } else {
+      queue({ kind: "insert", row: newE });
       vibrate([28, 42, 28]);
     }
     return newE;
@@ -758,6 +757,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
           ...(normalizedPatch.is_reimbursable !== undefined && { is_reimbursable: normalizedPatch.is_reimbursable }),
           ...(normalizedPatch.split_note !== undefined && { split_note: normalizedPatch.split_note ?? null }),
           ...(normalizedPatch.receipt_url !== undefined && { receipt_url: normalizedPatch.receipt_url ?? null }),
+          ...(normalizedPatch.household_id !== undefined && { household_id: normalizedPatch.household_id }),
           client_updated_at: clientUpdatedAt,
         }).eq("id", id);
 
@@ -817,7 +817,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     if (!userId) return;
     setExpenses((prev) => prev.map((e) => {
       if (e.id !== id) return e;
-      const reactions = e.reactions || [];
+      const reactions = normalizeReactions(e.reactions);
       const existingIdx = reactions.findIndex((r) => r.user_id === userId && r.emoji === emoji);
       let nextReactions = [...reactions];
       if (existingIdx !== -1) {
@@ -831,7 +831,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     // Optimistically update DB
     const { data: current } = await supabase.from("expenses").select("reactions").eq("id", id).single();
     if (current) {
-      const reactions = (current.reactions as any[]) || [];
+      const reactions = normalizeReactions(current.reactions);
       const existingIdx = reactions.findIndex((r) => r.user_id === userId && r.emoji === emoji);
       let nextReactions = [...reactions];
       if (existingIdx !== -1) {

@@ -45,7 +45,7 @@ serve(async (req) => {
     }
 
     if (action === "accept") {
-      // 2. Update user profile with household_id
+      // 2. Join household (replaces any existing household membership)
       const { error: profileUpdateError } = await supabase
         .from("profiles")
         .update({ household_id: invite.household_id })

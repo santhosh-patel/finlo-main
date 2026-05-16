@@ -21,7 +21,8 @@ import {
   getCurrencySymbol,
   todayISO,
 } from "@/lib/expenses";
-import { Check, Pencil, Trash2, X, Tag, GitMerge, Plus, AlertCircle, RefreshCw } from "lucide-react";
+import { Check, Pencil, Trash2, X, Tag, GitMerge, Plus, AlertCircle, RefreshCw, Users } from "lucide-react";
+import { normalizeReactions } from "@/lib/reactions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RollingDatePicker } from "./RollingDatePicker";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,9 @@ interface Props {
   onAddSubcategory?: (category: string, sub: string) => void;
   userId: string | null;
   onToggleReaction?: (id: string, emoji: string) => void;
+  addedByName?: string;
+  addedByInitials?: string;
+  isShared?: boolean;
 }
 
 export function ExpenseDetailsDrawer({
@@ -65,6 +69,9 @@ export function ExpenseDetailsDrawer({
   onAddSubcategory,
   userId,
   onToggleReaction,
+  addedByName,
+  addedByInitials,
+  isShared = false,
 }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -390,15 +397,39 @@ export function ExpenseDetailsDrawer({
                           <span className="w-1 h-1 rounded-full bg-ink-muted/30" />
                           <span className="uppercase">{expense.type || "expense"}</span>
                         </div>
+
+                        {(isShared || addedByName) && (
+                          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border/20">
+                            {addedByInitials && (
+                              <span className="h-7 w-7 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
+                                {addedByInitials}
+                              </span>
+                            )}
+                            <div className="min-w-0 text-left">
+                              {addedByName && (
+                                <p className="text-xs font-medium text-foreground truncate">
+                                  Added by {addedByName}
+                                </p>
+                              )}
+                              {isShared && (
+                                <p className="text-[10px] text-ink-muted flex items-center gap-1 mt-0.5">
+                                  <Users className="h-3 w-3 text-primary/70" />
+                                  Shared with household
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
- 
+
                     {/* Reactions */}
                     {onToggleReaction && (
                       <div className="mt-4 flex flex-wrap gap-2">
                         {["❤️", "👍", "😮", "💸", "🤑"].map((emoji) => {
-                          const count = expense.reactions?.filter(r => r.emoji === emoji).length || 0;
-                          const hasReacted = expense.reactions?.some(r => r.user_id === userId && r.emoji === emoji);
+                          const reactions = normalizeReactions(expense.reactions);
+                          const count = reactions.filter((r) => r.emoji === emoji).length;
+                          const hasReacted = reactions.some((r) => r.user_id === userId && r.emoji === emoji);
                           return (
                             <button
                               key={emoji}

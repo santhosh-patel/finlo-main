@@ -16,9 +16,23 @@ interface Props {
   showAnomaly?: boolean;
   currentUserId?: string | null;
   onToggleReaction?: (id: string, emoji: string) => void;
+  /** Display name when a household partner logged this expense */
+  addedByName?: string;
+  addedByInitials?: string;
 }
 
-export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories, showAnomaly, currentUserId, onToggleReaction }: Props) {
+export function ExpenseRow({
+  expense,
+  onDelete,
+  onSelect,
+  showDate,
+  categories,
+  showAnomaly,
+  currentUserId,
+  onToggleReaction,
+  addedByName,
+  addedByInitials,
+}: Props) {
   const def = categories?.find((c) => c.name === expense.category);
   const Icon = getIconForCategory(expense.category, def?.icon);
   const bgColor = getColorForCategory(expense.category, def?.color);
@@ -136,11 +150,11 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories, 
                 </span>
                 {isPartnerExpense && (
                   <span
-                    className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-foreground text-background text-[6px] font-bold flex items-center justify-center border border-background shadow-sm"
-                    title="Added by partner"
-                    aria-label="Added by partner"
+                    className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[7px] font-bold flex items-center justify-center border border-background shadow-sm"
+                    title={addedByName ? `Added by ${addedByName}` : "Added by partner"}
+                    aria-label={addedByName ? `Added by ${addedByName}` : "Added by partner"}
                   >
-                    P
+                    {addedByInitials ?? "P"}
                   </span>
                 )}
               </div>
