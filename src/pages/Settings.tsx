@@ -26,6 +26,7 @@ import type { Budgets } from "@/hooks/useExpenses";
 import { validatePassword } from "@/lib/passwordPolicy";
 import { toast } from "@/hooks/use-toast";
 import { RollingDatePicker } from "@/components/RollingDatePicker";
+import { APP_VERSION_LABEL } from "@/lib/appVersion";
 
 interface Props {
   open: boolean;
@@ -123,7 +124,7 @@ export default function Settings(props: Props) {
               Finlo AI
             </p>
             <p className="text-[11px] text-ink-muted/60 dark:text-ink-muted/50 font-medium mt-1.5 tracking-tight font-sans">
-              v1.2.0
+              {APP_VERSION_LABEL}
             </p>
           </div>
         </div>

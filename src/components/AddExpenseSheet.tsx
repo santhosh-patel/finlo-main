@@ -17,7 +17,7 @@ import {
 } from "@/lib/expenses";
 import { SUPPORTED_CURRENCIES, CURRENCY_SYMBOLS, getBaseCurrency, getFxRateSync, refreshFxRates } from "@/lib/fx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, AlertCircle, Camera, Loader2, Sparkles } from "lucide-react";
+import { Plus, AlertCircle, Camera, Loader2, Sparkles, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { RollingDatePicker } from "./RollingDatePicker";
 

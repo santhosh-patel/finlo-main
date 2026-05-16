@@ -23,7 +23,7 @@ const isPreviewHost =
   window.location.hostname.includes("lovable.app");
 
 if ("serviceWorker" in navigator) {
-  if (isInIframe || isPreviewHost) {
+  if (import.meta.env.DEV || isInIframe || isPreviewHost) {
     navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
   } else {
     registerSW({
