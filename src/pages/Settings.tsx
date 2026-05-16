@@ -7,7 +7,7 @@ import { CategoryDef, Expense, expensesToCSV, downloadCSV } from "@/lib/expenses
 import { useRef, useState, useCallback, useEffect } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn, vibrate } from "@/lib/utils";
-import { ArrowLeft, Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
+import { ArrowLeft, Download, Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
 import { Users, Heart, Share2, Mail, CheckCircle2, Clock, Bell, BellOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +27,7 @@ import { validatePassword } from "@/lib/passwordPolicy";
 import { toast } from "@/hooks/use-toast";
 import { RollingDatePicker } from "@/components/RollingDatePicker";
 import { APP_VERSION_LABEL } from "@/lib/appVersion";
+import { usePWAUpdate } from "@/hooks/usePWAUpdate";
 import { memberInitials } from "@/hooks/useHouseholdMembers";
 import {
   fetchIncomingHouseholdInvites,
@@ -182,11 +183,19 @@ interface Props {
   onExportData: () => { version: number; exported_at: string; expenses: Expense[]; categories: CategoryDef[]; budgets: Budgets };
   onRestoreData: (data: { expenses?: Expense[]; categories?: CategoryDef[]; budgets?: Budgets }, mode: "replace" | "merge") => Promise<void>;
   isAdmin: boolean;
+  initialSection?: "profile" | "household" | "categories" | "appearance" | "data";
+  onJoinedHousehold?: () => void;
 }
 
 export default function Settings(props: Props) {
-  const { open, onOpenChange } = props;
-  const [section, setSection] = useState<"profile" | "household" | "categories" | "appearance" | "data">("profile");
+  const { open, onOpenChange, initialSection, onJoinedHousehold } = props;
+  const [section, setSection] = useState<"profile" | "household" | "categories" | "appearance" | "data">(
+    initialSection ?? "profile",
+  );
+
+  useEffect(() => {
+    if (open && initialSection) setSection(initialSection);
+  }, [open, initialSection]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -230,7 +239,13 @@ export default function Settings(props: Props) {
         <div className="flex-1 overflow-y-auto p-6 pt-4 max-md:pb-[var(--finlo-mobile-tab-clearance)] md:pb-6 space-y-6 scrollbar-none">
           <UpdateAvailableCard />
           {section === "profile" && <ProfileSection {...props} />}
-          {section === "household" && <HouseholdSection profile={props.profile} onSync={props.onSync} />}
+          {section === "household" && (
+            <HouseholdSection
+              profile={props.profile}
+              onSync={props.onSync}
+              onJoinedHousehold={onJoinedHousehold}
+            />
+          )}
           {section === "categories" && <CategoriesSection {...props} />}
           {section === "appearance" && <AppearanceSection {...props} />}
           {section === "data" && <DataSection {...props} />}
@@ -258,6 +273,7 @@ export default function Settings(props: Props) {
 }
 
 function ProfileSection({ profile, onUpdateProfile }: Props) {
+  const { checkForUpdate, updateApp, checking: checkingUpdate, updateAvailable } = usePWAUpdate();
   const [name, setName] = useState(profile.name);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -440,6 +456,69 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
         {notificationStatus === "denied" && (
           <p className="text-[10px] text-destructive px-2 italic">Notifications are blocked in your browser settings. Please enable them to receive alerts.</p>
         )}
+
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-surface/30 border border-border/20">
+          <div className="flex gap-3 items-center min-w-0">
+            <div className="h-10 w-10 rounded-2xl bg-ink-muted/10 text-ink-muted flex items-center justify-center shrink-0">
+              <Download className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">App updates</p>
+              <p className="text-[11px] text-ink-muted/60 truncate">
+                {updateAvailable
+                  ? "Update ready — tap to install"
+                  : `Installed ${APP_VERSION_LABEL}`}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={checkingUpdate}
+            onClick={async () => {
+              if (updateAvailable) {
+                await updateApp();
+                return;
+              }
+              try {
+                const result = await checkForUpdate();
+                if (result === "unsupported") {
+                  toast({
+                    title: "Not available",
+                    description: "Updates require installing Finlo as an app (PWA) in your browser.",
+                    variant: "destructive",
+                  });
+                } else if (result === "dev") {
+                  toast({
+                    title: "Development build",
+                    description: "PWA updates apply to the installed production app only.",
+                  });
+                } else if (result === "up-to-date") {
+                  toast({
+                    title: "Up to date",
+                    description: `You're on the latest version (${APP_VERSION_LABEL}).`,
+                  });
+                }
+              } catch {
+                toast({
+                  title: "Update check failed",
+                  description: "Check your connection and try again.",
+                  variant: "destructive",
+                });
+              }
+            }}
+            className="rounded-full h-9 px-4 text-xs shrink-0 border-border/50"
+          >
+            {checkingUpdate ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : updateAvailable ? (
+              "Install"
+            ) : (
+              "Check for updates"
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -866,9 +945,11 @@ function DataSection({
 function HouseholdSection({
   profile,
   onSync,
+  onJoinedHousehold,
 }: {
   profile: Profile;
   onSync: (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => Promise<boolean>;
+  onJoinedHousehold?: () => void;
 }) {
   const { refreshProfile } = useAuth();
   const [household, setHousehold] = useState<any>(null);
@@ -1007,6 +1088,7 @@ function HouseholdSection({
       await refreshProfile();
       await onSync({ silentToast: true });
       await loadHousehold();
+      onJoinedHousehold?.();
       toast({ title: "Joined household!", description: "You are now in the shared space." });
     } catch (err: any) {
       console.error("Accept error:", err);

@@ -29,7 +29,10 @@ import {
 import Settings from "@/pages/Settings";
 import { JointGoalCard } from "@/components/JointGoalCard";
 import { ActivityWire } from "@/components/ActivityWire";
+import { CreateHouseholdGoalDialog } from "@/components/CreateHouseholdGoalDialog";
+import { ContributeGoalDialog } from "@/components/ContributeGoalDialog";
 import { Card } from "@/components/ui/card";
+import { parseAppNavigation, type AppNavigationIntent } from "@/lib/appNavigation";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useHouseholdMembers, memberInitials } from "@/hooks/useHouseholdMembers";
 import { useAuth } from "@/hooks/useAuth";
@@ -94,26 +97,55 @@ const Index = () => {
   const [touchStartTime, setTouchStartTime] = useState<number>(0);
   const [isHolding, setIsHolding] = useState(false);
   const [jointGoals, setJointGoals] = useState<any[]>([]);
+  const [createGoalOpen, setCreateGoalOpen] = useState(false);
+  const [contributeGoal, setContributeGoal] = useState<any | null>(null);
+  const [settingsSection, setSettingsSection] = useState<
+    "profile" | "household" | "categories" | "appearance" | "data"
+  >("profile");
+
+  const refetchJointGoals = useCallback(async () => {
+    if (!profile?.household_id) {
+      setJointGoals([]);
+      return;
+    }
+    try {
+      const { data: goals, error } = await supabase
+        .from("household_goals")
+        .select("*")
+        .eq("household_id", profile.household_id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      setJointGoals(goals ?? []);
+    } catch (err) {
+      console.error("Error fetching joint goals:", err);
+    }
+  }, [profile?.household_id]);
 
   useEffect(() => {
-    if (!profile?.household_id) return;
+    void refetchJointGoals();
+  }, [refetchJointGoals]);
 
-    const fetchJointGoals = async () => {
-      try {
-        const { data: goals } = await (supabase as any)
-          .from("household_goals")
-          .select("*")
-          .eq("household_id", profile.household_id)
-          .order("created_at", { ascending: true });
-
-        setJointGoals(goals || []);
-      } catch (err) {
-        console.error("Error fetching joint goals:", err);
+  const applyNavigationIntent = useCallback(
+    (intent: AppNavigationIntent) => {
+      if (intent.viewMode === "household" && profile.household_id) {
+        setViewMode("household");
       }
-    };
+      if (intent.settingsSection) setSettingsSection(intent.settingsSection);
+      if (intent.openSettings) setSettingsOpen(true);
+      if (intent.openAddExpense) {
+        setEditing(null);
+        setOpen(true);
+      }
+    },
+    [profile.household_id, setViewMode],
+  );
 
-    void fetchJointGoals();
-  }, [profile?.household_id]);
+  const handleJoinedHousehold = useCallback(() => {
+    setViewMode("household");
+    setSettingsSection("household");
+    void refetchJointGoals();
+    void sync({ silentToast: true });
+  }, [setViewMode, refetchJointGoals, sync]);
 
   useEffect(() => {
     let holdTimer: any;
@@ -381,11 +413,9 @@ const Index = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    applyNavigationIntent(parseAppNavigation(null, params));
+
     const action = params.get("action")?.trim().toLowerCase() ?? "";
-    if (action === "add") {
-      setEditing(null);
-      setOpen(true);
-    }
     const title = params.get("title")?.trim() ?? "";
     const text = params.get("text")?.trim() ?? "";
     const url = params.get("url")?.trim() ?? "";
@@ -393,14 +423,20 @@ const Index = () => {
     if (parts.length > 0) {
       setSharePrefill(parts.join("\n"));
     }
-    if (action === "add" || parts.length > 0) {
+    if (
+      action === "add" ||
+      parts.length > 0 ||
+      params.get("view") ||
+      params.get("settings") ||
+      params.get("tab")
+    ) {
       window.history.replaceState(
         {},
         document.title,
         `${window.location.pathname}${window.location.hash}`,
       );
     }
-  }, []);
+  }, [applyNavigationIntent]);
 
   // Scroll to top when switching view tabs
   useEffect(() => {
@@ -620,6 +656,11 @@ const Index = () => {
         }
       } catch (err) {
         console.error("Household pulse fetch failed:", err);
+        toast({
+          title: "Household insights unavailable",
+          description: "Could not load today's shared pulse. Try again later.",
+          variant: "destructive",
+        });
       }
     };
 
@@ -1025,59 +1066,7 @@ const Index = () => {
             </div>
           )}
 
-          {profile?.household_id && viewMode === "household" && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Household Activity</h3>
-                </div>
-                <ActivityWire userId={user?.id || null} />
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Shared Goals</h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {jointGoals.map((goal) => (
-                    <JointGoalCard
-                      key={goal.id}
-                      title={goal.title}
-                      targetAmount={Number(goal.target_amount)}
-                      currentAmount={Number(goal.current_amount)}
-                      color={goal.color}
-                      deadline={goal.deadline}
-                      onAddContribution={() => {
-                        setReceiptScanPrefill({
-                          categoryGuess: goal.title,
-                          merchant: `Contribution to ${goal.title}`,
-                        });
-                        setOpen(true);
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {profile?.household_id && viewMode === "household" && (!jointGoals || jointGoals.length === 0) && (
-            <Card className="p-8 border-dashed border-2 border-border/40 bg-surface/5 text-center space-y-3 rounded-[24px]">
-              <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <Target className="h-6 w-6 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-semibold">No shared goals yet</p>
-                <p className="text-xs text-ink-muted leading-relaxed px-4">Start tracking your first joint savings target together.</p>
-              </div>
-              <Button size="sm" variant="outline" className="rounded-full px-6 border-primary/20 text-primary hover:bg-primary/5">
-                Create First Goal
-              </Button>
-            </Card>
-          )}
-
-          <section className="rounded-3xl border border-border/50 bg-card p-5 sm:p-6 mb-6">
+                    <section className="rounded-3xl border border-border/50 bg-card p-5 sm:p-6 mb-6">
             <span className="text-ink-muted text-[10px] tracking-[0.2em] uppercase font-medium block mb-3">
               {heroLabel}
             </span>
@@ -1194,6 +1183,54 @@ const Index = () => {
                       <Plus className="h-4 w-4 mr-1" /> Add transaction
                     </Button>
                   </div>
+                  {profile?.household_id && viewMode === "household" && (
+                    <div className="space-y-2.5 mt-3 sm:mt-0 mb-8 sm:mb-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      <ActivityWire
+                        userId={user?.id || null}
+                        compact
+                        onNavigate={applyNavigationIntent}
+                      />
+                      {jointGoals && jointGoals.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {jointGoals.map((goal) => (
+                            <JointGoalCard
+                              key={goal.id}
+                              title={goal.title}
+                              targetAmount={Number(goal.target_amount)}
+                              currentAmount={Number(goal.current_amount)}
+                              color={goal.color}
+                              deadline={goal.deadline}
+                              onAddContribution={() => setContributeGoal(goal)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <Card className="px-3 py-2.5 border border-dashed border-border/40 bg-surface/5 rounded-xl flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                              <Target className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="min-w-0 text-left">
+                              <p className="text-xs font-medium text-foreground leading-tight">No shared goals yet</p>
+                              <p className="text-[10px] text-ink-muted leading-tight truncate">
+                                Track a joint savings target together
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setCreateGoalOpen(true)}
+                            className="h-8 rounded-full px-3 text-[11px] shrink-0 border-primary/20 text-primary hover:bg-primary/5"
+                          >
+                            Create goal
+                          </Button>
+                        </Card>
+                      )}
+                    </div>
+                  )}
+
+
                 </>
               )}
 
@@ -1467,6 +1504,8 @@ const Index = () => {
 
         <Settings
           open={settingsOpen} onOpenChange={setSettingsOpen}
+          initialSection={settingsSection}
+          onJoinedHousehold={handleJoinedHousehold}
           categories={categories}
           onAddCategory={addCategory} onRenameCategory={renameCategory}
           onDeleteCategory={deleteCategory} onSetCategoryStyle={setCategoryStyle}
@@ -1487,6 +1526,22 @@ const Index = () => {
         />
 
         <TrashSheet open={trashOpen} onOpenChange={setTrashOpen} userId={user?.id ?? null} onRestore={sync} />
+
+        {profile.household_id && (
+          <CreateHouseholdGoalDialog
+            open={createGoalOpen}
+            onOpenChange={setCreateGoalOpen}
+            householdId={profile.household_id}
+            onCreated={() => void refetchJointGoals()}
+          />
+        )}
+
+        <ContributeGoalDialog
+          goal={contributeGoal}
+          open={!!contributeGoal}
+          onOpenChange={(v) => { if (!v) setContributeGoal(null); }}
+          onUpdated={() => void refetchJointGoals()}
+        />
 
         {expenseAI.reviewDialog}
         {expenseAI.voiceHud}

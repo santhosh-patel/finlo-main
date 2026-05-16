@@ -219,10 +219,22 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     setPendingCount(pendingRef.current.length);
   };
 
+  useEffect(() => {
+    if (!householdId && viewMode === "household") {
+      setViewMode("personal");
+      localStorage.setItem("finlo_view_mode", "personal");
+    }
+  }, [householdId, viewMode]);
+
   const setViewModeWithPersistence = useCallback((mode: "personal" | "household") => {
+    if (mode === "household" && !householdId) {
+      setViewMode("personal");
+      localStorage.setItem("finlo_view_mode", "personal");
+      return;
+    }
     setViewMode(mode);
     localStorage.setItem("finlo_view_mode", mode);
-  }, []);
+  }, [householdId]);
 
   const flushPending = useCallback(async () => {
     if (!userId || !navigator.onLine) return;
@@ -859,7 +871,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
             title: "New Reaction",
             body: `Partner reacted ${emoji} to "${expenseLabel}"`,
             link: "/?view=household",
-            kind: "reaction"
+            kind: "reaction",
           });
         }
       }

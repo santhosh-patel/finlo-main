@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -39,6 +39,7 @@ function RoutedViews() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+          <Route path="/settings" element={<Navigate to="/?settings=household" replace />} />
           <Route path="/admin" element={<ProtectedRoute requireAdmin><Admin /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>

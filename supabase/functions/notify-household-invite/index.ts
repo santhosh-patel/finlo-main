@@ -61,7 +61,8 @@ serve(async (req) => {
       user_id: invitee.user_id,
       title: "Household invitation",
       body: `${inviterName} invited you to join “${householdName}”`,
-      url: "/settings?tab=household",
+      kind: "invite",
+      link: "/?settings=household",
     });
 
     try {
@@ -70,7 +71,7 @@ serve(async (req) => {
           user_id: invitee.user_id,
           title: "Household invitation",
           body: `${inviterName} invited you to join their shared space`,
-          url: "/settings?tab=household",
+          url: "/?settings=household",
         },
       });
     } catch {
