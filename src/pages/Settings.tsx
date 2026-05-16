@@ -1,5 +1,6 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { UpdateAvailableCard } from "@/components/UpdateAvailableCard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CategoryDef, Expense, expensesToCSV, downloadCSV } from "@/lib/expenses";
@@ -87,27 +88,13 @@ export default function Settings(props: Props) {
             </SheetHeader>
           </div>
 
-          <nav className="relative flex gap-1 bg-surface/60 rounded-full p-1 text-xs overflow-hidden">
-            {/* Sliding background pill */}
-            <div 
-              className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1.1)]"
-              style={{
-                width: "calc((100% - 16px) / 5)",
-                transform: `translateX(${
-                  section === "profile" ? "0%"
-                  : section === "household" ? "calc(100% + 4px)"
-                  : section === "categories" ? "calc(200% + 8px)"
-                  : section === "appearance" ? "calc(300% + 12px)"
-                  : "calc(400% + 16px)"
-                })`
-              }}
-            />
+          <nav className="relative flex gap-1 bg-surface/60 rounded-full p-1 text-xs overflow-x-auto scrollbar-none snap-x">
             {(["profile", "household", "categories", "appearance", "data"] as const).map((s) => (
               <button
                 key={s} onClick={() => { vibrate(10); setSection(s); }}
                 className={cn(
-                  "relative z-10 flex-1 px-3 py-1.5 rounded-full uppercase tracking-wider transition-colors capitalize",
-                  section === s ? "text-foreground font-semibold" : "text-ink-muted hover:text-foreground"
+                  "relative z-10 flex-1 whitespace-nowrap px-4 py-2 sm:py-1.5 rounded-full uppercase tracking-wider transition-all duration-200 capitalize snap-center outline-none focus-visible:ring-2 focus-visible:ring-foreground",
+                  section === s ? "text-foreground font-semibold bg-background shadow-sm" : "text-ink-muted hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                 )}
               >{s}</button>
             ))}
@@ -116,6 +103,7 @@ export default function Settings(props: Props) {
 
         {/* Scrollable Contents Container */}
         <div className="flex-1 overflow-y-auto p-6 pt-4 max-md:pb-[var(--finlo-mobile-tab-clearance)] md:pb-6 space-y-6 scrollbar-none">
+          <UpdateAvailableCard />
           {section === "profile" && <ProfileSection {...props} />}
           {section === "household" && <HouseholdSection profile={props.profile} onSync={props.onSync} />}
           {section === "categories" && <CategoriesSection {...props} />}
