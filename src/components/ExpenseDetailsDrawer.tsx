@@ -53,6 +53,7 @@ interface Props {
   onDelete: (id: string) => void;
   onAddSubcategory?: (category: string, sub: string) => void;
   userId: string | null;
+  onToggleReaction?: (id: string, emoji: string) => void;
 }
 
 export function ExpenseDetailsDrawer({
@@ -63,6 +64,7 @@ export function ExpenseDetailsDrawer({
   onDelete,
   onAddSubcategory,
   userId,
+  onToggleReaction,
 }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -390,6 +392,31 @@ export function ExpenseDetailsDrawer({
                         </div>
                       </div>
                     </div>
+ 
+                    {/* Reactions */}
+                    {onToggleReaction && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {["❤️", "👍", "😮", "💸", "🤑"].map((emoji) => {
+                          const count = expense.reactions?.filter(r => r.emoji === emoji).length || 0;
+                          const hasReacted = expense.reactions?.some(r => r.user_id === userId && r.emoji === emoji);
+                          return (
+                            <button
+                              key={emoji}
+                              onClick={() => onToggleReaction(expense.id, emoji)}
+                              className={cn(
+                                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-all border",
+                                hasReacted 
+                                  ? "bg-primary/10 border-primary/30 text-primary scale-105" 
+                                  : "bg-surface/40 border-border/20 text-ink-muted hover:bg-surface/60"
+                              )}
+                            >
+                              <span>{emoji}</span>
+                              {count > 0 && <span className="font-semibold">{count}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {/* Tags */}
                     <div className="space-y-2">

@@ -43,6 +43,8 @@ interface Props {
   receiptScanPrefill?: ReceiptScanPrefill | null;
   onReceiptScanPrefillConsumed?: () => void;
   defaultDate?: string;
+  isHouseholdMember?: boolean;
+  defaultShared?: boolean;
 }
 
 export function AddExpenseSheet({ 
@@ -51,6 +53,8 @@ export function AddExpenseSheet({
   receiptScanPrefill = null,
   onReceiptScanPrefillConsumed,
   defaultDate,
+  isHouseholdMember = false,
+  defaultShared = false,
 }: Props) {
   const isEdit = !!editing;
   const [txnType, setTxnType] = useState<TxnType>("expense");
@@ -73,6 +77,7 @@ export function AddExpenseSheet({
 
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [isSuggestingCategory, setIsSuggestingCategory] = useState(false);
+  const [isShared, setIsShared] = useState(defaultShared);
   const [receiptUrl, setReceiptUrl] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -161,7 +166,8 @@ export function AddExpenseSheet({
       setPayment(editing.payment_method);
       setCurrency(editing.currency ?? baseCurrency);
       setReimbursable(!!editing.is_reimbursable);
-      setReceiptUrl(editing.receipt_url ?? "");
+      setIsShared(editing.household_id !== null);
+    setReceiptUrl(editing.receipt_url ?? "");
     } else {
       setTxnType("expense");
       setAmount("");
@@ -172,6 +178,7 @@ export function AddExpenseSheet({
       setPayment("upi");
       setCurrency(baseCurrency);
       setReimbursable(false);
+      setIsShared(defaultShared);
       setReceiptUrl("");
     }
     refreshFxRates(baseCurrency);
@@ -665,24 +672,55 @@ export function AddExpenseSheet({
           </div>
 
           {txnType === "expense" && (
-            <button
-              type="button"
-              onClick={() => setReimbursable((v) => !v)}
-              className={cn(
-                "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border text-left transition-colors",
-                reimbursable
-                  ? "border-emerald-500/40 bg-emerald-500/5"
-                  : "border-border/40 bg-surface/40 hover:bg-surface"
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setReimbursable((v) => !v)}
+                className={cn(
+                  "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border text-left transition-colors",
+                  reimbursable
+                    ? "border-emerald-500/40 bg-emerald-500/5"
+                    : "border-border/40 bg-surface/40 hover:bg-surface"
+                )}
+              >
+                <div>
+                  <div className="text-sm text-foreground font-medium">Reimbursable</div>
+                  <div className="text-[11px] text-ink-muted">Track expenses to be paid back</div>
+                </div>
+                <div className={cn("h-5 w-9 rounded-full p-0.5 transition-colors", reimbursable ? "bg-emerald-500" : "bg-border")}>
+                  <div className={cn("h-4 w-4 rounded-full bg-background transition-transform", reimbursable && "translate-x-4")} />
+                </div>
+              </button>
+
+              {isHouseholdMember && (
+                <button
+                  type="button"
+                  onClick={() => setIsShared((v) => !v)}
+                  className={cn(
+                    "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border text-left transition-colors",
+                    isShared
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-border/40 bg-surface/40 hover:bg-surface"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "h-8 w-8 rounded-xl flex items-center justify-center shrink-0 transition-colors",
+                      isShared ? "bg-primary/20 text-primary" : "bg-surface text-ink-muted"
+                    )}>
+                      <Users className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-sm text-foreground font-medium">Share with Household</div>
+                      <div className="text-[11px] text-ink-muted">Make this visible to your partner</div>
+                    </div>
+                  </div>
+                  <div className={cn("h-5 w-9 rounded-full p-0.5 transition-colors", isShared ? "bg-primary" : "bg-border")}>
+                    <div className={cn("h-4 w-4 rounded-full bg-background transition-transform", isShared && "translate-x-4")} />
+                  </div>
+                </button>
               )}
-            >
-              <div>
-                <div className="text-sm text-foreground font-medium">Reimbursable</div>
-                <div className="text-[11px] text-ink-muted">Track expenses to be paid back</div>
-              </div>
-              <div className={cn("h-5 w-9 rounded-full p-0.5 transition-colors", reimbursable ? "bg-emerald-500" : "bg-border")}>
-                <div className={cn("h-4 w-4 rounded-full bg-background transition-transform", reimbursable && "translate-x-4")} />
-              </div>
-            </button>
+            </div>
           )}
 
           <Button

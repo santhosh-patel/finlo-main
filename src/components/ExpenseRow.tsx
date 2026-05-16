@@ -1,6 +1,6 @@
 import { getCurrencySymbol, Expense, formatINR, baseAmountOf } from "@/lib/expenses";
 import { CURRENCY_SYMBOLS, getBaseCurrency } from "@/lib/fx";
-import { Trash2, Users, AlertTriangle, Pencil, Heart } from "lucide-react";
+import { Trash2, Users, AlertTriangle, Pencil, Heart, HandCoins } from "lucide-react";
 import { getIconForCategory, getColorForCategory } from "@/lib/categoryIcons";
 import type { CategoryDef } from "@/lib/expenses";
 import { cn, vibrate } from "@/lib/utils";
@@ -170,7 +170,12 @@ export function ExpenseRow({ expense, onDelete, onSelect, showDate, categories, 
                   </span>
                 )}
                 {(expense.is_reimbursable || !!expense.split_note?.trim()) && (
-                  <Users className="h-3.5 w-3.5 text-amber-700/75 dark:text-amber-400/85 shrink-0" aria-label="Split / reimbursable" />
+                  <span title="Reimbursable" className="text-amber-700/75 dark:text-amber-400/85 shrink-0">
+                    <HandCoins className="h-3.5 w-3.5" aria-label="Reimbursable" />
+                  </span>
+                )}
+                {expense.household_id && (
+                  <Users className="h-3.5 w-3.5 text-primary/60 shrink-0" aria-label="Shared with Household" />
                 )}
               </div>
               <div className="flex flex-col items-end">

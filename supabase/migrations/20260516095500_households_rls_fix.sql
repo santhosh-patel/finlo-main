@@ -7,13 +7,12 @@ ON public.households FOR INSERT
 TO authenticated
 WITH CHECK (true);
 
--- 2. Allow members to view their own household details
-CREATE POLICY "Members can view their own household"
+-- 2. Allow all authenticated users to view household details
+-- (Required so the creator can see the record they just made before their profile is updated)
+CREATE POLICY "Authenticated users can view households"
 ON public.households FOR SELECT
 TO authenticated
-USING (
-    id = (SELECT household_id FROM public.profiles WHERE user_id = auth.uid())
-);
+USING (true);
 
 -- 3. Allow members to update their own household (e.g., change name)
 CREATE POLICY "Members can update their own household"

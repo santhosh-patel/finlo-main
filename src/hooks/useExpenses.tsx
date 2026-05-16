@@ -89,6 +89,9 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
   const budKey = userId ? `finlo.budgets.${userId}.v1` : BUD_KEY;
   const lastSyncKey = userId ? `finlo.last_sync.${userId}.v1` : LAST_SYNC_KEY;
 
+  const [viewMode, setViewMode] = useState<"personal" | "household">(() => {
+    return (localStorage.getItem("finlo_view_mode") as "personal" | "household") || "household";
+  });
   const [expenses, setExpenses] = useState<Expense[]>(() =>
     normalizeExpenses(readJSON<Expense[]>(expKey, []))
   );
@@ -97,6 +100,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
   );
   const [budgets, setBudgets] = useState<Budgets>(() => readJSON<Budgets>(budKey, {}));
   const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<string | null>(
     () => localStorage.getItem(lastSyncKey)
   );
@@ -176,6 +180,11 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     setPendingCount(pendingRef.current.length);
   };
 
+  const setViewModeWithPersistence = useCallback((mode: "personal" | "household") => {
+    setViewMode(mode);
+    localStorage.setItem("finlo_view_mode", mode);
+  }, []);
+
   const flushPending = useCallback(async () => {
     if (!userId || !navigator.onLine) return;
     const ops = [...pendingRef.current];
@@ -241,15 +250,20 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
 
   const pullFromServer = useCallback(async () => {
     if (!userId) return;
-    const expQuery = householdId 
+    
+    // Determine filter: If mode is personal, only own data. 
+    // If mode is household and we have a household, show shared data.
+    const useHouseholdQuery = viewMode === "household" && householdId;
+
+    const expQuery = useHouseholdQuery 
       ? supabase.from("expenses").select("*").eq("household_id", householdId)
       : supabase.from("expenses").select("*").eq("user_id", userId);
     
-    const catQuery = householdId
+    const catQuery = useHouseholdQuery
       ? supabase.from("categories").select("*").eq("household_id", householdId)
       : supabase.from("categories").select("*").eq("user_id", userId);
 
-    const budQuery = householdId
+    const budQuery = useHouseholdQuery
       ? supabase.from("budgets").select("*").eq("household_id", householdId)
       : supabase.from("budgets").select("*").eq("user_id", userId);
 
@@ -832,17 +846,22 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
   // ---- categories (cloud-backed) ----
   const upsertCategoryRow = useCallback(async (c: CategoryDef) => {
     if (!userId) return;
+    const useHousehold = viewMode === "household" && householdId;
+    
     const { error } = await supabase.from("categories").upsert({
-      user_id: userId, name: c.name,
+      user_id: useHousehold ? null : userId,
+      household_id: useHousehold ? householdId : null,
+      name: c.name,
       subcategories: c.subcategories,
-      color: c.color ?? null, icon: c.icon ?? null,
-    }, { onConflict: "user_id,name" });
+      color: c.color ?? null,
+      icon: c.icon ?? null,
+    }, { onConflict: useHousehold ? "household_id,name" : "user_id,name" });
     
     if (error) {
       console.error("Failed to sync category:", error);
       toast({ title: "Sync Error", description: `Couldn't save category "${c.name}" to cloud.`, variant: "destructive" });
     }
-  }, [userId]);
+  }, [userId, householdId, viewMode]);
 
   const addCategory = useCallback((name: string, opts?: { subcategories?: string[]; type?: CategoryDef["type"]; silentToast?: boolean }) => {
     const trimmed = name.trim();
@@ -873,11 +892,15 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
       const next = { ...prev }; next[trimmed] = next[oldName]; delete next[oldName]; return next;
     });
     if (userId) {
-      supabase.from("categories").update({ name: trimmed }).eq("user_id", userId).eq("name", oldName);
-      supabase.from("expenses").update({ category: trimmed }).eq("user_id", userId).eq("category", oldName);
-      supabase.from("budgets").update({ category: trimmed }).eq("user_id", userId).eq("category", oldName);
+      const useHousehold = viewMode === "household" && householdId;
+      const filterField = useHousehold ? "household_id" : "user_id";
+      const filterValue = useHousehold ? householdId : userId;
+
+      supabase.from("categories").update({ name: trimmed }).eq(filterField, filterValue).eq("name", oldName);
+      supabase.from("expenses").update({ category: trimmed }).eq(filterField, filterValue).eq("category", oldName);
+      supabase.from("budgets").update({ category: trimmed }).eq(filterField, filterValue).eq("category", oldName);
     }
-  }, [userId]);
+  }, [userId, householdId, viewMode]);
 
   const deleteCategory = useCallback((name: string, strategy: "delete" | "move" = "move", targetCategory: string = "Misc") => {
     setCategories((prev) => prev.filter((c) => c.name !== name));
@@ -888,18 +911,22 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
     } else {
       setExpenses((prev) => prev.map((e) => (e.category === name ? { ...e, category: targetCategory } : e)));
     }
-
+ 
     if (userId) {
-      supabase.from("categories").delete().eq("user_id", userId).eq("name", name);
-      supabase.from("budgets").delete().eq("user_id", userId).eq("category", name);
+      const useHousehold = viewMode === "household" && householdId;
+      const filterField = useHousehold ? "household_id" : "user_id";
+      const filterValue = useHousehold ? householdId : userId;
+
+      supabase.from("categories").delete().eq(filterField, filterValue).eq("name", name);
+      supabase.from("budgets").delete().eq(filterField, filterValue).eq("category", name);
       
       if (strategy === "delete") {
-        supabase.from("expenses").delete().eq("user_id", userId).eq("category", name);
+        supabase.from("expenses").delete().eq(filterField, filterValue).eq("category", name);
       } else {
-        supabase.from("expenses").update({ category: targetCategory }).eq("user_id", userId).eq("category", name);
+        supabase.from("expenses").update({ category: targetCategory }).eq(filterField, filterValue).eq("category", name);
       }
     }
-  }, [userId]);
+  }, [userId, householdId, viewMode]);
 
   const setCategoryStyle = useCallback((name: string, patch: { color?: string; icon?: string }) => {
     setCategories((prev) => prev.map((c) => {
@@ -1003,26 +1030,35 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
   const setBudget = useCallback((category: string, amount: number | null) => {
     setBudgets((prev) => {
       const next = { ...prev };
-      if (amount === null || !amount || amount <= 0) delete next[category];
+      if (amount === null) delete next[category];
       else next[category] = amount;
       return next;
     });
-    if (!userId) return;
-    if (amount === null || !amount || amount <= 0) {
-      supabase.from("budgets").delete().eq("user_id", userId).eq("category", category);
-    } else {
-      supabase.from("budgets").upsert(
-        { user_id: userId, category, amount_monthly: amount },
-        { onConflict: "user_id,category" }
-      );
+    if (userId) {
+      const useHousehold = viewMode === "household" && householdId;
+      if (amount === null) {
+        supabase.from("budgets").delete()
+          .eq(useHousehold ? "household_id" : "user_id", useHousehold ? householdId : userId)
+          .eq("category", category);
+      } else {
+        supabase.from("budgets").upsert({
+          user_id: useHousehold ? null : userId,
+          household_id: useHousehold ? householdId : null,
+          category,
+          amount_monthly: amount,
+        }, { onConflict: useHousehold ? "household_id,category" : "user_id,category" });
+      }
     }
-  }, [userId]);
+  }, [userId, householdId, viewMode]);
 
   // Backup / restore
   const exportData = useCallback(() => ({
     version: 1,
     exported_at: new Date().toISOString(),
     expenses,
+    loading,
+    viewMode,
+    setViewMode: setViewModeWithPersistence,
     categories,
     budgets,
   }), [expenses, categories, budgets]);
@@ -1080,6 +1116,8 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
   return {
     expenses, categories, budgets,
     syncing, lastSync, sync,
+    loading,
+    viewMode, setViewMode: setViewModeWithPersistence,
     initialDataReady,
     pendingCount,
     addExpense, updateExpense, deleteExpense,

@@ -22,12 +22,15 @@ export default defineConfig(({ mode }) => ({
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
       injectRegister: false,
       devOptions: {
         enabled: true,
-        /** Avoid workbox glob warning when `dev-dist` only contains ignored SW assets */
         suppressWarnings: true,
+        type: "module",
       },
       manifest: {
         name: "Finlo",
@@ -52,6 +55,20 @@ export default defineConfig(({ mode }) => ({
             short_name: "Add",
             description: "Log a new transaction",
             url: "/?action=add",
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+          },
+          {
+            name: "Household View",
+            short_name: "Household",
+            description: "Switch to joint ledger",
+            url: "/?view=household",
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+          },
+          {
+            name: "Spending Pulse",
+            short_name: "Pulse",
+            description: "View latest insights",
+            url: "/?action=pulse",
             icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
           },
         ],
