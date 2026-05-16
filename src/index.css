@@ -133,6 +133,25 @@
     @apply border-border;
   }
 
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+  }
+
+  .animate-marquee {
+    animation: marquee 30s linear infinite;
+    display: inline-flex;
+    min-width: 100%;
+  }
+
+  .pause {
+    animation-play-state: paused;
+  }
+
   html {
     color-scheme: light dark;
     -webkit-tap-highlight-color: transparent;

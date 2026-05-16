@@ -553,7 +553,7 @@ export default function Admin() {
           <nav className="relative flex gap-1 bg-surface rounded-full p-1 text-xs overflow-hidden border border-border/40 select-none">
             {/* Sliding indicator */}
             <div 
-              className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1.1)]"
+              className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1.1)]"
               style={{
                 width: "calc((100% - 8px) / 3)",
                 transform: `translateX(${

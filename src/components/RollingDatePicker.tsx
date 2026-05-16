@@ -463,7 +463,7 @@ export function RollingDatePicker({
         className={cn(
           "rolling-picker-trigger flex items-center justify-between w-full px-5 h-12 rounded-[20px] font-sans",
           "border border-border/70 bg-card hover:bg-surface/50 text-foreground text-sm font-medium",
-          "transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] cursor-pointer active:scale-[0.96]",
+          "transition-all duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] cursor-pointer active:scale-[0.96]",
           "shadow-sm hover:shadow-md",
           className,
         )}
@@ -498,7 +498,7 @@ export function RollingDatePicker({
                 "rolling-picker-modal w-full max-w-[390px] pointer-events-auto select-text",
                 "bg-background/95 backdrop-blur-xl border border-border/45 rounded-t-[32px] sm:rounded-[32px]",
                 "shadow-[0_24px_64px_rgba(0,0,0,0.22)] sm:shadow-[0_32px_80px_rgba(0,0,0,0.26)]",
-                "flex flex-col gap-0 animate-in fade-in-60 slide-in-from-bottom-24 sm:zoom-in-[0.96] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+                "flex flex-col gap-0 animate-in fade-in-60 slide-in-from-bottom-24 sm:zoom-in-[0.96] duration-300 [animation-timing-function:cubic-bezier(0.34,1.56,0.64,1)]",
                 "p-5 pb-[max(1.25rem,calc(env(safe-area-inset-bottom,0px)+1rem))]",
                 "sm:p-6",
                 closing && "opacity-0 translate-y-24 sm:scale-[0.95] transition-all duration-200 ease-in",

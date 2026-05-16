@@ -96,13 +96,16 @@ export function PulseCard({ userId, onNavigate, onAction }: Props) {
 
   if (!pulse) return null;
 
+  const actions = Array.isArray(pulse.actions) ? pulse.actions : [];
+  const title = pulse.title ?? "";
+
   const getIcon = () => {
     switch (pulse.type) {
       case "budget_alert": return <AlertTriangle className="h-5 w-5 text-amber-500" />;
       case "weekend_plan": return <Calendar className="h-5 w-5 text-indigo-500" />;
       case "anomaly": return <TrendingUp className="h-5 w-5 text-rose-500" />;
       case "insight": 
-        if (pulse.title.includes("Balance")) return <Users className="h-5 w-5 text-primary" />;
+        if (title.includes("Balance")) return <Users className="h-5 w-5 text-primary" />;
         return <Sparkles className="h-5 w-5 text-emerald-500" />;
       default: return <Sparkles className="h-5 w-5 text-emerald-500" />;
     }
@@ -113,7 +116,7 @@ export function PulseCard({ userId, onNavigate, onAction }: Props) {
       case "budget_alert": return "bg-amber-500/5 border-amber-500/10";
       case "weekend_plan": return "bg-indigo-500/5 border-indigo-500/10";
       case "anomaly": return "bg-rose-500/5 border-rose-500/10";
-      case "insight": return pulse.title.includes("Balance") ? "bg-primary/5 border-primary/10" : "bg-emerald-500/5 border-emerald-500/10";
+      case "insight": return title.includes("Balance") ? "bg-primary/5 border-primary/10" : "bg-emerald-500/5 border-emerald-500/10";
       default: return "bg-emerald-500/5 border-emerald-500/10";
     }
   };
@@ -148,7 +151,7 @@ export function PulseCard({ userId, onNavigate, onAction }: Props) {
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {pulse.actions.map((action, i) => (
+              {actions.map((action, i) => (
                 <Button
                   key={i}
                   size="sm"
@@ -161,7 +164,7 @@ export function PulseCard({ userId, onNavigate, onAction }: Props) {
                   {!acting && <ArrowRight className="ml-1.5 h-3 w-3" />}
                 </Button>
               ))}
-              {pulse.actions.length === 0 && (
+              {actions.length === 0 && (
                 <Button
                   size="sm"
                   variant="ghost"

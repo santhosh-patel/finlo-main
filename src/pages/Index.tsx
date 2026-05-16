@@ -1,4 +1,4 @@
-import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, HandCoins, ChevronRight, ShieldCheck, Lock, Users } from "lucide-react";
+import { Plus, Search, Settings as SettingsIcon, ChevronDown, Home, Wallet, ArrowLeftRight, HandCoins, ChevronRight, ShieldCheck, Lock, Users, Target } from "lucide-react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { AddExpenseSheet } from "@/components/AddExpenseSheet";
@@ -27,6 +27,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import Settings from "@/pages/Settings";
+import { JointGoalCard } from "@/components/JointGoalCard";
+import { Card } from "@/components/ui/card";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useAuth } from "@/hooks/useAuth";
 import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
@@ -81,6 +83,104 @@ const Index = () => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [view, setView] = useState<View>("today");
+  const [scrollDir, setScrollDir] = useState<"up" | "down">("up");
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchStartTime, setTouchStartTime] = useState<number>(0);
+  const [isHolding, setIsHolding] = useState(false);
+  const [jointGoals, setJointGoals] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!profile?.household_id) return;
+
+    const fetchJointGoals = async () => {
+      try {
+        const { data: goals } = await (supabase as any)
+          .from("household_goals")
+          .select("*")
+          .eq("household_id", profile.household_id)
+          .order("created_at", { ascending: true });
+
+        setJointGoals(goals || []);
+      } catch (err) {
+        console.error("Error fetching joint goals:", err);
+      }
+    };
+
+    void fetchJointGoals();
+  }, [profile?.household_id]);
+
+  useEffect(() => {
+    let holdTimer: any;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (window.scrollY === 0) {
+        const y = e.targetTouches[0].clientY;
+        setTouchStart(y);
+        setTouchStartTime(Date.now());
+        
+        // Start hold timer for 2 seconds
+        holdTimer = setTimeout(() => {
+          setIsHolding(true);
+          vibrate([20, 10, 20]); // Haptic "double pulse" to indicate hold achieved
+        }, 2000);
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (holdTimer) clearTimeout(holdTimer);
+      
+      if (touchStart !== null) {
+        const touchEnd = e.changedTouches[0].clientY;
+        const duration = Date.now() - touchStartTime;
+        const distance = touchEnd - touchStart;
+
+        if (distance > 120) {
+          if (duration >= 2000) {
+            // Long hold while pulled down
+            vibrate(30);
+            setOpen(true);
+          } else {
+            // Quick pull down
+            vibrate(10);
+            sync({ silentToast: true });
+          }
+        }
+        
+        setTouchStart(null);
+        setIsHolding(false);
+      }
+    };
+
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd, { passive: true });
+    return () => {
+      clearTimeout(holdTimer);
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [touchStart, touchStartTime, sync]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const y = window.scrollY;
+      setIsScrolled(y > 20);
+      
+      if (Math.abs(y - lastScrollY) < 10) return;
+      
+      if (y > lastScrollY && y > 100) {
+        setScrollDir("down");
+      } else {
+        setScrollDir("up");
+      }
+      setLastScrollY(y);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY]);
+
   const [searchOpen, setSearchOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>(readFilters);
   const [details, setDetails] = useState<Expense | null>(null);
@@ -703,7 +803,7 @@ const Index = () => {
     return (
       <main className="min-h-dvh bg-background text-foreground flex flex-col items-center justify-center p-6 select-none animate-in fade-in duration-300">
         <div className="max-w-md w-full text-center space-y-6">
-          <div className="mx-auto h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20 shadow-[0_0_24px_rgba(245,158,11,0.15)] animate-bounce duration-[2000ms]">
+          <div className="mx-auto h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20 shadow-[0_0_24px_rgba(245,158,11,0.15)] animate-bounce [animation-duration:2s]">
             <Lock className="h-6 w-6 text-amber-500" strokeWidth={1.5} />
           </div>
           <div className="space-y-2">
@@ -723,6 +823,18 @@ const Index = () => {
           </div>
         </div>
       </main>
+    );
+  }
+
+  // Final safety check: If profile hasn't loaded real data yet
+  if (!profile?.user_id && expenseUserId) {
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background select-none pointer-events-auto animate-in fade-in duration-300">
+        <div className="flex flex-col items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+          <p className="text-[10px] tracking-[0.2em] text-ink-muted/40 font-bold uppercase mt-6 animate-pulse">Initializing Security</p>
+        </div>
+      </div>
     );
   }
 
@@ -789,8 +901,10 @@ const Index = () => {
 
         <InstallAppBanner className="sticky top-0 z-[55]" />
 
-        <div className="w-full max-w-[640px] mx-auto px-4 sm:px-6 pt-0 pb-[var(--finlo-mobile-tab-clearance)] md:pb-24">
-          <header className="sticky z-40 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 sm:pt-5 pb-3 mb-6 border-b border-border/40 flex items-center justify-between gap-2 top-[env(safe-area-inset-top,0px)]">
+
+        <div className="px-6 space-y-6">
+
+          <header className={cn("sticky z-40 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 sm:pt-5 pb-3 mb-6 border-b border-border/40 flex items-center justify-between gap-2 top-[env(safe-area-inset-top,0px)] transition-transform duration-300", scrollDir === "down" ? "-translate-y-full" : "translate-y-0")}>
             <div className="flex items-center gap-2.5 min-w-0">
               <img src="/finlo-logo.png" alt="Finlo" className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl object-contain shrink-0" />
               <div className="min-w-0">
@@ -806,14 +920,14 @@ const Index = () => {
                     title={isOnline ? "Online & Synced" : "Offline Mode (Changes saved locally)"}
                   />
                 </div>
-                <p className="hidden sm:block text-[11px] text-ink-muted mt-1 truncate">Hi {profile.name}</p>
+                <p className="hidden sm:block text-[11px] text-ink-muted mt-1 truncate">Hi {profile?.name || "there"}</p>
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <nav className="relative flex gap-0.5 bg-surface rounded-full p-1 text-[10px] sm:text-xs mr-1 border border-border/50 overflow-hidden" role="tablist" aria-label="Ledger view">
                 {/* Sliding background pill */}
                 <div
-                  className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1.1)]"
+                  className="absolute top-1 bottom-1 rounded-full bg-background shadow-sm transition-all duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1.1)]"
                   style={{
                     width: "calc((100% - 8px) / 3)",
                     transform: `translateX(${view === "today" ? "0%"
@@ -876,6 +990,42 @@ const Index = () => {
                 </button>
               </div>
             </div>
+          )}
+
+          {profile?.household_id && viewMode === "household" && jointGoals?.map((goal) => {
+            let formattedDeadline;
+            try {
+              formattedDeadline = goal.deadline ? new Date(goal.deadline).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : undefined;
+            } catch {
+              formattedDeadline = goal.deadline;
+            }
+
+            return (
+              <div key={goal.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <JointGoalCard
+                  title={goal.title}
+                  targetAmount={Number(goal.target_amount)}
+                  currentAmount={Number(goal.current_amount)}
+                  deadline={formattedDeadline}
+                  color={goal.color}
+                />
+              </div>
+            );
+          })}
+
+          {profile?.household_id && viewMode === "household" && (!jointGoals || jointGoals.length === 0) && (
+            <Card className="p-8 border-dashed border-2 border-border/40 bg-surface/5 text-center space-y-3 rounded-[24px]">
+              <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <Target className="h-6 w-6 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">No shared goals yet</p>
+                <p className="text-xs text-ink-muted leading-relaxed px-4">Start tracking your first joint savings target together.</p>
+              </div>
+              <Button size="sm" variant="outline" className="rounded-full px-6 border-primary/20 text-primary hover:bg-primary/5">
+                Create First Goal
+              </Button>
+            </Card>
           )}
 
           <section className="rounded-3xl border border-border/50 bg-card p-5 sm:p-6 mb-6">
@@ -1363,13 +1513,21 @@ const Index = () => {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Mobile bottom navigation — hidden while Maya or transaction details are open */}
+        {/* Mobile bottom navigation — Adaptive Floating Dock */}
         {!askAIOpen && !details && (
           <div
-            className="fixed z-[var(--finlo-z-mobile-nav,60)] bottom-0 inset-x-0 md:hidden flex justify-center pointer-events-none pb-4"
-            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+            className={cn(
+              "fixed z-[var(--finlo-z-mobile-nav,60)] bottom-0 inset-x-0 md:hidden flex justify-center pointer-events-none transition-all duration-500 ease-out-soft",
+              scrollDir === "down" ? "translate-y-24 opacity-0 scale-90" : "translate-y-0 opacity-100 scale-100"
+            )}
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }}
           >
-            <div className="bg-background/90 backdrop-blur-xl border border-border/60 shadow-[0_8px_32px_-8px_hsl(var(--foreground)/0.15)] rounded-full flex items-center justify-between px-2 py-1.5 pointer-events-auto w-[calc(100%-2rem)] max-w-[380px]">
+            <div className={cn(
+              "backdrop-blur-2xl border transition-all duration-500 shadow-2xl rounded-full flex items-center justify-between px-2 py-1.5 pointer-events-auto w-[calc(100%-2.5rem)] max-w-[340px]",
+              isScrolled 
+                ? "bg-background/80 border-border/40 shadow-[0_20px_50px_rgba(0,0,0,0.3)]" 
+                : "bg-background/95 border-border/80 shadow-[0_8px_32px_rgba(0,0,0,0.1)]"
+            )}>
               <button
                 onClick={() => {
                   vibrate(10);
@@ -1427,8 +1585,7 @@ const Index = () => {
                     "flex items-center justify-center",
                     "bg-foreground text-background",
                     "shadow-[0_4px_12px_-4px_hsl(var(--foreground)/0.3)]",
-                    "transition-transform duration-300 ease-out",
-                    "active:scale-90",
+                    "transition-all duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] cursor-pointer active:scale-[0.96]",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2",
                     expenseAI.isListening &&
                     "scale-105 bg-rose-500 text-white shadow-[0_0_0_4px_rgba(244,114,182,0.2)]"

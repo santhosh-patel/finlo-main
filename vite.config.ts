@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => ({
       registerType: "autoUpdate",
       injectRegister: false,
       devOptions: {
-        enabled: true,
+        enabled: false,
         suppressWarnings: true,
         type: "module",
       },

@@ -90,7 +90,7 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
   const lastSyncKey = userId ? `finlo.last_sync.${userId}.v1` : LAST_SYNC_KEY;
 
   const [viewMode, setViewMode] = useState<"personal" | "household">(() => {
-    return (localStorage.getItem("finlo_view_mode") as "personal" | "household") || "household";
+    return (localStorage.getItem("finlo_view_mode") as "personal" | "household") || "personal";
   });
   const [expenses, setExpenses] = useState<Expense[]>(() =>
     normalizeExpenses(readJSON<Expense[]>(expKey, []))
@@ -840,6 +840,29 @@ export function useExpenses(userId: string | null, householdId?: string | null) 
         nextReactions.push({ user_id: userId, emoji });
       }
       await supabase.from("expenses").update({ reactions: nextReactions }).eq("id", id);
+
+      // Notify partner if in household
+      if (viewMode === "household" && householdId) {
+        const { data: partner } = await supabase
+          .from("profiles")
+          .select("user_id, display_name")
+          .eq("household_id", householdId)
+          .neq("user_id", userId)
+          .maybeSingle();
+
+        if (partner) {
+          const { data: currentExpense } = await supabase.from("expenses").select("note, category").eq("id", id).single();
+          const expenseLabel = currentExpense?.note || currentExpense?.category || "an expense";
+          
+          await (supabase as any).from("notifications").insert({
+            user_id: partner.user_id,
+            title: "New Reaction",
+            body: `Partner reacted ${emoji} to "${expenseLabel}"`,
+            link: "/?view=household",
+            kind: "reaction"
+          });
+        }
+      }
     }
   }, [userId]);
 
