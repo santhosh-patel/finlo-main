@@ -28,8 +28,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import Settings from "@/pages/Settings";
 import { JointGoalCard } from "@/components/JointGoalCard";
+import { ActivityWire } from "@/components/ActivityWire";
 import { Card } from "@/components/ui/card";
 import { useExpenses } from "@/hooks/useExpenses";
+import { useHouseholdMembers, memberInitials } from "@/hooks/useHouseholdMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
 import { useExpenseAIQuickFlow } from "@/hooks/useExpenseAIQuickFlow";
@@ -48,6 +50,7 @@ import { cn, vibrate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/hooks/use-toast";
 import type { ReceiptScanPrefill } from "@/components/AddExpenseSheet";
+import { ExpensePayload } from "@/lib/expenses";
 
 type View = "today" | "week" | "month";
 
@@ -79,6 +82,7 @@ const Index = () => {
     importExpenses, setBudget,
     exportData, restoreData, toggleReaction,
   } = useExpenses(expenseUserId, profile.household_id);
+  const householdMembers = useHouseholdMembers(profile.household_id);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -215,22 +219,15 @@ const Index = () => {
 
   const clearReceiptPrefill = useCallback(() => setReceiptScanPrefill(null), []);
 
-  const handleAddExpense = (payload: any) => {
-    const finalPayload = {
+  const handleAddExpense = (payload: ExpensePayload) => {
+    addExpense({
       ...payload,
-      household_id: payload.household_id === "placeholder" ? profile.household_id : null,
-    };
-    addExpense(finalPayload);
+      user_id: expenseUserId ?? user?.id ?? "",
+    });
   };
 
-  const handleUpdateExpense = (id: string, patch: any) => {
-    const finalPatch = {
-      ...patch,
-    };
-    if (patch.household_id === "placeholder") {
-      finalPatch.household_id = profile.household_id;
-    }
-    updateExpense(id, finalPatch);
+  const handleUpdateExpense = (id: string, patch: Partial<ExpensePayload>) => {
+    updateExpense(id, patch);
   };
 
   const touchStartXRef = useRef<number>(0);
@@ -465,11 +462,47 @@ const Index = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [searchOpen, settingsOpen, askAIOpen, budgetsOpen, loansOpen, recurringOpen, importOpen, trashOpen, details, open]);
 
+  const detailExpense = useMemo(
+    () => (details ? expenses.find((e) => e.id === details.id) ?? details : null),
+    [details, expenses],
+  );
+
+  const memberAttribution = useCallback(
+    (expense: Expense) => {
+      const ownerId = expense.user_id;
+      const viewerId = user?.id ?? expenseUserId;
+      const isOwn = !ownerId || ownerId === viewerId;
+      if (isOwn) {
+        return { addedByName: undefined, addedByInitials: undefined };
+      }
+      const member = ownerId ? householdMembers[ownerId] : undefined;
+      return {
+        addedByName: member?.name ?? "Household member",
+        addedByInitials: member ? memberInitials(member.name) : "?",
+      };
+    },
+    [householdMembers, user?.id, expenseUserId],
+  );
+
+  const detailAttribution = useMemo(() => {
+    if (!detailExpense) return { addedByName: undefined, addedByInitials: undefined };
+    const isOwn = !detailExpense.user_id || detailExpense.user_id === user?.id;
+    if (isOwn) {
+      return {
+        addedByName: "You",
+        addedByInitials: memberInitials(profile?.name || "You"),
+      };
+    }
+    const member = detailExpense.user_id ? householdMembers[detailExpense.user_id] : undefined;
+    return {
+      addedByName: member?.name ?? "Household member",
+      addedByInitials: member ? memberInitials(member.name) : "?",
+    };
+  }, [detailExpense, user?.id, householdMembers, profile?.name]);
+
   useEffect(() => {
     if (!details) return;
-    const fresh = expenses.find((e) => e.id === details.id);
-    if (!fresh) setDetails(null);
-    else if (fresh !== details) setDetails(fresh);
+    if (!expenses.some((e) => e.id === details.id)) setDetails(null);
   }, [expenses, details]);
 
   const isExp = (e: Expense) => (e.type ?? "expense") === "expense";
@@ -992,26 +1025,43 @@ const Index = () => {
             </div>
           )}
 
-          {profile?.household_id && viewMode === "household" && jointGoals?.map((goal) => {
-            let formattedDeadline;
-            try {
-              formattedDeadline = goal.deadline ? new Date(goal.deadline).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : undefined;
-            } catch {
-              formattedDeadline = goal.deadline;
-            }
-
-            return (
-              <div key={goal.id} className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <JointGoalCard
-                  title={goal.title}
-                  targetAmount={Number(goal.target_amount)}
-                  currentAmount={Number(goal.current_amount)}
-                  deadline={formattedDeadline}
-                  color={goal.color}
-                />
+          {profile?.household_id && viewMode === "household" && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Household Activity</h3>
+                </div>
+                <ActivityWire userId={user?.id || null} />
               </div>
-            );
-          })}
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Shared Goals</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {jointGoals.map((goal) => (
+                    <JointGoalCard
+                      key={goal.id}
+                      title={goal.title}
+                      targetAmount={Number(goal.target_amount)}
+                      currentAmount={Number(goal.current_amount)}
+                      color={goal.color}
+                      deadline={goal.deadline}
+                      onAddContribution={() => {
+                        setReceiptScanPrefill({
+                          amount: "",
+                          category: goal.title,
+                          note: `Contribution to ${goal.title}`,
+                        });
+                        setOpen(true);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {profile?.household_id && viewMode === "household" && (!jointGoals || jointGoals.length === 0) && (
             <Card className="p-8 border-dashed border-2 border-border/40 bg-surface/5 text-center space-y-3 rounded-[24px]">
@@ -1253,14 +1303,23 @@ const Index = () => {
                       </div>
                     ) : (
                       <div className="flex flex-col divide-y divide-border/50">
-                        {dayExpenses.map((e) => (
-                          <ExpenseRow
-                            key={e.id} expense={e} onSelect={setDetails}
-                            onDelete={() => handleAskDelete(e)}
-                            categories={categories}
-                            showAnomaly={anomalyExpenseIds.has(e.id)}
-                          />
-                        ))}
+                        {dayExpenses.map((e) => {
+                          const attribution = memberAttribution(e);
+                          return (
+                            <ExpenseRow
+                              key={e.id}
+                              expense={e}
+                              onSelect={setDetails}
+                              onDelete={() => handleAskDelete(e)}
+                              categories={categories}
+                              showAnomaly={anomalyExpenseIds.has(e.id)}
+                              currentUserId={user?.id}
+                              onToggleReaction={toggleReaction}
+                              addedByName={attribution.addedByName}
+                              addedByInitials={attribution.addedByInitials}
+                            />
+                          );
+                        })}
                       </div>
                     )}
 
@@ -1289,17 +1348,22 @@ const Index = () => {
                                   <p className="text-xs text-ink-muted text-center py-3">No expenses logged.</p>
                                 ) : (
                                   <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
-                                    {items.map((e) => (
-                                      <ExpenseRow
-                                        key={e.id}
-                                        expense={e}
-                                        onSelect={setDetails}
-                                        categories={categories}
-                                        showAnomaly={anomalyExpenseIds.has(e.id)}
-                                        currentUserId={user?.id}
-                                        onToggleReaction={toggleReaction}
-                                      />
-                                    ))}
+                                    {items.map((e) => {
+                                      const attribution = memberAttribution(e);
+                                      return (
+                                        <ExpenseRow
+                                          key={e.id}
+                                          expense={e}
+                                          onSelect={setDetails}
+                                          categories={categories}
+                                          showAnomaly={anomalyExpenseIds.has(e.id)}
+                                          currentUserId={user?.id}
+                                          onToggleReaction={toggleReaction}
+                                          addedByName={attribution.addedByName}
+                                          addedByInitials={attribution.addedByInitials}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </CollapsibleContent>
@@ -1320,6 +1384,7 @@ const Index = () => {
                     anomalyExpenseIds={anomalyExpenseIds}
                     currentUserId={user?.id}
                     onToggleReaction={toggleReaction}
+                    memberAttribution={memberAttribution}
                   />
                 )}
 
@@ -1331,6 +1396,7 @@ const Index = () => {
                     anomalyExpenseIds={anomalyExpenseIds}
                     currentUserId={user?.id}
                     onToggleReaction={toggleReaction}
+                    memberAttribution={memberAttribution}
                   />
                 )}
               </div>
@@ -1344,6 +1410,7 @@ const Index = () => {
           onAddCategory={addCategory} onAddSubcategory={addSubcategory}
           editing={editing} onUpdate={handleUpdateExpense}
           isHouseholdMember={!!profile.household_id}
+          householdId={profile.household_id}
           defaultShared={viewMode === "household"}
           budgets={budgets} spentByCategory={spentByCategory}
           receiptScanPrefill={receiptScanPrefill}
@@ -1361,12 +1428,17 @@ const Index = () => {
         />
 
         <ExpenseDetailsDrawer
-          expense={details} categories={categories}
+          expense={detailExpense}
+          categories={categories}
           onOpenChange={(v) => { if (!v) setDetails(null); }}
-          onUpdate={handleUpdateExpense} onDelete={deleteExpense}
+          onUpdate={handleUpdateExpense}
+          onDelete={deleteExpense}
           onAddSubcategory={addSubcategory}
           userId={user?.id ?? null}
           onToggleReaction={toggleReaction}
+          addedByName={detailAttribution.addedByName}
+          addedByInitials={detailAttribution.addedByInitials}
+          isShared={!!detailExpense?.household_id}
         />
 
         <BudgetsSheet

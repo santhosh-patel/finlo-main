@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { getCurrencySymbol, Expense, PaymentMethod, todayISO } from "@/lib/expenses";
+import { getCurrencySymbol, Expense, PaymentMethod, todayISO, ExpensePayload } from "@/lib/expenses";
 import { Upload, FileWarning, CheckCircle2 } from "lucide-react";
 
 type XlsxNs = typeof import("xlsx");
 
-type Row = Omit<Expense, "id" | "created_at">;
+type Row = ExpensePayload;
 
 interface Props {
   open: boolean;

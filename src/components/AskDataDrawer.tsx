@@ -19,7 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { cn, vibrate } from "@/lib/utils";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
-import { getCurrencySymbol, formatINR, Expense, CategoryDef } from "@/lib/expenses";
+import { getCurrencySymbol, formatINR, Expense, CategoryDef, ExpensePayload } from "@/lib/expenses";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -64,7 +64,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   transactions: Expense[];
   categories: CategoryDef[];
-  addExpense: (e: Omit<Expense, "id" | "created_at">) => Expense;
+  addExpense: (e: ExpensePayload) => Expense;
   addCategory: (
     name: string,
     opts?: { subcategories?: string[]; type?: CategoryDef["type"]; silentToast?: boolean }

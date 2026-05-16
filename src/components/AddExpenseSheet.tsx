@@ -14,6 +14,7 @@ import {
   todayISO,
   TxnType,
   INCOME_CATEGORIES,
+  ExpensePayload,
 } from "@/lib/expenses";
 import { SUPPORTED_CURRENCIES, CURRENCY_SYMBOLS, getBaseCurrency, getFxRateSync, refreshFxRates } from "@/lib/fx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,11 +33,11 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   categories: CategoryDef[];
-  onAdd: (e: Omit<Expense, "id" | "created_at">) => void;
+  onAdd: (e: ExpensePayload) => void;
   onAddCategory: (name: string) => void;
   onAddSubcategory?: (category: string, sub: string) => void;
   editing?: Expense | null;
-  onUpdate?: (id: string, patch: Partial<Omit<Expense, "id" | "created_at">>) => void;
+  onUpdate?: (id: string, patch: Partial<ExpensePayload>) => void;
   budgets?: Record<string, number>;
   spentByCategory?: Record<string, number>;
   /** From quick-add receipt scan: applied when sheet opens (add mode only) */
@@ -44,6 +45,7 @@ interface Props {
   onReceiptScanPrefillConsumed?: () => void;
   defaultDate?: string;
   isHouseholdMember?: boolean;
+  householdId?: string | null;
   defaultShared?: boolean;
 }
 
@@ -54,6 +56,7 @@ export function AddExpenseSheet({
   onReceiptScanPrefillConsumed,
   defaultDate,
   isHouseholdMember = false,
+  householdId = null,
   defaultShared = false,
 }: Props) {
   const isEdit = !!editing;
@@ -166,7 +169,7 @@ export function AddExpenseSheet({
       setPayment(editing.payment_method);
       setCurrency(editing.currency ?? baseCurrency);
       setReimbursable(!!editing.is_reimbursable);
-      setIsShared(editing.household_id !== null);
+      setIsShared(!!editing.household_id);
     setReceiptUrl(editing.receipt_url ?? "");
     } else {
       setTxnType("expense");
@@ -241,6 +244,7 @@ export function AddExpenseSheet({
       base_amount: num * fxRate,
       is_reimbursable: txnType === "expense" ? reimbursable : false,
       receipt_url: receiptUrl || undefined,
+      household_id: isHouseholdMember && isShared && householdId ? householdId : null,
     };
     if (isEdit && editing && onUpdate) {
       onUpdate(editing.id, payload);

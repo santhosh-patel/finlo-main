@@ -27,6 +27,9 @@ export interface Expense {
   reactions?: { user_id: string; emoji: string }[];
 }
 
+/** Payload for creating a new expense - ID and user ID are handled by the hook/server */
+export type ExpensePayload = Omit<Expense, "id" | "created_at" | "user_id">;
+
 /** Returns the amount of the expense converted to the user's base currency. */
 export function baseAmountOf(e: Expense): number {
   if (e.base_amount != null && !Number.isNaN(e.base_amount)) return Number(e.base_amount);

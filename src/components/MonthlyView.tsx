@@ -22,13 +22,14 @@ interface Props {
   anomalyExpenseIds?: Set<string>;
   currentUserId?: string | null;
   onToggleReaction?: (id: string, emoji: string) => void;
+  memberAttribution?: (expense: Expense) => { addedByName?: string; addedByInitials?: string };
 }
 
 interface Insight {
   text: string;
 }
 
-export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect, categories, anomalyExpenseIds, currentUserId, onToggleReaction }: Props) {
+export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect, categories, anomalyExpenseIds, currentUserId, onToggleReaction, memberAttribution }: Props) {
   const { from, to, label } = useMemo(() => monthRangeOf(anchor), [anchor]);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -617,17 +618,22 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="flex flex-col divide-y divide-border/50 pl-2 pt-1">
-                        {items.map((e) => (
-                          <ExpenseRow
-                            key={e.id}
-                            expense={e}
-                            onSelect={onSelect}
-                            categories={categories}
-                            showAnomaly={anomalyExpenseIds?.has(e.id)}
-                            currentUserId={currentUserId}
-                            onToggleReaction={onToggleReaction}
-                          />
-                        ))}
+                        {items.map((e) => {
+                          const attribution = memberAttribution?.(e) ?? {};
+                          return (
+                            <ExpenseRow
+                              key={e.id}
+                              expense={e}
+                              onSelect={onSelect}
+                              categories={categories}
+                              showAnomaly={anomalyExpenseIds?.has(e.id)}
+                              currentUserId={currentUserId}
+                              onToggleReaction={onToggleReaction}
+                              addedByName={attribution.addedByName}
+                              addedByInitials={attribution.addedByInitials}
+                            />
+                          );
+                        })}
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
@@ -662,20 +668,25 @@ export function MonthlyView({ expenses, budgets, onOpenBudgets, anchor, onSelect
               {monthExpenses
                 .filter(e => e.category === selectedCategory)
                 .sort((a, b) => b.date.localeCompare(a.date))
-                .map((e) => (
-                  <ExpenseRow 
-                    key={e.id} 
-                    expense={e} 
-                    onSelect={(exp) => {
-                      setSelectedCategory(null);
-                      onSelect?.(exp);
-                    }} 
-                    categories={categories}
-                    showAnomaly={anomalyExpenseIds?.has(e.id)}
-                    currentUserId={currentUserId}
-                    onToggleReaction={onToggleReaction}
-                  />
-                ))}
+                .map((e) => {
+                  const attribution = memberAttribution?.(e) ?? {};
+                  return (
+                    <ExpenseRow
+                      key={e.id}
+                      expense={e}
+                      onSelect={(exp) => {
+                        setSelectedCategory(null);
+                        onSelect?.(exp);
+                      }}
+                      categories={categories}
+                      showAnomaly={anomalyExpenseIds?.has(e.id)}
+                      currentUserId={currentUserId}
+                      onToggleReaction={onToggleReaction}
+                      addedByName={attribution.addedByName}
+                      addedByInitials={attribution.addedByInitials}
+                    />
+                  );
+                })}
             </div>
           </div>
         </SheetContent>

@@ -12,6 +12,7 @@ const expense: Expense = {
   created_at: "2026-05-11T09:00:00.000Z",
   note: "Lunch",
   type: "expense",
+  user_id: "test-user-1",
 };
 
 describe("ExpenseDetailsDrawer", () => {

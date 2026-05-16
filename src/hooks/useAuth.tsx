@@ -32,6 +32,7 @@ export interface AuthState {
   login: (email: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
   updateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -186,6 +187,22 @@ function useProvideAuth(): AuthState {
     [user],
   );
 
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("display_name,email,user_id,household_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!mountedRef.current || !prof) return;
+    setProfile({
+      user_id: user.id,
+      email: prof.email ?? user.email ?? "",
+      name: prof.display_name ?? user.email?.split("@")[0] ?? "",
+      household_id: prof.household_id,
+    });
+  }, [user]);
+
   return {
     isAuthed: !!session,
     loading,
@@ -200,6 +217,7 @@ function useProvideAuth(): AuthState {
     login,
     logout,
     updateProfile,
+    refreshProfile,
   };
 }
 
