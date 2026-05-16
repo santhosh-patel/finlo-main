@@ -1050,9 +1050,8 @@ const Index = () => {
                       deadline={goal.deadline}
                       onAddContribution={() => {
                         setReceiptScanPrefill({
-                          amount: "",
-                          category: goal.title,
-                          note: `Contribution to ${goal.title}`,
+                          categoryGuess: goal.title,
+                          merchant: `Contribution to ${goal.title}`,
                         });
                         setOpen(true);
                       }}

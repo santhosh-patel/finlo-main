@@ -31,11 +31,12 @@ BEGIN
   FROM public.households
   WHERE id = NEW.household_id;
 
-  INSERT INTO public.notifications (user_id, title, body, url)
+  INSERT INTO public.notifications (user_id, title, body, kind, link)
   VALUES (
     invitee_id,
     'Household invitation',
     inviter_name || ' invited you to join “' || household_label || '”',
+    'invite',
     '/settings?tab=household'
   );
 
