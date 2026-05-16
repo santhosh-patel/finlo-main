@@ -11,6 +11,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Profile {
+  [x: string]: any;
   user_id: string;
   email: string;
   name: string;

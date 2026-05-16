@@ -9,7 +9,7 @@ import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } 
 import { cn, vibrate } from "@/lib/utils";
 import { ArrowLeft, Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
 import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
-import { Users, Heart, Share2, Mail, CheckCircle2, Clock } from "lucide-react";
+import { Users, Heart, Share2, Mail, CheckCircle2, Clock, Bell, BellOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog,
@@ -123,7 +123,7 @@ export default function Settings(props: Props) {
               Finlo AI
             </p>
             <p className="text-[11px] text-ink-muted/60 dark:text-ink-muted/50 font-medium mt-1.5 tracking-tight font-sans">
-              v1.1.7
+              v1.2.0
             </p>
           </div>
         </div>
@@ -139,6 +139,81 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
   const [show, setShow] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState<NotificationPermission>(
+    typeof Notification !== "undefined" ? Notification.permission : "default"
+  );
+  const [isSubscribed, setIsSubscribed] = useState(false);
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
+          setIsSubscribed(!!sub);
+        });
+      });
+    }
+  }, []);
+
+  const toggleNotifications = async () => {
+    if (typeof Notification === "undefined") {
+      toast({ title: "Not supported", description: "Your browser doesn't support notifications.", variant: "destructive" });
+      return;
+    }
+
+    if (Notification.permission === "denied") {
+      toast({ title: "Permission Denied", description: "Please enable notifications in your browser settings.", variant: "destructive" });
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (isSubscribed) {
+        // Unsubscribe
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await sub.unsubscribe();
+          await (supabase as any).from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        }
+        setIsSubscribed(false);
+        toast({ title: "Notifications disabled" });
+      } else {
+        // Subscribe
+        const permission = await Notification.requestPermission();
+        setNotificationStatus(permission);
+        if (permission !== "granted") throw new Error("Permission not granted");
+
+        const reg = await navigator.serviceWorker.ready;
+        // Public key for development/demo. User should replace this with their own VAPID key.
+        const vapidPublicKey = "BPY58mE69GzO6yR9S2qD8G5N3C1F4B7V9W3Q5P8M2L0K1J4H7G9F8D5S3A1Q";
+
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidPublicKey
+        });
+
+        // Convert key buffers to base64
+        const p256dh = btoa(String.fromCharCode.apply(null, new Uint8Array(sub.getKey("p256dh")!) as any));
+        const auth = btoa(String.fromCharCode.apply(null, new Uint8Array(sub.getKey("auth")!) as any));
+
+        const { error } = await (supabase as any).from("push_subscriptions").insert({
+          user_id: profile.user_id,
+          endpoint: sub.endpoint,
+          p256dh,
+          auth
+        } as any);
+
+        if (error) throw error;
+        setIsSubscribed(true);
+        toast({ title: "Notifications enabled!", description: "You'll now receive alerts for shared expenses." });
+      }
+    } catch (err: any) {
+      console.error("Subscription error:", err);
+      toast({ title: "Subscription failed", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const save = async () => {
     const patch: { name?: string; password?: string } = {};
@@ -203,8 +278,43 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
       </div>
       <Button type="button" onClick={save} disabled={busy}
         className="w-full rounded-full bg-foreground text-background hover:bg-foreground/90 h-11">
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Profile"}
       </Button>
+
+      {/* Notifications Toggle */}
+      <div className="space-y-3 pt-4 border-t border-border/10">
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-surface/30 border border-border/20">
+          <div className="flex gap-3 items-center">
+            <div className={cn(
+              "h-10 w-10 rounded-2xl flex items-center justify-center transition-colors",
+              isSubscribed ? "bg-primary/10 text-primary" : "bg-ink-muted/10 text-ink-muted"
+            )}>
+              {isSubscribed ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Push Notifications</p>
+              <p className="text-[11px] text-ink-muted/60">{isSubscribed ? "Enabled on this device" : "Receive alerts for shared expenses"}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={toggleNotifications}
+            className="relative h-6 w-11 rounded-full transition-colors duration-300 disabled:opacity-50"
+            style={{ backgroundColor: isSubscribed ? "hsl(var(--foreground))" : "hsl(var(--border) / 0.8)" }}
+            role="switch"
+            aria-checked={isSubscribed}
+          >
+            <div className={cn(
+              "absolute top-[4px] left-[4px] h-4 w-4 rounded-full bg-background shadow-sm transition-transform duration-300 ease-out-soft",
+              isSubscribed && "translate-x-5",
+            )} />
+          </button>
+        </div>
+        {notificationStatus === "denied" && (
+          <p className="text-[10px] text-destructive px-2 italic">Notifications are blocked in your browser settings. Please enable them to receive alerts.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -472,7 +582,7 @@ function DataSection({
     let filtered = data.expenses;
     if (exportFrom) filtered = filtered.filter((e) => e.date.split("T")[0] >= exportFrom);
     if (exportTo) filtered = filtered.filter((e) => e.date.split("T")[0] <= exportTo);
-    
+
     let suffix: string;
     if (exportFrom && exportTo) {
       suffix = exportFrom === exportTo ? exportFrom
@@ -559,7 +669,7 @@ function DataSection({
         <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium">Backup</p>
         <div className="px-4 py-4 rounded-2xl border border-border/40 bg-surface/30 space-y-3">
           <p className="text-foreground text-sm">Export Data</p>
-          
+
           <div className="space-y-2">
             <Label className="text-[10px] tracking-[0.2em] uppercase text-ink-muted">Format</Label>
             <div className="flex bg-background border border-border/40 rounded-full p-0.5">
@@ -684,23 +794,35 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
     if (!incomingInvite) return;
     setBusy(true);
     try {
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({ household_id: incomingInvite.household_id })
-        .eq("user_id", profile.user_id);
-      if (profileErr) throw profileErr;
+      const { data, error } = await supabase.functions.invoke("respond-to-invite", {
+        body: { invite_id: incomingInvite.id, action: "accept" }
+      });
 
-      const { error: invErr } = await supabase
-        .from("household_invites")
-        .update({ status: "accepted" })
-        .eq("id", incomingInvite.id);
-      if (invErr) throw invErr;
+      if (error || data?.error) throw error || new Error(data.error);
 
       await onSync();
       toast({ title: "Joined household!", description: "You and your partner are now connected." });
-      window.location.reload();
+      setIncomingInvite(null);
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      console.error("Accept error:", err);
+      toast({ title: "Failed to join", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rejectInvite = async () => {
+    if (!incomingInvite) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase.functions.invoke("respond-to-invite", {
+        body: { invite_id: incomingInvite.id, action: "reject" }
+      });
+      if (error) throw error;
+      setIncomingInvite(null);
+      toast({ title: "Invite declined" });
+    } catch (err: any) {
+      toast({ title: "Error", description: "Could not decline invite", variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -780,10 +902,26 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
     }
   };
 
+  const leaveHousehold = async () => {
+    if (!window.confirm("Are you sure you want to leave the household? You will lose access to shared expenses and budgets.")) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase.functions.invoke("leave-household");
+      if (error) throw error;
+      await onSync();
+      toast({ title: "Left household", description: "You are now managing finances individually." });
+    } catch (err: any) {
+      toast({ title: "Error", description: "Could not leave household", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-16">
-        <Loader2 className="animate-spin h-6 w-6 text-ink-muted" />
+      <div className="flex flex-col items-center justify-center py-20 animate-pulse">
+        <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin mb-4" />
+        <p className="text-sm text-ink-muted">Loading household...</p>
       </div>
     );
   }
@@ -791,131 +929,188 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
   // === No household yet ===
   if (!profile.household_id) {
     return (
-      <div className="space-y-6 text-center py-4">
-        <div className="mx-auto w-16 h-16 rounded-3xl bg-surface flex items-center justify-center">
-          <Users className="h-8 w-8 text-foreground" />
-        </div>
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
+        {/* Incoming Invitation UI */}
+        {incomingInvite && (
+          <div className="relative overflow-hidden p-6 rounded-[2rem] bg-gradient-to-br from-primary/20 via-primary/5 to-transparent border border-primary/20 shadow-xl shadow-primary/5">
+            <div className="absolute top-0 right-0 p-4 opacity-10">
+              <Heart className="h-24 w-24 fill-primary" />
+            </div>
 
-        {incomingInvite ? (
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <h3 className="font-serif text-2xl">You're invited</h3>
-              <p className="text-sm text-ink-muted leading-relaxed px-4">
-                <span className="font-medium text-foreground">
-                  {(incomingInvite as any).profiles?.display_name || "Your partner"}
-                </span>{" "}
-                invited you to manage finances together.
-              </p>
+            <div className="relative flex flex-col items-center text-center space-y-5">
+              <div className="h-16 w-16 rounded-3xl bg-primary/20 flex items-center justify-center shadow-inner">
+                <Heart className="h-8 w-8 text-primary fill-primary animate-pulse" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="font-serif text-2xl tracking-tight text-foreground">You're invited</h3>
+                <p className="text-sm text-ink-muted px-6 leading-relaxed">
+                  <span className="font-semibold text-foreground">
+                    {incomingInvite.profiles?.display_name || "A partner"}
+                  </span>{" "}
+                  is asking to manage finances together with you.
+                </p>
+              </div>
+
+              <div className="flex gap-3 w-full pt-2">
+                <Button
+                  onClick={acceptInvite}
+                  className="flex-1 rounded-2xl h-12 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 font-medium"
+                  disabled={busy}
+                >
+                  {busy ? <Loader2 className="animate-spin h-4 w-4" /> : "Accept & Join"}
+                </Button>
+                <Button
+                  onClick={rejectInvite}
+                  variant="outline"
+                  className="flex-1 rounded-2xl h-12 border-primary/20 hover:bg-primary/5 text-primary"
+                  disabled={busy}
+                >
+                  Decline
+                </Button>
+              </div>
             </div>
-            <Button
-              onClick={acceptInvite}
-              disabled={busy}
-              className="w-full rounded-full bg-foreground text-background h-11"
-            >
-              {busy ? <Loader2 className="animate-spin h-4 w-4" /> : "Accept Invitation"}
-            </Button>
-            <p className="text-[10px] text-ink-muted uppercase tracking-widest">or start your own</p>
-            <Button
-              variant="ghost"
-              onClick={createHousehold}
-              disabled={busy}
-              className="w-full rounded-full h-11 text-ink-muted"
-            >
-              Create New Household
-            </Button>
           </div>
-        ) : (
-          <>
-            <div className="space-y-1.5">
-              <h3 className="font-serif text-2xl">Manage together</h3>
-              <p className="text-sm text-ink-muted leading-relaxed px-4">
-                Create a shared household to track spending with your partner — privately and clearly.
-              </p>
+        )}
+
+        {/* Start Household CTA */}
+        <div className="flex flex-col items-center text-center space-y-6 py-8">
+          <div className="relative">
+            <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full" />
+            <div className="relative w-20 h-20 rounded-[2.5rem] bg-surface border border-border/40 flex items-center justify-center shadow-2xl rotate-3">
+              <Users className="h-10 w-10 text-foreground/80" />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="font-serif text-2xl tracking-tight">Financial Intimacy</h3>
+            <p className="text-sm text-ink-muted leading-relaxed max-w-[280px]">
+              Combine your spending power. Create a shared space to manage bills, budgets, and long-term goals together.
+            </p>
+          </div>
+
+          <div className="w-full max-w-[260px] space-y-3">
             <Button
               onClick={createHousehold}
               disabled={busy}
-              className="w-full rounded-full bg-foreground text-background h-11"
+              className="w-full rounded-2xl bg-foreground text-background hover:bg-foreground/90 h-12 shadow-xl shadow-foreground/5 font-medium"
             >
-              {busy ? <Loader2 className="animate-spin h-4 w-4" /> : "Start Household"}
+              {busy ? <Loader2 className="animate-spin h-5 w-5" /> : "Start Shared Space"}
             </Button>
-          </>
-        )}
+            <p className="text-[10px] text-ink-muted/60 uppercase tracking-[0.2em] font-bold">
+              Secure · Private · Shared
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
 
   // === Has household ===
   return (
-    <div className="space-y-5">
-      {/* Household card */}
-      <div className="p-5 rounded-3xl bg-surface/30 border border-border/40 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-foreground text-background flex items-center justify-center shrink-0">
-            <Heart className="h-5 w-5" />
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-700">
+      {/* Household Header Card */}
+      <div className="relative overflow-hidden p-6 rounded-[2.5rem] bg-surface/40 border border-border/40 backdrop-blur-sm shadow-sm">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 rounded-3xl bg-foreground text-background flex items-center justify-center shadow-xl rotate-[-2deg]">
+              <Heart className="h-7 w-7 fill-current" />
+            </div>
+            <div>
+              <h4 className="text-xl font-serif text-foreground leading-none">{household?.name || "Shared Space"}</h4>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <p className="text-[10px] text-ink-muted uppercase tracking-[0.15em] font-bold">Connected &amp; Synced</p>
+              </div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h4 className="font-medium text-foreground truncate">{household?.name || "Household"}</h4>
-            <p className="text-[10px] text-ink-muted uppercase tracking-wider">Shared space · active</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={leaveHousehold}
+            className="text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-full h-8 px-3 text-[11px] font-bold uppercase tracking-wider"
+          >
+            Leave
+          </Button>
+        </div>
+
+        {/* Member Avatars Overlap */}
+        <div className="mt-8 flex items-center justify-between">
+          <div className="flex -space-x-3">
+            <div className="h-12 w-12 rounded-2xl bg-foreground text-background flex items-center justify-center text-lg font-bold border-4 border-surface shadow-md">
+              {(profile.display_name?.[0] || profile.email?.[0] || "U").toUpperCase()}
+            </div>
+            {partner ? (
+              <div className="h-12 w-12 rounded-2xl bg-primary/20 text-primary flex items-center justify-center text-lg font-bold border-4 border-surface shadow-md ring-1 ring-primary/20">
+                {(partner.display_name?.[0] || partner.email?.[0] || "P").toUpperCase()}
+              </div>
+            ) : (
+              <div className="h-12 w-12 rounded-2xl bg-surface-dark border-4 border-surface flex items-center justify-center border-dashed text-ink-muted">
+                <Users className="h-5 w-5 opacity-40" />
+              </div>
+            )}
+          </div>
+
+          <div className="text-right">
+            <p className="text-xs font-medium text-foreground">
+              {partner ? (partner.display_name || partner.email.split('@')[0]) : "Individual Mode"}
+            </p>
+            <p className="text-[10px] text-ink-muted">{partner ? "Partner joined" : "Waiting for partner"}</p>
           </div>
         </div>
 
-        {/* Partner section */}
-        {partner ? (
-          <div className="pt-4 border-t border-border/20 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-wash-sage flex items-center justify-center text-sm font-bold uppercase shrink-0">
-              {(partner.display_name?.[0] || partner.email?.[0] || "?").toUpperCase()}
+        {/* Invite Flow inside the card */}
+        {!partner && (
+          <div className="mt-8 pt-6 border-t border-border/20 space-y-4">
+            <div className="space-y-1.5">
+              <h5 className="text-sm font-medium text-foreground">Invite your partner</h5>
+              <p className="text-xs text-ink-muted leading-relaxed">Send an invitation to their email to start managing together.</p>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{partner.display_name || partner.email}</p>
-              <p className="text-xs text-ink-muted">Partner · connected</p>
-            </div>
-            <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
-          </div>
-        ) : (
-          <div className="pt-4 border-t border-border/20 space-y-3">
-            <p className="text-sm text-ink-muted">No partner connected yet. Invite them:</p>
+
             <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted pointer-events-none" />
+              <div className="relative flex-1 group">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted group-focus-within:text-foreground transition-colors" />
                 <Input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") invitePartner(); }}
                   placeholder="Partner's email"
                   type="email"
-                  autoComplete="email"
-                  className="rounded-full bg-background border-border pl-9 h-10 text-sm"
+                  className="rounded-2xl bg-surface-dark/50 border-transparent focus:border-border pl-10 h-11 text-sm shadow-inner"
                 />
               </div>
               <Button
                 onClick={invitePartner}
                 disabled={busy || !email.trim()}
-                size="sm"
-                className="rounded-full px-4 h-10 shrink-0"
-                aria-label="Send invite"
+                className="rounded-2xl w-11 h-11 p-0 shrink-0 shadow-lg shadow-foreground/5"
               >
                 {busy ? <Loader2 className="animate-spin h-4 w-4" /> : <Share2 className="h-4 w-4" />}
               </Button>
             </div>
 
-            {/* Pending outgoing invites */}
+            {/* Outgoing pending invites */}
             {invites.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-2 pt-2">
                 {invites.map((inv) => (
-                  <div key={inv.id} className="flex items-center gap-3 px-3 py-2.5 rounded-2xl bg-background/50 border border-border/20">
-                    <Clock className="h-4 w-4 text-amber-500 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{inv.email}</p>
-                      <p className="text-[10px] text-ink-muted">Waiting for them to join</p>
+                  <div key={inv.id} className="flex items-center gap-3 p-3 rounded-2xl bg-surface/60 border border-border/20 animate-in fade-in slide-in-from-top-1">
+                    <div className="h-8 w-8 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                      <Clock className="h-4 w-4 text-amber-500" />
                     </div>
-                    <button
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate text-foreground">{inv.email}</p>
+                      <p className="text-[10px] text-ink-muted uppercase tracking-tight">Pending invitation</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => cancelInvite(inv.id)}
-                      className="text-ink-muted hover:text-destructive transition-colors p-1"
-                      aria-label="Cancel invite"
+                      className="h-8 w-8 rounded-full text-ink-muted hover:text-destructive hover:bg-destructive/10"
                     >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -924,31 +1119,34 @@ function HouseholdSection({ profile, onSync }: { profile: Profile; onSync: () =>
         )}
       </div>
 
-      {/* Feature status badges */}
-      <div className="grid grid-cols-1 gap-2">
-        <div className="px-4 py-3 rounded-2xl border border-border/20 bg-surface/20 flex items-center gap-3">
-          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-sm text-foreground">Shared transactions</p>
-            <p className="text-[11px] text-ink-muted">Both partners see each other's logged expenses</p>
+      {/* Shared Features Summary */}
+      <div className="grid grid-cols-1 gap-3">
+        {[
+          {
+            title: "Joint Dashboard",
+            desc: "Both see all logged transactions in real-time.",
+            icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          },
+          {
+            title: "Combined Budgets",
+            desc: "Monthly limits apply to your shared total spending.",
+            icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          },
+          {
+            title: "Privacy & Control",
+            desc: "Log private transactions when needed.",
+            icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          }
+        ].map((feat, i) => (
+          <div key={i} className="flex items-start gap-4 p-4 rounded-3xl border border-border/10 bg-surface/10 backdrop-blur-[2px]">
+            <div className="mt-0.5">{feat.icon}</div>
+            <div className="space-y-0.5">
+              <h5 className="text-sm font-semibold text-foreground">{feat.title}</h5>
+              <p className="text-[11px] text-ink-muted leading-relaxed">{feat.desc}</p>
+            </div>
           </div>
-        </div>
-        <div className="px-4 py-3 rounded-2xl border border-border/20 bg-surface/20 flex items-center gap-3">
-          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-sm text-foreground">Shared budgets &amp; goals</p>
-            <p className="text-[11px] text-ink-muted">Monthly limits apply to your combined spending</p>
-          </div>
-        </div>
-        <div className="px-4 py-3 rounded-2xl border border-border/20 bg-surface/20 flex items-center gap-3">
-          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-sm text-foreground">Individual privacy preserved</p>
-            <p className="text-[11px] text-ink-muted">Each transaction still belongs to its owner</p>
-          </div>
-        </div>
+        ))}
       </div>
-
     </div>
   );
 }

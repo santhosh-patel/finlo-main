@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "std/http/server.ts";
+import { createClient } from "supabase";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,31 +65,55 @@ serve(async (req) => {
     // 6. Generate Pulse Cards
     const pulses = [];
 
-    // Fairness Nudge (only if imbalance > 15%)
+    // Fairness & Settlement (only if 2 members)
     if (contributions.length === 2) {
-      const diff = Math.abs(contributions[0].percentage - contributions[1].percentage);
-      if (diff > 15) {
-        const higher = contributions[0].spent > contributions[1].spent ? contributions[0] : contributions[1];
+      const perPerson = totalSpent / 2;
+      const member1 = contributions[0];
+      const member2 = contributions[1];
+      
+      const imbalance = Math.abs(member1.percentage - member2.percentage);
+      
+      if (imbalance > 5) { // Show settlement if > 5% diff
+        const overpaid = member1.spent > perPerson ? member1 : member2;
+        const underpaid = member1.spent < perPerson ? member1 : member2;
+        const amount = overpaid.spent - perPerson;
+
         pulses.push({
-          id: `fairness-\${Date.now()}`,
           type: "insight",
-          title: "Fairness Check",
-          message: `\${higher.name} covered \${higher.percentage.toFixed(0)}% of household expenses this month. Maybe handle the next big grocery run?`,
-          icon: "heart",
+          title: "Household Balance",
+          content: `${underpaid.name} owes ${overpaid.name} ₹${amount.toFixed(0)} to settle this month's shared expenses.`,
+          metrics: { amount, owes_to: overpaid.name },
+          actions: [
+            { label: "Settle Up", type: "navigate", payload: { target: "loans" } }
+          ]
         });
       }
     }
 
     // Monthly Summary
     pulses.push({
-      id: `summary-\${Date.now()}`,
       type: "insight",
-      title: "Monthly Pulse",
-      message: `You've spent \${totalSpent.toFixed(0)} together this month. \${biggestCat ? \`\${biggestCat[0]} was your biggest shared expense.\` : "Keep it up!"}`,
-      icon: "zap",
+      title: "Shared Pulse",
+      content: `You've spent ₹${totalSpent.toFixed(0)} together this month. ${biggestCat ? `${biggestCat[0]} was your biggest category.` : "Budgeting looks healthy!"}`,
+      metrics: { totalSpent },
+      actions: [{ label: "View Ledger", type: "navigate", payload: { target: "search" } }]
     });
 
-    return new Response(JSON.stringify({ pulses }), {
+    // 7. Persist Pulses for ALL members
+    for (const member of members) {
+      const inserts = pulses.map(p => ({
+        user_id: member.user_id,
+        type: p.type,
+        title: p.title,
+        content: p.content,
+        metrics: p.metrics,
+        actions: p.actions,
+      }));
+      
+      await supabase.from("daily_pulses").insert(inserts);
+    }
+
+    return new Response(JSON.stringify({ success: true, count: pulses.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 

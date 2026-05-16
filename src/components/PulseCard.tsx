@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Sparkles, X, ArrowRight, TrendingUp, AlertTriangle, Calendar, Info, Loader2 } from "lucide-react";
+import { Sparkles, X, ArrowRight, TrendingUp, AlertTriangle, Calendar, Info, Loader2, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
@@ -101,6 +101,9 @@ export function PulseCard({ userId, onNavigate, onAction }: Props) {
       case "budget_alert": return <AlertTriangle className="h-5 w-5 text-amber-500" />;
       case "weekend_plan": return <Calendar className="h-5 w-5 text-indigo-500" />;
       case "anomaly": return <TrendingUp className="h-5 w-5 text-rose-500" />;
+      case "insight": 
+        if (pulse.title.includes("Balance")) return <Users className="h-5 w-5 text-primary" />;
+        return <Sparkles className="h-5 w-5 text-emerald-500" />;
       default: return <Sparkles className="h-5 w-5 text-emerald-500" />;
     }
   };
@@ -110,6 +113,7 @@ export function PulseCard({ userId, onNavigate, onAction }: Props) {
       case "budget_alert": return "bg-amber-500/5 border-amber-500/10";
       case "weekend_plan": return "bg-indigo-500/5 border-indigo-500/10";
       case "anomaly": return "bg-rose-500/5 border-rose-500/10";
+      case "insight": return pulse.title.includes("Balance") ? "bg-primary/5 border-primary/10" : "bg-emerald-500/5 border-emerald-500/10";
       default: return "bg-emerald-500/5 border-emerald-500/10";
     }
   };
