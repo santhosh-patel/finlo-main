@@ -86,7 +86,7 @@ function formatFnError(name: string, err: unknown): string {
 
 export default function Admin() {
   const { isAdmin, loading, user, logout, impersonate, impersonatedUserId, impersonatedEmail, stopImpersonating } = useAuth();
-  const { theme, update: updateTheme } = useTheme();
+  const { theme, update: updateTheme, isDark } = useTheme();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<"users" | "metrics" | "workflow">("users");
@@ -518,11 +518,18 @@ export default function Admin() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateTheme({ mode: theme.mode === "dark" ? "light" : "dark" })}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const next = isDark ? "light" : "dark";
+                updateTheme(
+                  { mode: next },
+                  { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+                );
+              }}
               className="rounded-full h-9 border-border/60"
-              title="Toggle theme"
+              title="Toggle light / dark"
             >
-              {theme.mode === "dark" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+              {isDark ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
             </Button>
             <Button
               variant="outline"

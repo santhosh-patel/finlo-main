@@ -65,9 +65,19 @@
     --shadow-lg: 0 16px 48px -12px hsl(220 30% 10% / 0.18);
 
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --duration-fast: 120ms;
-    --duration-base: 200ms;
-    --duration-slow: 320ms;
+    --duration-fast: 150ms;
+    --duration-base: 280ms;
+    --duration-slow: 400ms;
+    --duration-theme: 1.2s;
+
+    --theme-tx-x: calc(100% - 48px);
+    --theme-tx-y: 24px;
+
+    --glass-bg: hsl(var(--surface) / 0.72);
+    --glass-border: hsl(var(--border) / 0.55);
+    --bg-gradient: radial-gradient(ellipse 120% 80% at 50% -20%, hsl(var(--wash-clay) / 0.35), transparent 55%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    --grid-color: hsl(var(--border) / 0.45);
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -125,6 +135,108 @@
     --sidebar-accent-foreground: 210 12% 95%;
     --sidebar-border: 220 11% 18%;
     --sidebar-ring: 199 82% 70%;
+
+    --glass-bg: hsl(var(--surface) / 0.65);
+    --glass-border: hsl(0 0% 100% / 0.12);
+    --bg-gradient: radial-gradient(ellipse 100% 70% at 80% -10%, hsl(264 55% 28% / 0.35), transparent 50%),
+      radial-gradient(ellipse 80% 50% at 10% 100%, hsl(280 40% 22% / 0.2), transparent 45%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    --grid-color: hsl(0 0% 100% / 0.08);
+  }
+
+  /* Sunrise — warm amber morning (light) */
+  .theme-sunrise {
+    --background: 38 55% 96%;
+    --foreground: 25 28% 14%;
+
+    --card: 36 45% 98%;
+    --card-foreground: 25 28% 14%;
+    --popover: 36 45% 98%;
+    --popover-foreground: 25 28% 14%;
+
+    --primary: 25 28% 14%;
+    --primary-foreground: 38 55% 96%;
+
+    --secondary: 32 40% 91%;
+    --secondary-foreground: 25 28% 14%;
+    --muted: 32 35% 90%;
+    --muted-foreground: 25 12% 42%;
+
+    --destructive: 8 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 32 28% 86%;
+    --input: 32 28% 86%;
+    --ring: 28 65% 42%;
+
+    --surface: 34 42% 93%;
+    --surface-elevated: 36 50% 99%;
+    --ink-muted: 25 14% 44%;
+    --wash-sage: 85 22% 82%;
+    --wash-clay: 22 48% 84%;
+
+    --shadow-sm: 0 1px 2px hsl(28 40% 20% / 0.05);
+    --shadow-md: 0 6px 20px -4px hsl(28 40% 20% / 0.1);
+    --shadow-lg: 0 18px 44px -10px hsl(28 40% 20% / 0.14);
+
+    --glass-bg: hsl(var(--surface) / 0.78);
+    --glass-border: hsl(28 40% 70% / 0.35);
+    --bg-gradient: radial-gradient(ellipse 110% 70% at 90% -15%, hsl(32 90% 75% / 0.45), transparent 50%),
+      radial-gradient(ellipse 90% 60% at 5% 110%, hsl(12 70% 82% / 0.35), transparent 48%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    --grid-color: hsl(28 30% 75% / 0.5);
+  }
+
+  /* Sunset — premium blue-purple dusk (dark) */
+  .theme-sunset {
+    --background: 264 42% 7%;
+    --foreground: 248 12% 98%;
+
+    --card: 264 36% 9%;
+    --card-foreground: 248 12% 98%;
+    --popover: 264 34% 10%;
+    --popover-foreground: 248 12% 98%;
+
+    --primary: 248 15% 96%;
+    --primary-foreground: 264 42% 7%;
+
+    --secondary: 264 28% 14%;
+    --secondary-foreground: 248 10% 94%;
+    --muted: 264 26% 13%;
+    --muted-foreground: 248 8% 68%;
+
+    --destructive: 12 62% 52%;
+    --destructive-foreground: 248 40% 98%;
+
+    --border: 264 22% 20%;
+    --input: 264 22% 17%;
+    --ring: 255 65% 62%;
+
+    --surface: 264 32% 11%;
+    --surface-elevated: 264 30% 14%;
+    --ink-muted: 248 8% 66%;
+    --wash-sage: 264 28% 18%;
+    --wash-clay: 280 32% 20%;
+
+    --shadow-sm: 0 1px 2px hsl(264 50% 2% / 0.7);
+    --shadow-md: 0 10px 28px -6px hsl(264 55% 2% / 0.65);
+    --shadow-lg: 0 24px 56px -12px hsl(264 60% 2% / 0.75);
+
+    --glass-bg: hsl(var(--surface) / 0.55);
+    --glass-border: hsl(0 0% 100% / 0.14);
+    --bg-gradient: radial-gradient(ellipse 100% 75% at 85% -5%, hsl(255 55% 35% / 0.4), transparent 52%),
+      radial-gradient(ellipse 70% 55% at 0% 100%, hsl(280 45% 25% / 0.28), transparent 48%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    --grid-color: hsl(0 0% 100% / 0.1);
+  }
+
+  .dark.theme-sunset,
+  .theme-sunset {
+    color-scheme: dark;
+  }
+
+  .theme-sunrise {
+    color-scheme: light;
   }
 }
 
@@ -163,6 +275,13 @@
     -webkit-text-size-adjust: 100%;
     touch-action: manipulation;
     overscroll-behavior-y: contain;
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
 
   @media (max-width: 767px) {
@@ -172,10 +291,12 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
     font-feature-settings: "ss01", "cv11";
-    transition: background-color var(--duration-base) var(--ease-out),
-                color var(--duration-base) var(--ease-out);
+    background-color: hsl(var(--background));
+    background-image: var(--bg-gradient);
+    transition: background-color var(--duration-slow) var(--ease-out),
+                color var(--duration-slow) var(--ease-out);
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
@@ -204,17 +325,64 @@
   }
 
   button, a, input, [role="button"] {
-    transition: background-color var(--duration-fast) var(--ease-out),
-                color var(--duration-fast) var(--ease-out),
-                border-color var(--duration-fast) var(--ease-out),
-                opacity var(--duration-fast) var(--ease-out),
-                transform var(--duration-fast) var(--ease-out);
+    transition: background-color var(--duration-base) var(--ease-out),
+                color var(--duration-base) var(--ease-out),
+                border-color var(--duration-base) var(--ease-out),
+                opacity var(--duration-base) var(--ease-out),
+                transform var(--duration-base) var(--ease-out),
+                box-shadow var(--duration-base) var(--ease-out);
+  }
+
+  /* Theme switch — circular view transition reveal */
+  @supports (view-transition-name: none) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation-duration: var(--duration-theme);
+      animation-timing-function: var(--ease-out);
+    }
+
+    ::view-transition-old(root) {
+      animation-name: finlo-theme-fade-out;
+      z-index: 1;
+    }
+
+    ::view-transition-new(root) {
+      animation-name: finlo-theme-reveal;
+      z-index: 2;
+    }
+  }
+
+  @keyframes finlo-theme-reveal {
+    from {
+      clip-path: circle(0 at var(--theme-tx-x) var(--theme-tx-y));
+      opacity: 0.85;
+    }
+    to {
+      clip-path: circle(150vmax at var(--theme-tx-x) var(--theme-tx-y));
+      opacity: 1;
+    }
+  }
+
+  @keyframes finlo-theme-fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @keyframes finlo-theme-overlay-fade {
+    0% { opacity: 0; }
+    25% { opacity: 0.55; }
+    100% { opacity: 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation: none !important;
     }
   }
 
@@ -224,6 +392,7 @@
   ::-webkit-scrollbar-thumb {
     background: hsl(var(--border));
     border-radius: 999px;
+    transition: background var(--duration-base) var(--ease-out);
   }
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--ink-muted));
@@ -248,4 +417,30 @@
 .scrollbar-none {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
+}
+
+@layer utilities {
+  .glass-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: background var(--duration-slow) var(--ease-out),
+                border-color var(--duration-slow) var(--ease-out);
+  }
+
+  .glass-card {
+    @apply glass-panel rounded-2xl;
+  }
+
+  .bg-dot-grid {
+    background-image: radial-gradient(var(--grid-color) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .transition-theme {
+    transition: background-color var(--duration-slow) var(--ease-out),
+                color var(--duration-slow) var(--ease-out),
+                border-color var(--duration-slow) var(--ease-out);
+  }
 }

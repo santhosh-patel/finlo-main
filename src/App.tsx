@@ -10,6 +10,7 @@ import { PWAUpdateProvider } from "@/hooks/usePWAUpdate";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { UpdateInstallingOverlay } from "@/components/UpdateInstallingOverlay";
+import { ThemeTransitionOverlay } from "@/components/ThemeTransitionOverlay";
 
 const Login = lazy(() => import("./pages/Login.tsx"));
 const Index = lazy(() => import("./pages/Index.tsx"));
@@ -34,7 +35,7 @@ function RoutedViews() {
         className={cn(
           "min-h-dvh",
           "motion-reduce:animate-none",
-          "animate-in fade-in slide-in-from-bottom-1 duration-200 ease-out",
+          "animate-in fade-in slide-in-from-bottom-1 duration-300 ease-out-soft",
         )}
       >
         <Routes>
@@ -55,6 +56,7 @@ function AppChrome() {
     <>
       <OfflineBanner online={online} className="relative z-[100]" />
       <UpdateInstallingOverlay />
+      <ThemeTransitionOverlay />
       <RoutedViews />
     </>
   );
