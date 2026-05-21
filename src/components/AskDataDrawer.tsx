@@ -82,6 +82,12 @@ const SUGGESTED_QUERIES = [
 const MAYA_INTRO =
   "Ask about your money or describe a purchase to log it. Use \"Add to Finlo\" when Maya suggests entries.";
 
+const MAYA_TITLE = "Maya";
+
+function mayaSessionStorageKey(userId: string) {
+  return `maya_active_session_${userId}`;
+}
+
 export function AskDataDrawer({
   open,
   onOpenChange,
@@ -138,7 +144,7 @@ export function AskDataDrawer({
     }
   }, [messages, loading, messagesLoading]);
 
-  // 1. Fetch conversations/sessions list
+  // 1. Fetch conversations/sessions list (also runs on app load so history is ready when drawer opens)
   const loadSessions = useCallback(async () => {
     if (!user?.id) return;
     setSessionsLoading(true);
@@ -153,24 +159,39 @@ export function AskDataDrawer({
       
       const sessionList = (data || []) as unknown as ChatSession[];
       setSessions(sessionList);
-      
-      // If we don't have an active session but list is not empty, set the first one as active
-      if (sessionList.length > 0 && !activeSessionId) {
-        setActiveSessionId(sessionList[0].id);
-      }
+
+      const storedId = localStorage.getItem(mayaSessionStorageKey(user.id));
+      const restoredId =
+        storedId && sessionList.some((s) => s.id === storedId)
+          ? storedId
+          : sessionList[0]?.id ?? null;
+
+      setActiveSessionId((current) => {
+        if (current && sessionList.some((s) => s.id === current)) return current;
+        return restoredId;
+      });
     } catch (e) {
       console.error("Failed to load chat sessions:", e);
     } finally {
       setSessionsLoading(false);
     }
-  }, [user?.id, activeSessionId]);
+  }, [user?.id]);
 
-  // Load list on drawer mount/open
   useEffect(() => {
-    if (open && user?.id) {
-      loadSessions();
+    if (user?.id) {
+      void loadSessions();
+    } else {
+      setSessions([]);
+      setActiveSessionId(null);
+      setMessages([]);
     }
-  }, [open, user?.id, loadSessions]);
+  }, [user?.id, loadSessions]);
+
+  useEffect(() => {
+    if (user?.id && activeSessionId) {
+      localStorage.setItem(mayaSessionStorageKey(user.id), activeSessionId);
+    }
+  }, [user?.id, activeSessionId]);
 
   // 2. Fetch messages for active session
   const loadMessages = useCallback(async (sessionId: string) => {
@@ -234,7 +255,7 @@ export function AskDataDrawer({
         .from("ai_chat_sessions")
         .insert({
           user_id: user.id,
-          title: `Conversation ${new Date().toLocaleDateString()}`
+          title: MAYA_TITLE,
         })
         .select()
         .single();
@@ -294,6 +315,7 @@ export function AskDataDrawer({
         } else {
           setActiveSessionId(null);
           setMessages([]);
+          if (user?.id) localStorage.removeItem(mayaSessionStorageKey(user.id));
         }
       }
     } catch (e) {
@@ -385,7 +407,7 @@ export function AskDataDrawer({
           .from("ai_chat_sessions")
           .insert({
             user_id: user.id,
-            title: textToSend.substring(0, 30) + "..."
+            title: MAYA_TITLE,
           })
           .select()
           .single();
@@ -673,12 +695,7 @@ export function AskDataDrawer({
 
                   <img src="/maya.png" alt="Maya" className="h-9 w-9 rounded-full object-cover shrink-0 border border-purple-500/15 shadow-sm" />
                   <div className="flex flex-col text-left">
-                    <span className="leading-tight">
-                      {activeSessionId 
-                        ? sessions.find((s) => s.id === activeSessionId)?.title || "Ask Maya"
-                        : "Ask Maya"
-                      }
-                    </span>
+                    <span className="leading-tight">{MAYA_TITLE}</span>
                     <span className="text-[10px] text-ink-muted font-sans font-medium tracking-wide">Assistant</span>
                   </div>
                 </SheetTitle>
