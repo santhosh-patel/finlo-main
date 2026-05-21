@@ -7,8 +7,32 @@ import { CategoryDef, Expense, expensesToCSV, downloadCSV } from "@/lib/expenses
 import { useRef, useState, useCallback, useEffect } from "react";
 import { CATEGORY_ICONS, CATEGORY_ICON_KEYS, CATEGORY_COLORS, getCategoryIcon } from "@/lib/categoryIcons";
 import { cn, vibrate } from "@/lib/utils";
-import { ArrowLeft, Download, Eye, EyeOff, HandCoins, Loader2, LogOut, Pencil, Plus, RefreshCcw, Repeat, Trash2, X } from "lucide-react";
-import { ThemeSettings, ACCENT_PALETTE } from "@/hooks/useTheme";
+import {
+  ArrowLeft,
+  Download,
+  Eye,
+  EyeOff,
+  HandCoins,
+  Loader2,
+  LogOut,
+  Monitor,
+  Moon,
+  Pencil,
+  Plus,
+  RefreshCcw,
+  Repeat,
+  Sun,
+  Sunrise,
+  Sunset,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  ThemeSettings,
+  ACCENT_PALETTE,
+  THEME_APPEARANCES,
+  type ThemeAppearance,
+} from "@/hooks/useTheme";
 import { Users, Heart, Share2, Mail, CheckCircle2, Clock, Bell, BellOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -173,7 +197,10 @@ interface Props {
   profile: Profile;
   onUpdateProfile: (patch: { name?: string; password?: string }) => Promise<string | null>;
   theme: ThemeSettings;
-  onUpdateTheme: (patch: Partial<ThemeSettings>) => void;
+  onUpdateTheme: (
+    patch: Partial<ThemeSettings>,
+    origin?: { x: number; y: number },
+  ) => void;
   onLogout: () => void;
   onSync: (opts?: { skipIfNoPending?: boolean; silentToast?: boolean }) => Promise<boolean>;
   syncing: boolean;
@@ -715,19 +742,63 @@ function CategoriesSection({
   );
 }
 
+const APPEARANCE_ICONS: Record<ThemeAppearance, typeof Sun> = {
+  light: Sun,
+  dark: Moon,
+  sunrise: Sunrise,
+  sunset: Sunset,
+  system: Monitor,
+};
+
 function AppearanceSection({ theme, onUpdateTheme }: Props) {
+  const pickTheme = (mode: ThemeAppearance, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (theme.mode === mode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    onUpdateTheme(
+      { mode },
+      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium mb-3">Mode</p>
-        <div className="flex gap-2">
-          {(["light", "dark", "system"] as const).map((m) => (
-            <button key={m} onClick={() => onUpdateTheme({ mode: m })}
-              className={cn(
-                "flex-1 px-4 py-2 rounded-full text-sm border capitalize transition-colors",
-                theme.mode === m ? "bg-foreground text-background border-foreground" : "border-border text-ink-muted hover:bg-surface"
-              )}>{m}</button>
-          ))}
+        <p className="text-[10px] tracking-[0.2em] uppercase text-ink-muted font-medium mb-3">Appearance</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {THEME_APPEARANCES.map(({ id, label, description }) => {
+            const Icon = APPEARANCE_ICONS[id];
+            const active = theme.mode === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={(e) => pickTheme(id, e)}
+                className={cn(
+                  "flex flex-col items-start gap-2 p-3.5 rounded-2xl border text-left transition-all duration-300 ease-out-soft",
+                  "active:scale-[0.98] motion-reduce:transition-none",
+                  active
+                    ? "bg-foreground text-background border-foreground shadow-sm"
+                    : "border-border/60 text-foreground hover:bg-surface/80 hover:border-border",
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "h-4 w-4 shrink-0 transition-transform duration-300",
+                    active && "motion-safe:scale-110",
+                  )}
+                />
+                <span className="text-sm font-medium leading-none">{label}</span>
+                <span
+                  className={cn(
+                    "text-[10px] leading-snug",
+                    active ? "text-background/70" : "text-ink-muted",
+                  )}
+                >
+                  {description}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
       <div>

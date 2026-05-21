@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { 
   Send, 
   Loader2, 
-  User, 
   BarChart4, 
   Plus, 
   Trash2, 
@@ -83,6 +82,62 @@ const MAYA_INTRO =
   "Ask about your money or describe a purchase to log it. Use \"Add to Finlo\" when Maya suggests entries.";
 
 const MAYA_TITLE = "Maya";
+
+/** Inline **bold** segments for AI replies */
+function MayaBotText({ text }: { text: string }) {
+  const paragraphs = text.split(/\n\n+/).filter(Boolean);
+
+  const renderInline = (chunk: string) => {
+    const parts = chunk.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return (
+          <strong key={i} className="font-semibold text-foreground">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  return (
+    <div className="space-y-4 max-w-prose">
+      {paragraphs.map((para, i) => {
+        const lines = para.split("\n");
+        const isList = lines.every((l) => /^[\s]*[-•*]\s/.test(l) || l.trim() === "");
+
+        if (isList && lines.some((l) => /^[\s]*[-•*]\s/.test(l))) {
+          return (
+            <ul key={i} className="space-y-2 pl-0 list-none">
+              {lines
+                .filter((l) => /^[\s]*[-•*]\s/.test(l))
+                .map((line, j) => (
+                  <li key={j} className="flex gap-2.5 text-[15px] leading-[1.65] text-foreground">
+                    <span className="text-ink-muted/40 shrink-0 select-none" aria-hidden>
+                      ·
+                    </span>
+                    <span>{renderInline(line.replace(/^[\s]*[-•*]\s+/, ""))}</span>
+                  </li>
+                ))}
+            </ul>
+          );
+        }
+
+        return (
+          <p key={i} className="text-[15px] leading-[1.65] text-foreground font-normal">
+            {lines.map((line, j) => (
+              <span key={j}>
+                {j > 0 && <br />}
+                {renderInline(line)}
+              </span>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
 function mayaSessionStorageKey(userId: string) {
   return `maya_active_session_${userId}`;
@@ -680,34 +735,33 @@ export function AskDataDrawer({
 
           {/* ================= MAIN CHAT INTERFACE ================= */}
           <div className="flex-1 flex flex-col overflow-hidden h-full bg-background">
-            {/* Header */}
-            <div className="p-4 border-b border-border/40 flex items-center justify-between shrink-0">
-              <SheetHeader className="text-left">
-                <SheetTitle className="font-serif text-xl font-normal text-foreground flex items-center gap-3">
-                  {/* Menu burger on Mobile */}
+            {/* Header — compact */}
+            <div className="px-4 py-2 border-b border-border/20 flex items-center justify-between gap-2 shrink-0 min-h-[44px]">
+              <SheetHeader className="text-left space-y-0 p-0 flex-1 min-w-0">
+                <SheetTitle className="text-sm font-medium text-foreground flex items-center gap-2 m-0">
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className="md:hidden p-1.5 rounded-lg border border-border/40 text-foreground transition-all shrink-0"
+                    className="md:hidden p-1 rounded-md text-ink-muted/70 hover:text-foreground transition-colors shrink-0"
+                    aria-label="Chat history"
                   >
-                    <Menu className="h-4 w-4" />
+                    <Menu className="h-3.5 w-3.5" />
                   </button>
-
-                  <img src="/maya.png" alt="Maya" className="h-9 w-9 rounded-full object-cover shrink-0 border border-purple-500/15 shadow-sm" />
-                  <div className="flex flex-col text-left">
-                    <span className="leading-tight">{MAYA_TITLE}</span>
-                    <span className="text-[10px] text-ink-muted font-sans font-medium tracking-wide">Assistant</span>
-                  </div>
+                  <img
+                    src="/maya.png"
+                    alt=""
+                    className="h-5 w-5 rounded-full object-cover shrink-0 opacity-90"
+                  />
+                  <span className="truncate">{MAYA_TITLE}</span>
                 </SheetTitle>
               </SheetHeader>
 
-              {/* Desktop quick new thread action */}
               <button
                 type="button"
                 onClick={handleNewChat}
-                className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/40 text-xs font-semibold hover:bg-surface transition-all active:scale-95 text-foreground"
+                className="md:hidden flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-ink-muted/60 hover:text-foreground transition-colors shrink-0"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-3 w-3" />
                 New
               </button>
             </div>
@@ -715,7 +769,7 @@ export function AskDataDrawer({
             {/* Messages list */}
             <div 
               ref={scrollRef}
-              className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-surface/10 flex flex-col min-h-0"
+              className="flex-1 overflow-y-auto px-6 py-8 custom-scrollbar bg-background flex flex-col min-h-0"
             >
               {messagesLoading ? (
                 <div className="flex flex-col items-center justify-center flex-1 min-h-[12rem] space-y-3">
@@ -747,43 +801,40 @@ export function AskDataDrawer({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-5">
-                {messages.map((m) => {
+                <div className="max-w-2xl">
+                {messages.map((m, idx) => {
                   const isUser = m.sender === "user";
+                  const prev = messages[idx - 1];
+                  const spacing =
+                    idx === 0
+                      ? ""
+                      : isUser && prev?.sender === "bot"
+                        ? "mt-12"
+                        : !isUser && prev?.sender === "user"
+                          ? "mt-4"
+                          : "mt-8";
+
                   return (
                     <div
                       key={m.id}
                       className={cn(
-                        "flex items-start gap-3 max-w-[85%] md:max-w-[70%]",
-                        isUser ? "ml-auto flex-row-reverse" : "mr-auto"
+                        "w-full text-left animate-in fade-in duration-300 ease-out-soft motion-reduce:animate-none",
+                        spacing,
                       )}
                     >
                       {isUser ? (
-                        <div className="h-8 w-8 rounded-full border bg-foreground border-foreground text-background flex items-center justify-center shrink-0">
-                          <User className="h-4 w-4" />
-                        </div>
-                      ) : (
-                        <img src="/maya.png" alt="Maya" className="h-8 w-8 rounded-full object-cover shrink-0 border border-purple-500/15 shadow-sm" />
-                      )}
-
-                      <div className="space-y-3.5">
-                        <div
-                          className={cn(
-                            "rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                            isUser
-                              ? "bg-foreground text-background font-medium"
-                              : "bg-surface/60 border border-border/40 text-foreground"
-                          )}
-                        >
+                        <p className="text-[15px] leading-relaxed font-normal text-ink-muted/55 dark:text-foreground/45">
                           {m.text}
-                        </div>
+                        </p>
+                      ) : (
+                      <div className="space-y-6">
+                        <MayaBotText text={m.text} />
 
-                        {!isUser &&
-                          m.assistantActions &&
+                        {m.assistantActions &&
                           (m.assistantActions.categoriesToAdd.length > 0 ||
                             m.assistantActions.transactionsToAdd.length > 0) && (
-                          <div className="rounded-2xl border border-border bg-surface/50 px-4 py-3 space-y-3 animate-in fade-in duration-300">
-                            <div className="flex items-start gap-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                          <div className="border-t border-border/30 pt-5 space-y-3 animate-in fade-in duration-300">
+                            <div className="flex items-start gap-2 text-[11px] font-medium uppercase tracking-wider text-ink-muted/70">
                               <ListPlus className="h-3.5 w-3.5 mt-0.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                               Ready to add
                             </div>
@@ -810,7 +861,7 @@ export function AskDataDrawer({
                                 {m.assistantActions.transactionsToAdd.map((t, idx) => (
                                   <li
                                     key={`${t.date}-${t.category}-${t.amount}-${idx}`}
-                                    className="rounded-lg bg-background/50 border border-border/50 px-2.5 py-1.5"
+                                    className="py-1 text-foreground/90"
                                   >
                                     <span className="font-semibold">
                                       {getCurrencySymbol()}
@@ -839,7 +890,8 @@ export function AskDataDrawer({
                             )}
                             <Button
                               size="sm"
-                              className="w-full rounded-full font-semibold"
+                              variant="outline"
+                              className="w-full max-w-xs rounded-full font-medium border-border/50"
                               disabled={applyingActionsForId === m.id}
                               onClick={() => void applyMayaSuggestions(m)}
                             >
@@ -857,10 +909,10 @@ export function AskDataDrawer({
 
                         {/* Render Chart directly inside chat bubbles! */}
                         {m.chartData && (
-                          <div className="rounded-2xl border border-border/40 bg-surface/40 p-4 w-full h-56 max-w-sm md:max-w-md animate-in fade-in duration-300">
-                            <div className="flex items-center gap-1.5 text-xs text-ink-muted mb-4 font-semibold uppercase tracking-wider">
-                              <BarChart4 className="h-3.5 w-3.5 text-amber-500" />
-                              AI Computed Aggregates
+                          <div className="border-t border-border/30 pt-5 w-full h-56 max-w-md animate-in fade-in duration-300">
+                            <div className="flex items-center gap-1.5 text-[11px] text-ink-muted/70 mb-4 font-medium uppercase tracking-wider">
+                              <BarChart4 className="h-3.5 w-3.5 text-ink-muted/60" />
+                              Chart
                             </div>
                             <ResponsiveContainer width="100%" height="80%">
                               <BarChart data={m.chartData} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
@@ -901,47 +953,64 @@ export function AskDataDrawer({
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
                   );
                 })}
                 {loading && (
-                  <div className="flex items-center gap-3 max-w-[80%] mr-auto">
-                    <div className="relative h-8 w-8 shrink-0">
-                      <img src="/maya.png" alt="Maya" className="h-full w-full rounded-full object-cover border border-purple-500/15" />
-                      <span className="absolute inset-0 rounded-full border border-purple-500/50 border-t-transparent animate-spin" />
-                    </div>
-                    <div className="bg-surface/40 border border-border/40 rounded-2xl px-4 py-3 text-sm text-ink-muted italic flex items-center gap-2">
-                      Maya is thinking...
-                    </div>
-                  </div>
+                  <p
+                    className={cn(
+                      "text-[15px] text-ink-muted/50 italic animate-pulse motion-reduce:animate-none",
+                      messages.length > 0 && messages[messages.length - 1]?.sender === "user" ? "mt-4" : "mt-8",
+                    )}
+                  >
+                    Thinking…
+                  </p>
                 )}
                 </div>
               )}
             </div>
 
-            {/* Input box */}
-            <div className="p-6 border-t border-border/40 bg-background shrink-0">
+            {/* Input — minimal, matches message typography */}
+            <div className="shrink-0 border-t border-border/20 bg-background px-6 py-5">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSend(input);
                 }}
-                className="relative flex items-center bg-surface/40 rounded-full border border-border/40 focus-within:border-foreground/20 focus-within:bg-surface/50 transition-all p-1.5 pl-5 pr-1.5"
+                className="flex items-center gap-4 max-w-2xl w-full"
               >
                 <Input
                   ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={loading}
-                  placeholder="Ask anything, or 'Log ₹450 Food lunch today'…"
-                  className="border-0 bg-transparent p-0 h-11 shadow-none focus-visible:ring-0 text-sm placeholder:text-ink-muted/50 text-foreground flex-1 pr-12 focus-visible:border-0"
+                  placeholder="Ask Maya anything…"
+                  className={cn(
+                    "flex-1 min-w-0 border-0 border-b border-transparent bg-transparent",
+                    "h-auto min-h-[2.25rem] py-1 px-0 shadow-none rounded-none",
+                    "text-[15px] leading-relaxed font-normal text-foreground",
+                    "placeholder:text-ink-muted/45 dark:placeholder:text-foreground/35",
+                    "focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-border/30",
+                    "disabled:opacity-50 transition-colors duration-200",
+                  )}
                 />
                 <button
                   type="submit"
                   disabled={loading || !input.trim()}
-                  className="h-10 w-10 rounded-full bg-foreground text-background flex items-center justify-center hover:bg-foreground/90 disabled:opacity-30 disabled:pointer-events-none transition-all active:scale-95 shrink-0"
+                  aria-label="Send message"
+                  className={cn(
+                    "shrink-0 p-1 -mr-1 transition-colors duration-200",
+                    "text-ink-muted/40 hover:text-foreground",
+                    "disabled:opacity-25 disabled:pointer-events-none",
+                    input.trim() && !loading && "text-foreground",
+                  )}
                 >
-                  <Send className="h-4 w-4" />
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" strokeWidth={1.75} />
+                  )}
                 </button>
               </form>
             </div>
