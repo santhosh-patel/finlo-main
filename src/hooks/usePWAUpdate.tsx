@@ -1,10 +1,27 @@
-import { useState, useEffect, useCallback } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type UpdateCheckResult =
   | "unsupported"
   | "dev"
   | "up-to-date"
   | "update-applied";
+
+type PWAUpdateContextValue = {
+  updateAvailable: boolean;
+  updateApp: () => Promise<void>;
+  checkForUpdate: () => Promise<UpdateCheckResult>;
+  checking: boolean;
+  isUpdating: boolean;
+};
+
+const PWAUpdateContext = createContext<PWAUpdateContextValue | null>(null);
 
 function isDevOrPreview() {
   if (import.meta.env.DEV) return true;
@@ -71,9 +88,16 @@ function waitForInstallingWorker(
   });
 }
 
-export function usePWAUpdate() {
+const UPDATE_UI_MIN_MS = 520;
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+export function PWAUpdateProvider({ children }: { children: ReactNode }) {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
@@ -105,8 +129,18 @@ export function usePWAUpdate() {
   }, []);
 
   const updateApp = useCallback(async () => {
-    if (!("serviceWorker" in navigator)) {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    const started = Date.now();
+
+    const finishReload = async () => {
+      const elapsed = Date.now() - started;
+      if (elapsed < UPDATE_UI_MIN_MS) await delay(UPDATE_UI_MIN_MS - elapsed);
       window.location.reload();
+    };
+
+    if (!("serviceWorker" in navigator)) {
+      await finishReload();
       return;
     }
 
@@ -125,8 +159,8 @@ export function usePWAUpdate() {
       console.error("Failed to clear cache safely during update:", err);
     }
 
-    window.location.reload();
-  }, []);
+    await finishReload();
+  }, [isUpdating]);
 
   const checkForUpdate = useCallback(async (): Promise<UpdateCheckResult> => {
     if (!("serviceWorker" in navigator)) return "unsupported";
@@ -138,14 +172,22 @@ export function usePWAUpdate() {
       await registration.update();
 
       if (registration.waiting) {
+        setIsUpdating(true);
+        const started = Date.now();
         await activateWaitingWorker(registration);
+        const elapsed = Date.now() - started;
+        if (elapsed < UPDATE_UI_MIN_MS) await delay(UPDATE_UI_MIN_MS - elapsed);
         window.location.reload();
         return "update-applied";
       }
 
       const found = await waitForInstallingWorker(registration, 12_000);
       if (found && registration.waiting) {
+        setIsUpdating(true);
+        const started = Date.now();
         await activateWaitingWorker(registration);
+        const elapsed = Date.now() - started;
+        if (elapsed < UPDATE_UI_MIN_MS) await delay(UPDATE_UI_MIN_MS - elapsed);
         window.location.reload();
         return "update-applied";
       }
@@ -159,5 +201,21 @@ export function usePWAUpdate() {
     }
   }, []);
 
-  return { updateAvailable, updateApp, checkForUpdate, checking };
+  const value: PWAUpdateContextValue = {
+    updateAvailable,
+    updateApp,
+    checkForUpdate,
+    checking,
+    isUpdating,
+  };
+
+  return <PWAUpdateContext.Provider value={value}>{children}</PWAUpdateContext.Provider>;
+}
+
+export function usePWAUpdate() {
+  const ctx = useContext(PWAUpdateContext);
+  if (!ctx) {
+    throw new Error("usePWAUpdate must be used within PWAUpdateProvider");
+  }
+  return ctx;
 }

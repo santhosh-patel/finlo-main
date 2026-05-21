@@ -42,6 +42,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { useOverlayHistorySync } from "@/hooks/useOverlayHistorySync";
 import { InstallAppBanner } from "@/components/InstallAppBanner";
+import { UpdateAvailableCard } from "@/components/UpdateAvailableCard";
 import { PullRefreshIndicator } from "@/components/PullRefreshIndicator";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -1632,6 +1633,8 @@ const Index = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <UpdateAvailableCard variant="banner" className={cn(askAIOpen || details ? "hidden" : undefined)} />
 
         {/* Mobile bottom navigation — Adaptive Floating Dock */}
         {!askAIOpen && !details && (
