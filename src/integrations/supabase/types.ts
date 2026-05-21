@@ -59,6 +59,42 @@ export type Database = {
         }
         Relationships: []
       }
+      household_goals: {
+        Row: {
+          id: string
+          household_id: string
+          title: string
+          target_amount: number
+          current_amount: number
+          deadline: string | null
+          color: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          household_id: string
+          title: string
+          target_amount: number
+          current_amount?: number
+          deadline?: string | null
+          color?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          title?: string
+          target_amount?: number
+          current_amount?: number
+          deadline?: string | null
+          color?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       daily_pulses: {
         Row: {
           id: string

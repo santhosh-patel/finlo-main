@@ -1326,15 +1326,9 @@ const Index = () => {
                       {dayExpenses.length === 0 ? "Nothing logged" : "Recorded"}
                     </h3>
                     {dayExpenses.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-12 px-6 bg-surface/30 rounded-[32px] border border-dashed border-border/60">
-                        <div className="h-12 w-12 rounded-full bg-surface flex items-center justify-center mb-4">
-                          <Plus className="h-6 w-6 text-ink-muted/40" />
-                        </div>
-                        <p className="text-center text-foreground text-sm font-medium">
-                          No {viewMode === "household" ? "shared" : ""} entries for this day
-                        </p>
-                        <p className="text-center text-ink-muted text-xs mt-1 max-w-[200px]">
-                          Tap <span className="text-foreground font-medium">Add transaction</span> to start tracking your {viewMode === "household" ? "shared" : ""} cash flow.
+                      <div className="flex items-center justify-center py-3 px-4 bg-surface/30 rounded-xl border border-dashed border-border/60">
+                        <p className="text-xs text-ink-muted/70">
+                          No {viewMode === "household" ? "shared " : ""}entries — tap <span className="text-foreground font-medium">+</span> to log one
                         </p>
                       </div>
                     ) : (
