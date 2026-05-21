@@ -273,7 +273,7 @@ export default function Settings(props: Props) {
 }
 
 function ProfileSection({ profile, onUpdateProfile }: Props) {
-  const { checkForUpdate, updateApp, checking: checkingUpdate, updateAvailable } = usePWAUpdate();
+  const { checkForUpdate, updateApp, checking: checkingUpdate, updateAvailable, isUpdating } = usePWAUpdate();
   const [name, setName] = useState(profile.name);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -457,25 +457,39 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
           <p className="text-[10px] text-destructive px-2 italic">Notifications are blocked in your browser settings. Please enable them to receive alerts.</p>
         )}
 
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-surface/30 border border-border/20">
+        <div
+          className={cn(
+            "flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ease-out-soft",
+            updateAvailable
+              ? "bg-foreground/[0.03] border-foreground/15 shadow-sm"
+              : "bg-surface/30 border-border/20",
+          )}
+        >
           <div className="flex gap-3 items-center min-w-0">
-            <div className="h-10 w-10 rounded-2xl bg-ink-muted/10 text-ink-muted flex items-center justify-center shrink-0">
+            <div
+              className={cn(
+                "h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 transition-colors duration-300",
+                updateAvailable ? "bg-foreground text-background" : "bg-ink-muted/10 text-ink-muted",
+              )}
+            >
               <Download className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">App updates</p>
-              <p className="text-[11px] text-ink-muted/60 truncate">
-                {updateAvailable
-                  ? "Update ready — tap to install"
-                  : `Installed ${APP_VERSION_LABEL}`}
+              <p className="text-[11px] text-ink-muted/60 truncate transition-opacity duration-300">
+                {isUpdating
+                  ? "Installing update…"
+                  : updateAvailable
+                    ? "New version ready"
+                    : `Installed ${APP_VERSION_LABEL}`}
               </p>
             </div>
           </div>
           <Button
             type="button"
-            variant="outline"
+            variant={updateAvailable ? "default" : "outline"}
             size="sm"
-            disabled={checkingUpdate}
+            disabled={checkingUpdate || isUpdating}
             onClick={async () => {
               if (updateAvailable) {
                 await updateApp();
@@ -508,14 +522,17 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
                 });
               }
             }}
-            className="rounded-full h-9 px-4 text-xs shrink-0 border-border/50"
+            className={cn(
+              "rounded-full h-9 px-4 text-xs shrink-0 transition-all duration-300 ease-out-soft active:scale-[0.97]",
+              updateAvailable ? "bg-foreground text-background hover:bg-foreground/90 border-0" : "border-border/50",
+            )}
           >
-            {checkingUpdate ? (
+            {checkingUpdate || isUpdating ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : updateAvailable ? (
-              "Install"
+              "Update"
             ) : (
-              "Check for updates"
+              "Check"
             )}
           </Button>
         </div>

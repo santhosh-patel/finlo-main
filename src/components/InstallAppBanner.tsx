@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const DISMISS_KEY = "finlo.install-banner.dismissed.v1";
+const EXIT_MS = 320;
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -19,8 +20,11 @@ function isStandalone(): boolean {
 
 function isIos(): boolean {
   if (typeof navigator === "undefined") return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints! > 1);
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" &&
+      (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints! > 1)
+  );
 }
 
 function isMobileViewport(): boolean {
@@ -36,6 +40,7 @@ export function InstallAppBanner({ className }: { className?: string }) {
       return false;
     }
   });
+  const [exiting, setExiting] = useState(false);
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [showIosHint, setShowIosHint] = useState(false);
   const [mobile, setMobile] = useState(isMobileViewport);
@@ -67,12 +72,18 @@ export function InstallAppBanner({ className }: { className?: string }) {
   }, [dismissed, mobile, deferred]);
 
   const dismiss = useCallback(() => {
-    try {
-      localStorage.setItem(DISMISS_KEY, "1");
-    } catch { /* ignore */ }
-    setDismissed(true);
-    setDeferred(null);
-    setShowIosHint(false);
+    setExiting(true);
+    window.setTimeout(() => {
+      try {
+        localStorage.setItem(DISMISS_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      setDismissed(true);
+      setDeferred(null);
+      setShowIosHint(false);
+      setExiting(false);
+    }, EXIT_MS);
   }, []);
 
   const install = useCallback(async () => {
@@ -92,46 +103,73 @@ export function InstallAppBanner({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "flex items-start gap-3 px-4 py-3 border-b border-border/60 bg-surface/95 backdrop-blur-md text-foreground",
+        "overflow-hidden border-b border-border/40 bg-surface/95 backdrop-blur-md text-foreground",
+        exiting
+          ? "animate-out fade-out slide-out-to-top-2 duration-300 ease-in motion-reduce:animate-none"
+          : "animate-in fade-in slide-in-from-top-2 duration-500 ease-out-soft motion-reduce:animate-none",
         className,
       )}
     >
-      <div className="min-w-0 flex-1 pt-0.5">
-        {deferred ? (
-          <>
-            <p className="text-sm font-medium leading-snug">Install Finlo</p>
-            <p className="text-[11px] text-ink-muted mt-1 leading-relaxed">
-              Add to your home screen for a full-screen app experience and quicker access.
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="text-sm font-medium leading-snug">Add Finlo to Home Screen</p>
-            <p className="text-[11px] text-ink-muted mt-1 leading-relaxed flex items-center gap-1 flex-wrap">
-              Tap
-              <Share className="h-3.5 w-3.5 inline shrink-0 text-foreground/80" aria-hidden />
-              <span className="font-medium text-foreground/90">Share</span>
-              then
-              <span className="font-medium text-foreground/90">Add to Home Screen</span>.
-            </p>
-          </>
-        )}
-      </div>
-      <div className="flex flex-col items-end gap-1.5 shrink-0">
-        <button
-          type="button"
-          onClick={dismiss}
-          className="p-1 rounded-full text-ink-muted hover:text-foreground hover:bg-background/80"
-          aria-label="Dismiss install hint"
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-background/80",
+            "transition-transform duration-300 ease-out-soft",
+          )}
         >
-          <X className="h-4 w-4" />
-        </button>
-        {deferred && (
-          <Button type="button" size="sm" className="rounded-full h-9 px-4 gap-1.5" onClick={install}>
-            <Download className="h-3.5 w-3.5" aria-hidden />
-            Install
-          </Button>
-        )}
+          <Download className="h-4 w-4 text-foreground/80" aria-hidden />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {deferred ? (
+            <>
+              <p className="text-sm font-medium leading-snug tracking-tight">Install Finlo</p>
+              <p className="text-[11px] text-ink-muted mt-0.5 leading-relaxed">
+                Home screen access, full-screen experience
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium leading-snug tracking-tight">Add to Home Screen</p>
+              <p className="text-[11px] text-ink-muted mt-0.5 leading-relaxed flex items-center gap-1 flex-wrap">
+                Tap
+                <Share className="h-3 w-3 inline shrink-0 text-foreground/70" aria-hidden />
+                <span className="font-medium text-foreground/85">Share</span>
+                <span className="text-ink-muted/70">→</span>
+                <span className="font-medium text-foreground/85">Add to Home Screen</span>
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={dismiss}
+            className={cn(
+              "p-1.5 rounded-full text-ink-muted",
+              "transition-colors duration-200 hover:text-foreground hover:bg-background/70",
+              "active:scale-95",
+            )}
+            aria-label="Dismiss install hint"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          {deferred && (
+            <Button
+              type="button"
+              size="sm"
+              className={cn(
+                "rounded-full h-8 px-3.5 gap-1.5 text-xs font-semibold",
+                "transition-all duration-300 ease-out-soft active:scale-[0.97]",
+              )}
+              onClick={install}
+            >
+              <Download className="h-3 w-3" aria-hidden />
+              Install
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
