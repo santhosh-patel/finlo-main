@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Finlo</string>
+    <string name="title_activity_main">Finlo</string>
+    <string name="package_name">com.finlo.app</string>
+    <string name="custom_url_scheme">com.finlo.app</string>
+</resources>
