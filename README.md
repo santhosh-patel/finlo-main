@@ -1,102 +1,289 @@
 # Finlo
 
-Finlo is a personal expense tracker with a mobile-first web app (installable PWA). It helps you log spending and income, organize categories, set budgets, and understand patterns—with optional AI assistance for natural-language entry, receipt parsing, and conversational insights.
+**Personal finance, built for speed.** Finlo is a mobile-first expense tracker and installable PWA that helps you log spending, set budgets, and understand your money—with optional AI for natural-language entry, receipt scanning, and conversational insights.
 
-## Features
+> For a full feature walkthrough, see [FEATURES.md](./FEATURES.md).
 
-- **Ledger** — Today / week / month views, quick add, detailed expense editing, search, and filters.
-- **Categories & budgets** — Custom categories, subcategories, and per-category budgets.
-- **Loans & recurring** — Track loans and recurring expenses.
-- **Data** — CSV import/export, trash / restore, sync with Supabase; offline-friendly pending queue for writes when connectivity is poor.
-- **Maya (AI)** — Chat assistant for spending questions and structured “add to Finlo” suggestions; rate-limited Edge Function backend.
-- **Smart entry** — Natural-language expense parsing and receipt scanning (Edge Functions + external model APIs where configured).
-- **Accounts** — Email/password auth, user profile, optional admin area for managed deployments.
+---
 
-## Tech stack
+## Highlights
 
-| Area | Choice |
-|------|--------|
-| UI | React 18, TypeScript, Vite 5, Tailwind CSS, shadcn/ui (Radix), Recharts |
-| Data & auth | Supabase (Postgres, Auth, Realtime) |
-| Edge | Supabase Edge Functions (Deno) |
-| PWA | `vite-plugin-pwa`, Workbox |
+| Area | What you get |
+|------|----------------|
+| **Ledger** | Today, week, and month views · quick add · search & filters · soft-delete trash |
+| **Categories & budgets** | Custom categories, subcategories, monthly caps, and safe-to-spend guidance |
+| **Smart entry** | Natural-language parsing, receipt OCR, and voice input (via Edge Functions) |
+| **Maya (AI)** | Chat assistant for spending questions and structured “add to Finlo” suggestions |
+| **Subscriptions & recurring** | Track recurring bills, get reminders, auto-process due rules |
+| **Loans** | Lent/borrowed tracking with partial repayments and interest |
+| **Households** | Shared expenses, invites, goals, and partner notifications |
+| **Data** | CSV/Excel import · JSON/CSV export · offline queue · Supabase sync |
+| **PWA & mobile** | Installable web app · push notifications · Capacitor Android shell |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph client [Client]
+    PWA[React PWA]
+    SW[Service Worker]
+  end
+
+  subgraph supabase [Supabase]
+    Auth[Auth]
+    DB[(Postgres + RLS)]
+    RT[Realtime]
+    EF[Edge Functions]
+  end
+
+  subgraph external [External APIs]
+    Gemini[Gemini]
+    Groq[Groq]
+    Push[Web Push]
+  end
+
+  PWA --> Auth
+  PWA --> DB
+  PWA --> RT
+  PWA --> EF
+  SW --> Push
+  EF --> DB
+  EF --> Gemini
+  EF --> Groq
+  DB --> EF
+```
+
+| Layer | Stack |
+|-------|--------|
+| **Frontend** | React 18 · TypeScript · Vite 5 · Tailwind CSS · shadcn/ui · Recharts |
+| **Backend** | Supabase (Postgres, Auth, Realtime, Storage) |
+| **Edge** | Supabase Edge Functions (Deno) |
+| **PWA** | `vite-plugin-pwa` · Workbox · custom service worker |
+| **Mobile** | Capacitor 8 (Android) |
+
+---
 
 ## Prerequisites
 
 - **Node.js** 18+ (20+ recommended)
-- **npm** (or compatible client)
-- A **Supabase** project with this app’s schema, RLS policies, and Edge Functions deployed (see `supabase/migrations/` and `supabase/functions/`).
+- **npm** (or a compatible package manager)
+- A **Supabase** project ([create one free](https://supabase.com/dashboard))
+- Optional: [Supabase CLI](https://supabase.com/docs/guides/cli) for migrations and function deploys
 
-## Local development
+---
 
-1. **Clone and install**
+## Quick start
 
-   ```bash
-   git clone <your-repo-url> finlo
-   cd finlo
-   npm install
-   ```
+### 1. Clone and install
 
-2. **Environment**
+```bash
+git clone <your-repo-url> finlo
+cd finlo
+npm install
+```
 
-   Copy `.env.example` to `.env` and set the `VITE_SUPABASE_*` variables for your project. Only use the **publishable (anon) key** in `VITE_*` variables; never put service-role or model API keys in client env vars.
+### 2. Configure environment
 
-   See [SECURITY.md](./SECURITY.md) for what must never be committed.
+```bash
+cp .env.example .env
+```
 
-3. **Run the app**
+Edit `.env` with your Supabase project values (Dashboard → **Settings → API**):
 
-   ```bash
-   npm run dev
-   ```
+| Variable | Description |
+|----------|-------------|
+| `VITE_SUPABASE_URL` | Project URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Publishable (anon) key — safe for the browser |
+| `VITE_SUPABASE_PROJECT_ID` | Project reference ID |
+| `VITE_VAPID_PUBLIC_KEY` | Optional — required for push notifications |
 
-   The dev server defaults to port **8080** (see `vite.config.ts`).
+> **Never** put service-role keys or model API keys in `VITE_*` variables. See [SECURITY.md](./SECURITY.md).
 
-4. **Quality checks**
+### 3. Set up Supabase
 
-   ```bash
-   npm run typecheck
-   npm run lint
-   npm test
-   npm run build
-   ```
+**Apply migrations** (pick one approach):
 
-## Supabase
+```bash
+# With Supabase CLI (linked project)
+supabase db push
 
-- **Migrations** live in `supabase/migrations/`. Apply them to your project with the Supabase CLI or Dashboard SQL.
-- **Edge Functions** live in `supabase/functions/`, including:
-  - `ask-data` — Maya chat (typically Gemini and/or Groq; secrets required)
-  - `nl-parse-expense`, `parse-receipt`, `suggest-category` — AI-assisted entry
-  - `spending-insights`, `process-recurring` — insights / automation
-  - `seed-admin`, `admin-*` — bootstrap and admin APIs where enabled
+# Or run SQL files manually in Dashboard → SQL Editor
+# from supabase/migrations/ in timestamp order
+```
 
-Set function secrets in the Supabase Dashboard (for example `GEMINI_API_KEY`, `GROQ_API_KEY`, `ALLOWED_ORIGINS`, and any keys referenced in each function). See `.env.example` for notes on admin seeding and `SEED_BOOTSTRAP_SECRET`.
+**Deploy Edge Functions:**
 
-After migrations, configure database push notification secrets using `supabase/seed-app-secrets.example.sql` (replace placeholders with your project’s service role key and functions URL).
+```bash
+supabase functions deploy
+```
 
-## Production build & PWA
+**Configure secrets** in Dashboard → **Edge Functions → Secrets** (see [Environment & secrets](#environment--secrets) below).
+
+**Seed push notification DB secrets** (after migrations):
+
+```bash
+# Edit placeholders first, then run in SQL Editor:
+# supabase/seed-app-secrets.example.sql
+```
+
+**Bootstrap admin** (first install only):
+
+```bash
+# Set SEED_ADMINS + SEED_BOOTSTRAP_SECRET in Dashboard, deploy seed-admin, then:
+npm run seed-admin
+```
+
+### 4. Run locally
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:8080](http://localhost:8080).
+
+### 5. Verify
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+---
+
+## Environment & secrets
+
+### Client (`.env` — gitignored)
+
+Only **publishable** values belong here. Copy from `.env.example`.
+
+### Edge Functions (Supabase Dashboard secrets)
+
+| Secret | Used by | Required |
+|--------|---------|----------|
+| `GEMINI_API_KEY` | `ask-data`, `nl-parse-expense` | For AI features |
+| `GROQ_API_KEY` | `ask-data`, `nl-parse-expense` | For AI features (fallback / voice) |
+| `LOVABLE_API_KEY` | `parse-receipt`, `suggest-category`, `spending-insights` | For receipt & category AI |
+| `ALLOWED_ORIGINS` | CORS helpers | Production |
+| `CRON_SECRET` | `process-recurring` | Scheduled jobs |
+| `VAPID_PUBLIC_KEY` | `send-push` | Push notifications |
+| `VAPID_PRIVATE_KEY` | `send-push` | Push notifications |
+| `VAPID_MAILTO` | `send-push` | Push notifications |
+| `SEED_ADMINS` | `seed-admin` | Initial admin bootstrap |
+| `SEED_BOOTSTRAP_SECRET` | `seed-admin` | First-install bootstrap |
+
+Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into Edge Functions automatically.
+
+### Database (`public.app_secrets`)
+
+Used by Postgres triggers for server-side push delivery. See `supabase/seed-app-secrets.example.sql`.
+
+---
+
+## Edge Functions
+
+| Function | Purpose |
+|----------|---------|
+| `ask-data` | Maya AI chat — spending Q&A and action suggestions |
+| `nl-parse-expense` | Natural-language and voice expense parsing |
+| `parse-receipt` | Receipt image → structured transaction |
+| `suggest-category` | AI category suggestions |
+| `spending-insights` | Personalized spending analysis |
+| `process-recurring` | Creates expenses from due recurring rules |
+| `check-reminders` | Subscription and loan reminder checks |
+| `check-subscriptions` | Recurring subscription detection |
+| `send-push` | Web push notification delivery |
+| `generate-pulse` / `household-pulse` | Household activity summaries |
+| `notify-household-invite` | Invite notification delivery |
+| `respond-to-invite` / `leave-household` | Household membership actions |
+| `seed-admin` | One-shot admin user bootstrap |
+| `admin-create-user` / `admin-list-users` / `admin-update-user` | Admin user management |
+
+Shared helpers live in `supabase/functions/_shared/`.
+
+---
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server (port 8080) |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Preview production build locally |
+| `npm run typecheck` | TypeScript check |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest (single run) |
+| `npm run test:watch` | Vitest watch mode |
+| `npm run seed-admin` | Call `seed-admin` Edge Function (bootstrap) |
+
+Additional tooling in `scripts/`:
+
+- `seed-admin-bootstrap.mjs` — first-install admin seed (used by `npm run seed-admin`)
+- `push-users.mjs` — create users via Auth Admin API (requires `SEED_ADMINS` or `--users-file`; never commit credentials)
+
+---
+
+## Production & PWA
 
 ```bash
 npm run build
-npm run preview   # optional local preview of dist/
+npm run preview   # optional smoke test of dist/
 ```
 
-In production, the service worker is registered from `src/main.tsx` when appropriate; the web app manifest is generated alongside the build.
+The service worker registers from `src/main.tsx` in production. The web app manifest and icons are generated during build via `vite-plugin-pwa`.
 
-## Project layout (high level)
+### Android (Capacitor)
 
-- `src/` — React app (pages, components, hooks, Supabase client, expense logic)
-- `supabase/` — migrations, Edge Functions, shared Deno helpers
-- `public/` — static assets and PWA icons
-- `scripts/` — tooling such as admin bootstrap
+An Android project lives in `android/`. After a web build:
+
+```bash
+npx cap sync android
+npx cap open android
+```
+
+Signing keys and release artifacts are gitignored — configure them locally in Android Studio.
+
+---
+
+## Project structure
+
+```
+finlo/
+├── src/
+│   ├── pages/           # Login, Index (main ledger), Admin, NotFound
+│   ├── components/      # UI, sheets, drawers, charts
+│   ├── hooks/           # Auth, expenses, PWA, offline
+│   ├── lib/             # Business logic, AI actions, utilities
+│   └── integrations/    # Supabase client & types
+├── supabase/
+│   ├── migrations/      # Postgres schema, RLS, triggers
+│   ├── functions/       # Edge Functions (Deno)
+│   └── seed-app-secrets.example.sql
+├── public/              # Static assets, icons
+├── scripts/             # Admin bootstrap & user tooling
+├── android/             # Capacitor Android shell
+├── FEATURES.md          # Detailed feature documentation
+├── CONTRIBUTING.md      # Contribution guidelines
+└── SECURITY.md          # Secrets policy & vulnerability reporting
+```
+
+---
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
+Contributions are welcome — bug fixes, docs, tests, and features.
+
+1. Read [CONTRIBUTING.md](./CONTRIBUTING.md)
+2. Fork, branch, and open a pull request
+3. Run `typecheck`, `lint`, `test`, and `build` before submitting
 
 ## Security
 
-Report vulnerabilities privately — see [SECURITY.md](./SECURITY.md).
+Do **not** commit `.env`, API keys, passwords, or Supabase CLI temp state. Report vulnerabilities privately — see [SECURITY.md](./SECURITY.md).
 
 ## License
 
-Add a `LICENSE` file if you intend to distribute the code under a specific license.
+No license file is included yet. Add a `LICENSE` (e.g. MIT, Apache 2.0) before distributing or accepting external contributions under specific terms.
