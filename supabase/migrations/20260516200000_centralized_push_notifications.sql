@@ -31,9 +31,10 @@ BEGIN
     SELECT value INTO service_role_key FROM auth.secrets WHERE name = 'service_role_key' LIMIT 1;
 
     IF service_role_key IS NOT NULL THEN
+        -- URL is made configurable in 20260516250000_configurable_push_function_url.sql
         PERFORM
           net.http_post(
-            url := 'https://ldjoegwamvaivitifozw.supabase.co/functions/v1/send-push',
+            url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-push',
             headers := jsonb_build_object(
               'Content-Type', 'application/json',
               'Authorization', 'Bearer ' || service_role_key

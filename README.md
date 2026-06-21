@@ -41,6 +41,8 @@ Finlo is a personal expense tracker with a mobile-first web app (installable PWA
 
    Copy `.env.example` to `.env` and set the `VITE_SUPABASE_*` variables for your project. Only use the **publishable (anon) key** in `VITE_*` variables; never put service-role or model API keys in client env vars.
 
+   See [SECURITY.md](./SECURITY.md) for what must never be committed.
+
 3. **Run the app**
 
    ```bash
@@ -69,6 +71,8 @@ Finlo is a personal expense tracker with a mobile-first web app (installable PWA
 
 Set function secrets in the Supabase Dashboard (for example `GEMINI_API_KEY`, `GROQ_API_KEY`, `ALLOWED_ORIGINS`, and any keys referenced in each function). See `.env.example` for notes on admin seeding and `SEED_BOOTSTRAP_SECRET`.
 
+After migrations, configure database push notification secrets using `supabase/seed-app-secrets.example.sql` (replace placeholders with your project’s service role key and functions URL).
+
 ## Production build & PWA
 
 ```bash
@@ -85,7 +89,14 @@ In production, the service worker is registered from `src/main.tsx` when appropr
 - `public/` — static assets and PWA icons
 - `scripts/` — tooling such as admin bootstrap
 
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
+
+## Security
+
+Report vulnerabilities privately — see [SECURITY.md](./SECURITY.md).
+
 ## License
 
-
-This repository is **private** (`"private": true` in `package.json`). Add a `LICENSE` file if you intend to distribute the code.
+Add a `LICENSE` file if you intend to distribute the code under a specific license.

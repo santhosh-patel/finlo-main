@@ -29,23 +29,7 @@ BEGIN
                 '/?view=household'
             );
 
-            -- Call the Edge Function to send Push
-            -- (Requires pg_net extension enabled in Supabase)
-            -- Note: In production, ensure the service_role_key is available in the vault or as a setting.
-            PERFORM
-              net.http_post(
-                url := 'https://ldjoegwamvaivitifozw.supabase.co/functions/v1/send-push',
-                headers := jsonb_build_object(
-                  'Content-Type', 'application/json',
-                  'Authorization', 'Bearer ' || (SELECT value FROM auth.secrets WHERE name = 'service_role_key' LIMIT 1)
-                ),
-                body := jsonb_build_object(
-                  'user_id', partner_id,
-                  'title', 'Shared Expense',
-                  'body', adder_name || ' added ' || NEW.category || ': ₹' || NEW.amount,
-                  'url', '/?view=household'
-                )
-              );
+            -- Push delivery is handled by trg_send_push_on_notification on public.notifications.
         END IF;
     END IF;
     RETURN NEW;

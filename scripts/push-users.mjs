@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 /**
- * Directly creates users via Supabase Auth Admin API + inserts profiles/roles.
- * Requires SUPABASE_SERVICE_ROLE_KEY in .env or as CLI arg.
+ * Creates users via Supabase Auth Admin API + inserts profiles/roles.
+ * Requires SUPABASE_SERVICE_ROLE_KEY and a user list from env or CLI.
  *
  * Usage:
- *   node scripts/push-users.mjs
- *   node scripts/push-users.mjs --service-key=eyJhbGciOi...
+ *   SEED_ADMINS='[{"email":"admin@example.com","password":"...","name":"Admin","role":"admin"}]' \
+ *     node scripts/push-users.mjs
+ *   node scripts/push-users.mjs --users-file=./users.local.json
+ *   node scripts/push-users.mjs --service-key=YOUR_KEY
+ *
+ * Never commit real credentials. Keep user lists in gitignored files or env vars.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -15,12 +19,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 
-// ─── Users to create (admin only) ───
-const USERS = [
-  { email: "admin@finlo.ai", password: "Chinni@2003", name: "Admin", role: "admin" },
-];
-
-// ─── Load .env ───
 function loadEnv() {
   for (const name of [".env.local", ".env"]) {
     const p = join(root, name);
@@ -40,15 +38,62 @@ function loadEnv() {
   }
 }
 
+function parseUsersJson(raw, source) {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) {
+      console.error(`${source} must be a JSON array of user objects.`);
+      process.exit(1);
+    }
+    return parsed;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`${source} is not valid JSON: ${msg}`);
+    process.exit(1);
+  }
+}
+
+function loadUsers(argv) {
+  for (const arg of argv) {
+    if (arg.startsWith("--users=")) {
+      return parseUsersJson(arg.slice("--users=".length), "--users");
+    }
+    if (arg.startsWith("--users-file=")) {
+      const path = arg.slice("--users-file=".length);
+      const abs = path.startsWith("/") ? path : join(process.cwd(), path);
+      if (!existsSync(abs)) {
+        console.error(`Users file not found: ${abs}`);
+        process.exit(1);
+      }
+      return parseUsersJson(readFileSync(abs, "utf8"), `--users-file (${abs})`);
+    }
+  }
+
+  const fromEnv = process.env.SEED_ADMINS ?? process.env.PUSH_USERS ?? "";
+  if (fromEnv.trim()) {
+    return parseUsersJson(fromEnv, "SEED_ADMINS / PUSH_USERS");
+  }
+
+  console.error("No users configured.");
+  console.error("");
+  console.error("Provide a JSON array via one of:");
+  console.error('  • SEED_ADMINS env var (or in gitignored `.env`)');
+  console.error('  • node scripts/push-users.mjs --users=\'[{"email":"...","password":"...","name":"...","role":"admin"}]\'');
+  console.error("  • node scripts/push-users.mjs --users-file=./users.local.json");
+  process.exit(1);
+}
+
 loadEnv();
 
-// ─── Resolve keys ───
 let serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 for (const arg of process.argv.slice(2)) {
   if (arg.startsWith("--service-key=")) serviceKey = arg.slice("--service-key=".length);
 }
 
 const baseUrl = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const USERS = loadUsers(process.argv.slice(2));
 
 if (!baseUrl) { console.error("Missing VITE_SUPABASE_URL in .env"); process.exit(1); }
 if (!serviceKey) {
@@ -58,7 +103,6 @@ if (!serviceKey) {
   process.exit(1);
 }
 
-// ─── Helpers ───
 async function apiCall(path, body) {
   const res = await fetch(`${baseUrl}${path}`, {
     method: "POST",
@@ -114,14 +158,12 @@ async function restDelete(table, query) {
   return { ok: res.ok, status: res.status };
 }
 
-// ─── Main ───
 console.log(`Target: ${baseUrl}`);
 console.log(`Creating ${USERS.length} user(s)...\n`);
 
 for (const u of USERS) {
   console.log(`→ ${u.email} (${u.role})`);
 
-  // Check if user exists
   const listRes = await apiGet(`/auth/v1/admin/users?page=1&per_page=1000`);
   let userId = null;
 
@@ -132,7 +174,6 @@ for (const u of USERS) {
     if (existing) {
       userId = existing.id;
       console.log(`  Found existing user: ${userId.slice(0, 8)}…`);
-      // Update password
       const upRes = await fetch(`${baseUrl}/auth/v1/admin/users/${userId}`, {
         method: "PUT",
         headers: {
@@ -156,7 +197,6 @@ for (const u of USERS) {
   }
 
   if (!userId) {
-    // Create user
     const createRes = await apiCall("/auth/v1/admin/users", {
       email: u.email,
       password: u.password,
@@ -175,7 +215,6 @@ for (const u of USERS) {
     console.log(`  ✓ Created: ${userId.slice(0, 8)}…`);
   }
 
-  // Upsert profile
   const profRes = await restPost("profiles", {
     user_id: userId,
     email: u.email,
@@ -187,7 +226,6 @@ for (const u of USERS) {
     console.log(`  ✓ Profile set`);
   }
 
-  // Set role
   await restDelete("user_roles", `user_id=eq.${userId}`);
   const roleRes = await restPost("user_roles", { user_id: userId, role: u.role });
   if (!roleRes.ok && roleRes.status !== 409) {

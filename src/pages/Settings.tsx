@@ -352,9 +352,10 @@ function ProfileSection({ profile, onUpdateProfile }: Props) {
         if (permission !== "granted") throw new Error("Permission not granted");
 
         const reg = await navigator.serviceWorker.ready;
-        // Use VAPID public key from environment or fallback to a valid generated one.
-        // To generate your own: npx web-push generate-vapid-keys
-        const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || "BOxxH6qoOFBckNg2dLFnyhsY_XF4_7kDQOgb6bN-EbkSvk-DrIw2agFOQzOHYQg43xFw3ItxfMV2gKyFS52YWLg";
+        const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim();
+        if (!vapidPublicKey) {
+          throw new Error("Push notifications are not configured (missing VITE_VAPID_PUBLIC_KEY).");
+        }
 
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,

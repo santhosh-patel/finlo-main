@@ -1,0 +1,3 @@
+# Supabase CLI local state — never commit
+.temp/
+.env

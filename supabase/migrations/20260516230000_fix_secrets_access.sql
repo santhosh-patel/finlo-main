@@ -39,7 +39,7 @@ BEGIN
     IF service_role_key IS NOT NULL THEN
         PERFORM
           net.http_post(
-            url := 'https://ldjoegwamvaivitifozw.supabase.co/functions/v1/send-push',
+            url := public.get_app_secret('supabase_functions_url') || '/send-push',
             headers := jsonb_build_object(
               'Content-Type', 'application/json',
               'Authorization', 'Bearer ' || service_role_key

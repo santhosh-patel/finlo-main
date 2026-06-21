@@ -33,17 +33,18 @@ serve(async (req) => {
       });
     }
 
-    // Configure web-push
-    // These should be set in Supabase Secrets
-    const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY") || "BOxxH6qoOFBckNg2dLFnyhsY_XF4_7kDQOgb6bN-EbkSvk-DrIw2agFOQzOHYQg43xFw3ItxfMV2gKyFS52YWLg";
-    const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY");
-    const mailTo = Deno.env.get("VAPID_MAILTO") || "mailto:admin@finlo.ai";
+    const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY")?.trim();
+    const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY")?.trim();
+    const mailTo = Deno.env.get("VAPID_MAILTO")?.trim() || "mailto:notifications@localhost";
 
-    if (!vapidPrivateKey) {
-      console.warn("VAPID_PRIVATE_KEY not set. Push will not work in production.");
+    if (!vapidPublicKey || !vapidPrivateKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Push notifications are not configured (VAPID keys missing)." }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    webpush.setVapidDetails(mailTo, vapidPublicKey, vapidPrivateKey || "");
+    webpush.setVapidDetails(mailTo, vapidPublicKey, vapidPrivateKey);
 
     const payload = JSON.stringify({ title, body, url });
     

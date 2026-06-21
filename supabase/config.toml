@@ -1,1 +1,2 @@
-project_id = "ldjoegwamvaivitifozw"
+# Replace with your Supabase project ref when using the Supabase CLI locally.
+project_id = "your-project-id"

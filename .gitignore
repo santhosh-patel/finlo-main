@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dev-dist
 *.local
 
 # Editor directories and files
@@ -27,4 +28,18 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+!.env.example
 
+# Supabase CLI local state (linked project, pooler URLs, etc.)
+supabase/.temp/
+supabase/.env
+
+# Android build outputs and signing keys
+android/app/release/
+*.keystore
+*.jks
+*.p12
+*.pem
+
+# Internal tooling / generated artifacts
+.lovable/
