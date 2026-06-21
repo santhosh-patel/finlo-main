@@ -43,3 +43,8 @@ android/app/release/
 
 # Internal tooling / generated artifacts
 .lovable/
+scratch/
+
+# One-off migration scripts (local use only)
+replace_currency.js
+fix_imports.cjs

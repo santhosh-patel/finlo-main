@@ -4,7 +4,7 @@
 
 If you discover a security issue, **please do not open a public GitHub issue**.
 
-Instead, report it privately to the maintainers (use GitHub Security Advisories if enabled, or contact the repository owner directly). Include:
+Instead, report it privately to the maintainers at **santhoshpatel002@gmail.com**, or use [GitHub Security Advisories](https://github.com/santhosh-patel/finlo-main/security/advisories/new) if enabled. Include:
 
 - A description of the issue and potential impact
 - Steps to reproduce

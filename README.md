@@ -1,5 +1,8 @@
 # Finlo
 
+[![CI](https://github.com/santhosh-patel/finlo-main/actions/workflows/ci.yml/badge.svg)](https://github.com/santhosh-patel/finlo-main/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
 **Personal finance, built for speed.** Finlo is a mobile-first expense tracker and installable PWA that helps you log spending, set budgets, and understand your money—with optional AI for natural-language entry, receipt scanning, and conversational insights.
 
 > For a full feature walkthrough, see [FEATURES.md](./FEATURES.md).
@@ -79,7 +82,7 @@ flowchart LR
 ### 1. Clone and install
 
 ```bash
-git clone <your-repo-url> finlo
+git clone https://github.com/santhosh-patel/finlo-main.git finlo
 cd finlo
 npm install
 ```
@@ -276,7 +279,7 @@ finlo/
 
 Contributions are welcome — bug fixes, docs, tests, and features.
 
-1. Read [CONTRIBUTING.md](./CONTRIBUTING.md)
+1. Read [CONTRIBUTING.md](./CONTRIBUTING.md) and the [Code of Conduct](./CODE_OF_CONDUCT.md)
 2. Fork, branch, and open a pull request
 3. Run `typecheck`, `lint`, `test`, and `build` before submitting
 
@@ -286,4 +289,4 @@ Do **not** commit `.env`, API keys, passwords, or Supabase CLI temp state. Repor
 
 ## License
 
-No license file is included yet. Add a `LICENSE` (e.g. MIT, Apache 2.0) before distributing or accepting external contributions under specific terms.
+[MIT](./LICENSE) © Santhosh Patel
